@@ -1,0 +1,544 @@
+PRODUCT REQUIREMENTS DOCUMENT
+Mundra Brothers Non-Trade Management Software
+White-label customer, purchase order, dispatch, credit, payment, ledger and compliance management platform
+Client: Mundra Brothers
+Business: UltraTech Cement non-trade dealership / commission-based sales operations
+Document status: Working Draft for Requirement Validation
+Version: 0.2
+Date: 15 June 2026
+Language: English
+
+Document purpose: Define the business rules, user journeys, controls and system requirements for a secure white-label platform used by Mundra Brothers, its clients and its internal teams.
+
+ 
+Document Control
+Field	Details
+Product owner	To be confirmed by Mundra Brothers
+Business owner	Mundra Brothers management
+Primary users	Mundra Brothers teams and client organizations
+Current status	Discovery and requirement validation
+Next review	After refund-letter format, TDS rules and UltraTech data flow are confirmed
+
+Contents
+•	1. Executive Summary
+•	2. Business Context and Problem Statement
+•	3. Product Vision, Goals and Scope
+•	4. Users, Roles and Permission Model
+•	5. Product Structure
+•	6. Functional Requirements
+•	7. Core Business Rules
+•	8. End-to-End Workflows
+•	9. Status Models
+•	10. Data Model
+•	11. Notifications and Automations
+•	12. Integrations
+•	13. Reporting and Dashboards
+•	14. Non-Functional Requirements
+•	15. Acceptance Criteria
+•	16. Delivery Phases
+•	17. Assumptions, Dependencies and Open Questions
+ 
+1. Executive Summary
+Mundra Brothers operates as an UltraTech Cement non-trade dealer on a commission basis. Mundra Brothers sources and manages clients, while UltraTech Cement invoices those clients directly. Mundra Brothers must therefore control customer POs and dispatch requests, commercial rates, payment terms, credit limits, payment follow-up, ledger reconciliation, balance confirmations, compliance documents and commission-related processes without being the billing entity.
+The proposed product will be a white-label web application branded for Mundra Brothers. Each client organization will receive its own secure workspace. Client users will be able to create authorized POs, request full or partial dispatches, report payments, allocate payments against invoices, request ledgers, complete balance confirmations, raise disputes and manage their internal users. Mundra Brothers will manage client terms, pricing, approval rules, exceptions, documents, alerts and all operational controls from a separate administration portal.
+Primary product outcome: No non-trade dispatch should proceed without a transparent, auditable decision based on credit exposure, payment-term compliance, balance-confirmation compliance and authorized exceptions.
+
+2. Business Context and Problem Statement
+2.1 Current Business Model
+•	Mundra Brothers sells UltraTech Cement to its clients on a commission basis.
+•	UltraTech Cement raises invoices directly in the name of Mundra Brothers' clients.
+•	Client payments, payment realization and applicable commercial terms influence commission and operational eligibility.
+•	Mundra Brothers is responsible for controlling client relationships, rates, POs, dispatches, credit exposure, overdue payments, documentation and follow-up.
+2.2 Problems to Be Solved
+•	Dispatch requests may be received without a consistent real-time check of credit limit, overdue status or compliance documents.
+•	Client payment updates may remain pending with Mundra Brothers even after the client has paid, creating avoidable dispatch blocks and disputes.
+•	Payment allocation, TDS treatment and refund-letter preparation require manual work and are vulnerable to errors.
+•	Quarterly balance confirmations require repeated emailing, document tracking, client signatures, stamps and internal verification.
+•	Different people within a client organization need different permissions and approval responsibilities.
+•	Mundra Brothers also needs internal role-based access so accounts, PO/dispatch-processing and approvers only see and perform permitted actions.
+•	Clients require a clear view of why a PO or dispatch request is approved, held or blocked and a direct mechanism to resolve incorrect ledger or payment information.
+•	Follow-ups for outstanding payments, expiring credit availability and pending balance confirmations are currently difficult to automate and audit.
+3. Product Vision, Goals and Scope
+3.1 Product Vision
+Create a trusted digital control centre for Mundra Brothers' non-trade client operations, allowing clients to transact independently while ensuring that every commercially sensitive action follows configurable approval, credit and compliance rules.
+3.2 Goals
+•	Provide a fully white-labelled Mundra Brothers experience.
+•	Enable client self-service for POs, dispatch requests, payment updates, ledgers, issues and balance confirmations.
+•	Automate dispatch eligibility checks and route exceptions to authorized Mundra Brothers approvers.
+•	Reduce manual preparation of refund letters and balance-confirmation follow-ups.
+•	Maintain a single auditable record of POs, dispatches, payments, approvals, documents and communications.
+•	Prevent new dispatches when configured credit, overdue or balance-confirmation rules are violated unless a valid special approval exists.
+•	Give management real-time visibility into exposure, overdue amounts, blocked dispatches and pending actions.
+3.3 Non-Goals for the Initial Release
+•	Replacing UltraTech's ERP, invoicing or dispatch systems.
+•	Acting as a general accounting platform or replacing Tally unless a future integration is approved.
+•	Calculating final dealer commission until the exact UltraTech commission and settlement rules are provided.
+•	Managing physical logistics in detail unless allocation, dispatch and vehicle data become part of a later phase.
+•	Providing an open public marketplace. Access is limited to approved organizations and users.
+4. Users, Roles and Permission Model
+4.1 User Types
+User Type	Purpose	Typical Responsibilities
+Mundra Super Admin	Full platform control	Client setup, master configuration, permissions, approvals, overrides and reporting
+Mundra Accounts User	Financial operations	Ledger updates, payment verification, TDS review, refund letters and balance confirmations
+Mundra PO / Dispatch User	PO and dispatch processing	Review POs, documents and eligible dispatch releases; view relevant commercial controls
+Mundra Approver	Exception governance	Approve or reject blocked dispatches, payments, documents and temporary credit exceptions
+Mundra Read-Only User	Visibility	View dashboards and reports without changing records
+Client Organization Admin	Client account administration	Create users, assign permissions, configure internal approvals and view all company records
+Client PO Maker	PO and dispatch entry	Create POs, select dispatch mode and request later partial dispatches
+Client PO Approver	Client-side approval	Approve or reject POs and dispatch requests before submission to Mundra Brothers
+Client Payment Maker	Payment reporting	Submit payment details, evidence, allocation and TDS information
+Client Payment Approver	Client-side payment approval	Approve payment updates before submission to Mundra Brothers
+Client Accounts / Ledger User	Finance access	View outstanding information, request ledgers and complete balance confirmations
+Client Read-Only User	Limited visibility	View selected information without initiating actions
+
+4.2 Permission Principles
+•	Permissions must be configurable at organization, module and action level: view, create, edit, submit, approve, reject, download and administer.
+•	Client Organization Admins may create multiple users but may only grant permissions allowed to their organization by Mundra Brothers.
+•	Maker-checker approval must be configurable separately for POs, dispatch requests, payment submissions and balance confirmations.
+•	A user must not approve their own submission when maker-checker is enabled.
+•	Sensitive actions such as credit-limit changes, special approvals, rate overrides and permission changes must always be logged.
+•	Deactivated users must immediately lose access while their historic actions remain visible in the audit trail.
+5. Product Structure
+Application Area	Primary Audience	Core Capabilities
+Client Portal	Mundra Brothers' client organizations	Dashboard, POs, dispatch releases, PO documents, payments, invoice allocation, ledger requests, disputes, balance confirmations and user management
+Mundra Admin Portal	Mundra Brothers teams	Client masters, pricing, credit and terms, approvals, PO/dispatch processing, payment verification, documents, alerts and reports
+Rules and Workflow Engine	System service	Credit checks, payment-term checks, compliance blocks, approval routing, special exceptions and status transitions
+Document and Integration Layer	System service	Google Drive retrieval, PDF generation, uploads, email delivery, notification delivery and future ERP/accounting connectivity
+
+6. Functional Requirements
+FR-01 | White-Label Branding
+The application must appear as a Mundra Brothers-owned digital service.
+•	Display Mundra Brothers' logo, product name, approved colour palette, contact details and legal footer.
+•	Use branded email templates, PDF templates, login screens and notification content.
+•	Keep branding configuration editable by authorized super administrators without a software release.
+•	Do not expose the software vendor's branding to ordinary users unless contractually required.
+FR-02 | Authentication and Persistent Sessions
+Users must have secure but low-friction access.
+•	The first screen must request username/email and password.
+•	Support secure password reset, account lockout after repeated failures and administrator-led user deactivation.
+•	Keep users signed in through a secure persistent session for a configurable duration so they do not need to log in repeatedly.
+•	Require re-authentication for sensitive actions or after risk signals such as a password change, unusual device or long inactivity.
+•	Allow an administrator to revoke all active sessions for a user or organization.
+•	Optional future support: OTP or multi-factor authentication for approvers and administrators.
+FR-03 | Client Organization and User Management
+Each client must operate in an isolated organization workspace.
+•	Create a separate tenant/account for every client organization.
+•	Allow the Client Organization Admin to invite, create, deactivate and manage multiple users.
+•	Allow role templates as well as custom permission combinations.
+•	Allow the client to configure internal maker-checker approval for POs, dispatch requests and payments.
+•	Provide a user activity log showing account creation, permission changes, submissions and approvals.
+•	During onboarding, allow an authorized client administrator to upload the company's approved seal/stamp and authorized signatory specimen, together with signatory name, designation and validity details.
+•	Require explicit client authorization before a stored seal or signature asset may be applied to a system-generated PO, and allow immediate revocation or replacement.
+•	Prevent users from viewing or accessing data belonging to another client organization.
+FR-04 | Client Dashboard
+The dashboard must show the client's current commercial and operational position.
+•	Show total approved credit limit, current utilized exposure and indicative available credit.
+•	Show outstanding amount, overdue amount and oldest overdue age based on the latest approved ledger data.
+•	Show active POs, total PO quantity, dispatched quantity, pending PO quantity and recent dispatch requests.
+•	Show payment updates awaiting client approval and Mundra Brothers verification.
+•	Show pending balance confirmations and their due dates.
+•	Show prominent warnings for low available credit, overdue payment terms, missing documents and dispatch blocks.
+•	Provide quick actions for New PO, Request Dispatch, Report Payment, Request Ledger, Raise Issue and Upload Balance Confirmation.
+FR-05 | Client Master and Commercial Terms
+Mundra Brothers must configure the commercial controls applied to each client.
+•	Maintain legal name, trade name, billing details, GST details, locations, contacts and status.
+•	Set a standard credit limit for each client with effective dates and change history.
+•	Set payment terms in days or another configured rule, including applicable grace periods.
+•	Define which dispatch, invoice and ledger statuses count toward exposure. Undispatched PO balance must not consume credit unless Mundra Brothers later configures a separate reservation rule.
+•	Define the client's approved products, delivery locations and any account-specific restrictions.
+•	Support client suspension and reactivation with reason and approval.
+FR-06 | Product and Rate Management
+The system must calculate the correct applicable rate during PO entry.
+•	Maintain product masters including grade, packaging, unit of measure and active status.
+•	Maintain a generic/default rate for each product with effective-from and effective-to dates.
+•	Allow client-specific product rates that override the generic rate for that client and period.
+•	Show the applicable rate and rate source to authorized users during PO entry.
+•	Prevent unauthorized manual rate editing by client users.
+•	Require internal approval for rate creation, changes or exceptional one-time rates if configured.
+•	Retain full rate history so older POs continue to display the rate applicable when they were placed.
+•	When a new rate becomes effective, identify every older PO with an undelivered balance for the affected product/client scope and cancel that pending balance according to the approved rate-change rule.
+•	Never alter the historical rate or quantity already dispatched under the old PO.
+FR-07 | Purchase Order Creation and Initial Dispatch Choice
+Authorized client users must be able to create a PO separately from the quantity they want dispatched immediately.
+•	Capture client, project/site, delivery address, product, total PO quantity, unit, contact person, client PO reference and attachments.
+•	Calculate total PO value using the applicable client-specific or generic rate and lock that rate on the submitted PO for audit history.
+•	Require one of three initial dispatch choices: Full PO Quantity Immediately, Partial PO Quantity Immediately, or PO Only - No Dispatch Currently.
+•	For Full PO Quantity Immediately, automatically create an initial dispatch request equal to the full PO quantity.
+•	For Partial PO Quantity Immediately, require the immediate dispatch quantity and ensure it is greater than zero and not more than the total PO quantity.
+•	For PO Only - No Dispatch Currently, create the PO without a dispatch request and without consuming credit for the undispatched quantity.
+•	Require the client to choose one PO-document method: Upload Client-Generated PO or Generate Standard PO in Platform.
+•	For Upload Client-Generated PO, require the signed/stamped PO file as an attachment before final submission, unless an authorized exception permits later upload.
+•	For Generate Standard PO in Platform, populate the approved standard PO template from the entered PO, company, address, tax, product, quantity, rate and delivery information.
+•	Allow draft saving before submission.
+•	Route the PO and any initial dispatch instruction to the client's internal approver when maker-checker is enabled.
+•	Display separate PO and dispatch acknowledgement numbers, quantities, submission times and statuses.
+•	Allow PO amendment or cancellation only according to configurable status and dispatch-history rules.
+FR-07C | PO Document, Seal, Signature and Timestamp
+Every submitted PO must have a traceable authorized document, whether uploaded by the client or generated by the platform.
+•	Support upload of PDF and approved image/document formats for a client-generated signed and stamped PO.
+•	Extract or capture the client PO number, PO date and attachment version and link them permanently to the platform PO record.
+•	Maintain one or more controlled standard PO templates with version number, effective dates and Mundra Brothers approval.
+•	Generate a non-editable PDF from the standard template using the PO data recorded in the platform.
+•	Where authorized, apply the client's stored company seal/stamp and authorized signatory image to the generated PDF.
+•	Where a stronger digital-signature method is adopted, support an approved e-sign provider or digital certificate instead of relying only on an image of a signature.
+•	Add a unique PO number, generation timestamp, submitting user, approving user, template version and verification reference or QR code to the generated document.
+•	Apply the stored seal/signature only after all required client-side approvals are complete; a maker must not apply an approver's authority prematurely.
+•	Prevent ordinary users from downloading or reusing raw seal/signature image files outside authorized document generation.
+•	Any PO amendment after approval must create a new version or amendment document and preserve the original PDF and audit history.
+FR-07A | Dispatch Release Management
+A client must be able to request one or more dispatches against the open balance of an approved PO.
+•	Show original PO quantity, cumulative dispatched quantity, quantities already requested, cancelled quantity and currently available balance.
+•	Allow an authorized client user to create a dispatch request against the available PO balance, including quantity, requested date, site and delivery contact.
+•	Prevent the total of completed and active dispatch requests from exceeding the open PO quantity.
+•	Apply the PO's recorded rate only while that PO balance remains valid under the rate-change rule.
+•	Run credit-limit, payment-term, balance-confirmation and compliance checks for each dispatch request at the time of release.
+•	Allow multiple partial dispatches until the PO is fully dispatched, cancelled, expired or its pending balance is cancelled by a rate change.
+FR-07B | Rate Change and Pending PO Balance Cancellation
+A new applicable rate must prevent future dispatch under an older rate while preserving completed dispatch history.
+•	When an authorized new generic or client-specific rate becomes effective, find all open older POs affected by that client, product and rate scope.
+•	Cancel only the undelivered and unreleased balance under the old PO; quantities already dispatched or validly invoiced remain unchanged.
+•	Cancel active but not yet finally approved dispatch requests under the old rate, unless an authorized exception explicitly preserves them.
+•	Mark the PO as Partially Dispatched - Balance Cancelled Due to Rate Change or Cancelled Due to Rate Change, depending on dispatch history.
+•	Notify the client that the old PO balance can no longer be dispatched and that a new PO must be raised at the currently applicable rate.
+•	Record the old rate, new rate, effective time, cancelled quantity, affected POs and approving user in the audit trail.
+FR-08 | Automated Dispatch Eligibility Engine
+Every immediate or later dispatch request must be evaluated consistently before processing.
+•	Check whether the client account and relevant product are active.
+•	Check whether the proposed exposure after the requested dispatch quantity is within the approved credit limit.
+•	Check whether any approved ledger amount is beyond the client's payment terms.
+•	Check whether a mandatory quarterly balance confirmation is overdue beyond its configured cutoff date.
+•	Check whether required client, PO or dispatch documents are available and valid.
+•	Check whether a valid special approval covers the exact PO, dispatch, amount, quantity, date range or control violation.
+•	For a PO Only submission, accept the PO after account, product, rate and document validation; defer credit and payment-term eligibility until dispatch is requested.
+•	Auto-approve eligible dispatch requests or place them in a configurable Mundra review queue.
+•	Block or hold ineligible dispatch requests and clearly state every reason, not only the first failed check.
+FR-09 | Blocked Dispatch Resolution and Issue Raising
+Clients must be able to challenge outdated or incorrect information without leaving the platform.
+•	Display the failed rule, relevant amount/date and the action required to resolve it.
+•	Allow the client to raise an issue directly from a blocked dispatch request.
+•	Provide issue types such as Payment Already Made, Ledger Mismatch, Credit Limit Incorrect, Balance Confirmation Submitted, Rate Issue and Other.
+•	Allow comments and supporting documents including payment proof and signed confirmations.
+•	Route the issue to the correct Mundra Brothers queue with SLA and ownership.
+•	Re-run dispatch eligibility automatically after the underlying approved data changes.
+FR-10 | Payment Update Submission
+Clients must be able to report payments with sufficient information for verification and downstream documentation.
+•	Capture payment date, amount, payment mode, bank, UTR/reference number, payer account, remarks and proof attachment.
+•	Allow the client to classify the payment as On Account or Against Specific Invoice(s).
+•	For invoice allocation, allow one payment to be distributed across multiple invoices and validate that allocations plus permitted deductions equal the submitted amount.
+•	Capture TDS and other permitted deductions separately, subject to final business rules.
+•	Support client-side maker-checker approval before submission to Mundra Brothers.
+•	Prevent duplicate payment submissions using reference number, amount, date and payer checks, while allowing authorized override with reason.
+•	Show the client whether the payment is Submitted, Under Verification, Approved, Rejected or Requires Clarification.
+FR-11 | Payment Verification and Ledger Effect
+Mundra Brothers must verify payment information before it affects controlled financial data.
+•	Route submitted payments to Mundra Brothers Accounts or another configured verification queue.
+•	Allow verification, rejection, clarification request and corrected resubmission.
+•	Keep client-reported payments visible as pending so blocked-dispatch messages can distinguish reported but unverified payments from no payment.
+•	Only an approved payment may update the system's recognized payment position unless Mundra Brothers configures a provisional-credit rule.
+•	Record verifier, date, comments and any changed allocation or TDS values.
+•	Recalculate credit and dispatch eligibility immediately after payment approval or ledger refresh.
+FR-12 | Refund Letter Generation
+A refund letter must be generated from payment information in the approved Mundra Brothers format for submission to UltraTech.
+•	Generate a draft refund letter as soon as a qualifying payment submission is created or approved, based on the configured workflow.
+•	Populate client details, payment information, invoice allocations, on-account amount, TDS details and authorized signatory information from system data.
+•	Use a controlled template with version history and effective dates.
+•	Generate the output as PDF and an editable format if required.
+•	Route the draft for Mundra Brothers review and approval before external dispatch when maker-checker is enabled.
+•	Store generated versions, approval history, delivery status and any revised letter.
+•	The exact refund purpose, recipient, calculation and UltraTech format remain subject to detailed confirmation.
+FR-13 | Ledger Access and Requests
+Clients must be able to obtain their ledger with minimal manual coordination.
+•	Provide a one-click Request Ledger action for authorized client users.
+•	If current ledger data is available and approved, generate or deliver it immediately.
+•	If manual preparation is required, create a tracked service request for Mundra Brothers Accounts.
+•	Allow selection of date range and file format, subject to available source data.
+•	Show request status, delivered date and downloadable files in the client portal.
+•	Maintain an audit trail of all ledger versions shared with the client.
+FR-14 | Balance Confirmation Management
+The product must automate the quarterly balance-confirmation lifecycle.
+•	Create balance-confirmation periods, such as quarter ending 31 March, with configurable send and compliance due dates.
+•	Retrieve the relevant client PDF from a configured Google Drive folder using a controlled client and period mapping.
+•	Allow Mundra Brothers to send a confirmation manually or schedule automatic email delivery on a configured date.
+•	Make the PDF available in the client's portal with instructions to sign, stamp and upload the completed document.
+•	Allow the client to upload the signed/stamped confirmation and optionally add comments or report a mismatch.
+•	Route the returned document to Mundra Brothers for approval, rejection or clarification.
+•	Mark the period Complete only after an authorized Mundra Brothers user approves the returned document.
+•	Block new dispatch requests after the configured cutoff when a mandatory confirmation remains incomplete. Example: a 31 March confirmation may block dispatches after 15 June if still pending.
+•	Resume eligibility automatically after approval, subject to all other dispatch controls.
+FR-15 | Special Approval and Exception Management
+Mundra Brothers must be able to authorize controlled exceptions without weakening standard rules.
+•	Allow authorized approvers to grant an exception for credit-limit breach, overdue payment terms, pending balance confirmation or another configured block.
+•	Require reason, approving user, supporting note/document, start date, expiry date and scope.
+•	Support scope by specific PO or dispatch request, maximum incremental amount, maximum total exposure, quantity, product or validity period.
+•	Never treat a special approval as a permanent credit-limit or payment-term change unless explicitly converted through the master-data workflow.
+•	Display the exception used on each approved dispatch and prevent use beyond its approved scope.
+•	Notify relevant stakeholders when an exception is granted, used, nearing expiry or exhausted.
+FR-16 | Mundra Brothers Administration Portal
+Mundra Brothers must control the platform through role-based internal workspaces.
+•	Provide separate queues for POs, dispatch requests, payments, issues, ledgers, refund letters and balance confirmations.
+•	Allow creation of internal users with restricted access for accounts, PO/dispatch processing, approval and read-only needs.
+•	Provide client master, rate, product, terms, credit and workflow configuration.
+•	Show pending tasks by owner, age, priority and SLA.
+•	Provide bulk but controlled actions where safe, such as sending balance confirmations or reminders.
+•	Require elevated permission and full logging for credit, rate, exception and permission changes.
+FR-17 | Notifications and Communication
+The platform must proactively inform users about actions, risks and deadlines.
+•	Support email and in-app notifications in the initial release.
+•	Support browser or mobile push notifications if the application architecture permits and the user has consented.
+•	Notify approvers immediately when an action requires approval.
+•	Notify clients about payment due dates, overdue amounts, low available credit, blocked dispatches, clarification requests and pending balance confirmations.
+•	Notify Mundra Brothers when clients submit POs or dispatch requests, report payments, raise issues or upload signed documents.
+•	Allow configurable reminder cadence, templates, recipients and escalation levels.
+•	Record delivery attempt, delivery result and user read status where supported.
+FR-18 | Document Repository and Audit Trail
+All transaction documents and decisions must remain traceable.
+•	Store or securely reference purchase orders, payment proofs, ledgers, refund letters, balance confirmations and approval evidence.
+•	Classify documents by client, transaction type, period, version and status.
+•	Keep immutable audit records for login, creation, edits, submissions, approvals, rejections, downloads and configuration changes.
+•	Show before-and-after values for material master-data changes.
+•	Apply retention rules based on legal, accounting and business requirements.
+7. Core Business Rules
+7.1 PO and Dispatch Eligibility
+A PO may be recorded without immediate dispatch, but a dispatch may proceed only when all mandatory checks pass or a valid authorized exception covers each failed check.
+Rule	Pass Condition	Failure Outcome
+Account status	Client and relevant users are active	Block PO or dispatch request
+Rate	A valid generic or client-specific rate exists	Hold for rate review
+Credit limit	Recognized exposure plus requested dispatch value does not exceed limit	Block dispatch or route for special approval
+Payment terms	No recognized overdue amount breaches configured terms	Block or route for special approval
+Balance confirmation	Required period is complete or cutoff has not passed	Block after cutoff
+Required documents	All mandatory client/PO/dispatch documents are valid	Hold until resolved
+PO authorization	Signed/stamped upload or approved system-generated PO is complete	Do not finalize PO
+Client approval	Required client maker-checker approval is complete	Do not submit PO or dispatch externally
+
+7.2 Indicative Exposure Formula
+Working formula: Recognized Exposure = Approved Ledger Outstanding + Included Active Dispatch Value - Approved Unapplied Payments - Other Approved Adjustments. Available Credit = Approved Credit Limit + Active Exception Allowance - Recognized Exposure.
+
+The exact inclusion of active dispatch requests, completed dispatches, invoices, provisional payments, TDS and debit/credit adjustments must be finalized during data-mapping workshops. Undispatched PO balance is excluded by default.
+7.3 Rate Selection Priority
+1.	Use an active client-specific product rate applicable on the PO date, if available.
+2.	Otherwise use the active generic product rate applicable on the PO date.
+3.	If neither exists, hold the PO for internal rate configuration; do not allow uncontrolled client-side rate entry.
+7.4 Balance Confirmation Blocking Rule
+Each confirmation period must have a document date, client response due date and dispatch-block date. The system must block new dispatch requests only when the configured dispatch-block date has passed and the status is not Complete. Mundra Brothers may grant a specific, time-bound exception. A PO may still be recorded without immediate dispatch if configured by Mundra Brothers.
+7.5 Payment Recognition Rule
+Client-submitted payments must be visible immediately as reported payments but must not silently change the approved ledger or recognized credit position. Recognition occurs only after configured Mundra Brothers verification, unless a documented provisional-credit policy is enabled.
+7.6 PO and Dispatch Quantity Rule
+PO quantity is the total commercial quantity authorized at a recorded rate. Dispatch quantity is the quantity requested for immediate or later supply. Credit and payment-term checks apply to the dispatch being released, not automatically to the full undispatched PO balance. Available PO Quantity = Original PO Quantity - Dispatched Quantity - Active Dispatch Quantity - Cancelled Quantity.
+7.7 Rate Change Cancellation Rule
+When a new applicable rate becomes effective, any undelivered balance under an affected older-rate PO becomes ineligible for future dispatch and is cancelled. The client must raise a new PO at the new rate. Completed dispatches and invoices retain their original PO rate and history.
+7.8 PO Authorization Rule
+A PO is considered authorized only when the client uploads its own valid signed/stamped PO or the platform generates the approved standard PO after the required maker-checker approvals. Stored seal and signature assets may be applied only under explicit client authorization and must remain protected from ordinary download or reuse.
+8. End-to-End Workflows
+8.1 Client PO and Initial Dispatch Workflow
+1.	Client PO Maker enters the total PO quantity, product, site, applicable rate data and other required details.
+2.	The client selects Full Immediate Dispatch, Partial Immediate Dispatch or PO Only - No Dispatch Currently.
+3.	The client uploads its own signed/stamped PO or selects platform generation using the approved standard template.
+4.	If client maker-checker is enabled, the PO and dispatch instruction go to the Client PO Approver.
+5.	After approval, the system stores or generates the final authorized PO PDF with timestamp and audit reference.
+6.	For PO Only, the PO is accepted without dispatch credit consumption after basic account, product, rate and document validation.
+7.	For full or partial dispatch, the system calculates the requested dispatch value and proposed exposure.
+8.	The eligibility engine checks credit, overdue terms, balance confirmation, account status and documents for that dispatch quantity.
+9.	If all checks pass, the dispatch becomes Auto-Approved or Pending Mundra Processing according to configuration.
+10.	If any check fails, the dispatch becomes Blocked or Exception Review and the client sees all reasons.
+11.	The client may report a payment, upload a document or raise an issue from the blocked dispatch.
+12.	Mundra Brothers may resolve the underlying data or issue a scoped special approval.
+13.	The system re-runs checks and releases the dispatch only when every failure is resolved or covered.
+8.2 Later Partial Dispatch Workflow
+1.	The client opens an active PO and reviews original, dispatched, active, cancelled and available quantities.
+2.	The client enters a new dispatch quantity against the open PO balance.
+3.	The platform validates that the quantity does not exceed the available PO quantity and that the PO rate remains valid.
+4.	The dispatch request follows client approval if configured and then the full dispatch eligibility checks.
+5.	Approved dispatch quantity is reserved and, after completion, added to cumulative dispatched quantity.
+6.	The PO closes when fully dispatched or when its remaining balance is cancelled or expired.
+8.3 Rate Change and Old PO Closure Workflow
+1.	An authorized Mundra Brothers user approves a new rate with an effective date and scope.
+2.	The system finds affected older-rate POs with an undelivered balance.
+3.	The system preserves dispatched/invoiced history and cancels the remaining old-rate balance and ineligible pending dispatch requests.
+4.	The client and relevant Mundra Brothers users receive the cancellation quantity, old rate, new rate and effective date.
+5.	The client raises a new PO for future dispatch at the newly applicable rate.
+8.4 Payment and Refund-Letter Workflow
+1.	Client Payment Maker enters payment details, chooses On Account or invoice-wise allocation, records TDS and uploads proof.
+2.	If client approval is enabled, a Client Payment Approver verifies and submits it.
+3.	The system performs duplicate and allocation validations.
+4.	Mundra Brothers Accounts verifies the payment and may approve, reject or request clarification.
+5.	The system creates the refund letter at the configured stage using the approved template and transaction data.
+6.	If internal maker-checker applies, the refund letter is reviewed and approved before sending to UltraTech.
+7.	The final letter and delivery record are stored against the payment.
+8.	Approved payment data triggers exposure recalculation and re-evaluation of relevant blocked dispatch requests.
+8.5 Balance Confirmation Workflow
+1.	Mundra Brothers creates or imports the confirmation period and maps the client PDF in Google Drive.
+2.	The platform sends the PDF manually or automatically on the scheduled date.
+3.	The client downloads, signs and stamps the document, then uploads the completed PDF.
+4.	Mundra Brothers reviews the returned document.
+5.	If correct, the confirmation is approved and marked Complete; otherwise clarification is requested.
+6.	Reminder notifications continue until completion.
+7.	If the configured block date passes while incomplete, new dispatch requests are blocked automatically.
+8.	Approval of the document removes this block and triggers dispatch re-evaluation.
+9. Status Models
+Object	Recommended Statuses
+Purchase Order	Draft; Pending PO Document; Pending Client Approval; Submitted; Approved; Active; Partially Dispatched; Fully Dispatched; Partially Dispatched - Balance Cancelled Due to Rate Change; Cancelled Due to Rate Change; Expired; Rejected; Cancelled
+Dispatch Request	Draft; Pending Client Approval; Submitted; Under Eligibility Check; Auto-Approved; Pending Mundra Processing; Blocked; Exception Review; Approved; Sent to UltraTech; Acknowledged; Dispatched; Invoiced; Completed; Rejected; Cancelled; Cancelled Due to Rate Change
+PO Document	Draft; Uploaded; Generated; Pending Approval; Authorized; Superseded; Rejected; Revoked
+Payment Update	Draft; Pending Client Approval; Submitted; Under Verification; Clarification Required; Approved; Rejected; Cancelled
+Refund Letter	Not Generated; Draft; Pending Approval; Approved; Sent; Acknowledged; Superseded; Cancelled
+Ledger Request	Requested; In Preparation; Delivered; Clarification Required; Closed; Cancelled
+Balance Confirmation	Not Available; Ready to Send; Sent; Viewed; Pending Client Upload; Uploaded; Under Review; Clarification Required; Approved / Complete; Rejected; Overdue; Dispatch Block Active
+Issue	Open; Assigned; Under Review; Waiting for Client; Waiting for Mundra Brothers; Resolved; Closed; Reopened
+Special Approval	Draft; Pending Approval; Approved; Active; Partially Used; Exhausted; Expired; Revoked; Rejected
+
+10. Data Model
+The following core records are required. Final fields and relationships will be validated during technical design.
+Entity	Important Information
+Organization	Legal details, contacts, GST, locations, status, workflow settings
+User and Role	Identity, organization, permissions, approval limits, status, sessions
+Client Commercial Profile	Credit limit, payment terms, grace period, exposure settings, restrictions
+Product	Name, grade, packaging, unit, status
+Rate	Product, client scope, amount, effective dates, approval and history
+Purchase Order	Client PO number, product, original quantity, locked rate, total value, site, document method, authorized PDF, status and quantity balances
+Dispatch Request	PO reference, quantity, requested date, site, value, eligibility result, approval, UltraTech status and completion
+PO Document / Template	Uploaded or generated file, template version, seal/signature authorization, timestamp, verification reference and version history
+Client Seal and Signatory	Protected asset reference, signatory name/designation, authorization, effective dates, revocation and usage audit
+Ledger Snapshot	Period, outstanding, overdue, invoice rows, adjustments, source and approval status
+Payment	Amount, date, mode, reference, proof, allocation, TDS and verification
+Invoice Allocation	Invoice number/date/value, allocated cash, TDS, balance and comments
+Refund Letter	Template version, payment reference, generated file, approval and send status
+Balance Confirmation	Quarter, source PDF, send date, returned PDF, review, due date and block date
+Special Approval	Rule exception, scope, amount, validity, reason, approver and utilization
+Notification	Trigger, channel, recipient, template, delivery status and read status
+Audit Event	Actor, action, timestamp, object, previous value, new value and device/context
+
+11. Notifications and Automations
+Trigger	Recipients	Expected Communication
+PO submitted	Client approver or Mundra PO team	Approval/action notification with PO quantity, dispatch choice and document method
+Dispatch blocked	Client maker/admin and relevant Mundra queue	All block reasons and resolution actions
+Old PO balance cancelled	Client PO/admin users and Mundra team	Cancelled quantity, old/new rate, effective date and new PO requirement
+PO document generated	Client maker/approver	Authorized PDF, timestamp and verification reference
+Payment reported	Client approver or Mundra Accounts	Payment summary, reference and proof link
+Payment clarification	Submitting client users	Required correction or missing evidence
+Payment approved	Client accounts users and affected PO/dispatch owners	Approval confirmation and revised eligibility
+Credit availability low	Configured client users	Available credit, exposure and recommended action
+Payment due / overdue	Configured client contacts	Amount, due date, ageing and payment update link
+Balance confirmation sent	Client accounts/admin users	PDF, due date and upload action
+Balance confirmation reminder	Client accounts/admin and escalation contacts	Pending status and approaching block date
+Dispatch block activated	Client admin, PO/dispatch users and Mundra team	Block reason, effective date and resolution path
+Special approval decision	Requester, PO/dispatch owner and relevant teams	Approved scope, expiry or rejection reason
+
+12. Integrations
+12.1 Google Drive
+•	Read approved folders containing client balance-confirmation PDFs.
+•	Map documents by client identifier and period using a defined naming convention or metadata mapping.
+•	Prevent accidental access to documents belonging to another client.
+•	Handle missing, duplicate or incorrectly named files through an exception queue.
+•	Use service-account or authorized OAuth access with least-privilege folder permissions.
+12.2 Email and Notification Services
+Integrate a transactional email provider for approvals, reminders, document delivery and escalations. In-app notifications are mandatory. Browser/mobile push is recommended after technical feasibility and consent design are confirmed.
+12.3 Future Integrations
+•	UltraTech portal, ERP or structured data export for invoices, ledger, dispatch and acknowledgement information.
+•	Tally or another accounting system for ledger synchronization.
+•	Bank statement or payment gateway feeds for automated payment matching.
+•	WhatsApp Business messaging for opted-in transactional reminders.
+13. Reporting and Dashboards
+13.1 Mundra Brothers Management Dashboard
+•	Total active clients, sanctioned credit, recognized exposure and available credit.
+•	Outstanding and overdue amounts by ageing bucket, client and risk category.
+•	POs and dispatch requests submitted, approved, blocked and pending exception review.
+•	Payments reported, under verification and approved, including unresolved ageing.
+•	Balance confirmations sent, pending, overdue and causing dispatch blocks.
+•	Special approvals granted, utilized, expired and approaching expiry.
+•	Refund letters pending generation, approval or dispatch.
+•	SLA performance for internal queues and unresolved client issues.
+13.2 Standard Reports
+•	Client-wise PO/dispatch report and product-wise sales report.
+•	Credit exposure and available-credit report.
+•	Outstanding and overdue ageing report.
+•	Payment update, invoice allocation and TDS report.
+•	Refund-letter register.
+•	Ledger sharing and ledger-request report.
+•	Balance-confirmation compliance report.
+•	Special-approval register and utilization report.
+•	User activity and audit report.
+14. Non-Functional Requirements
+Area	Requirement
+Security	Encryption in transit and at rest; strong password storage; least-privilege access; secure session cookies; protection against common web vulnerabilities
+Tenant isolation	No client organization may access another client's users, POs, dispatches, payments, ledger or documents
+Availability	Target availability and maintenance window to be agreed; critical PO, dispatch and approval functions require monitored service
+Performance	Typical dashboard and list views should load within 3 seconds under expected operating volume; eligibility decisions should return promptly
+Auditability	Material actions must be attributable to a named user and timestamp, with before-and-after values where applicable
+Data integrity	Idempotent submissions, duplicate detection, controlled status transitions and transactional updates for financial records
+Usability	Responsive web experience for desktop and mobile; clear business language; accessible forms and actionable error messages
+Privacy	Collect only required personal information; provide retention, deletion and access controls consistent with applicable law and contracts
+Backup and recovery	Automated backups, tested restoration process and agreed recovery point/recovery time targets
+Observability	Monitoring for failed integrations, notification failures, document-generation errors and unusual authentication activity
+Configurability	Credit rules, dates, reminders, templates, approval routes and permissions should be configurable without code changes where practical
+
+15. Acceptance Criteria
+•	A client user can log in, remain securely signed in for the configured period and access only their organization's information.
+•	A Client Organization Admin can create users and restrict one user to PO/dispatch entry while another user can only approve payments.
+•	The system selects a client-specific rate over a generic rate and preserves the applied rate on the PO.
+•	A client can create a 500-tonne PO and choose full immediate dispatch, a smaller partial dispatch or PO Only with no immediate dispatch.
+•	For a 500-tonne PO with a 200-tonne immediate dispatch, credit and payment-term eligibility is calculated on the 200-tonne dispatch value, not the full PO value.
+•	A PO Only submission records the commercial PO without consuming credit for the undispatched quantity.
+•	A client can request later partial dispatches against the available PO balance without exceeding the original quantity.
+•	When a new applicable rate becomes effective, the system preserves completed old-rate dispatches but cancels the undelivered old-rate PO balance and requires a new PO.
+•	A client can upload its own signed/stamped PO or generate the standard PO inside the platform.
+•	A platform-generated PO is produced only after required approval and includes the approved seal/signature treatment, timestamp, template version and verification reference.
+•	A dispatch within credit and payment terms, with compliant balance confirmation, follows the configured approval path without manual rule checking.
+•	A dispatch exceeding credit or payment terms is blocked or routed for exception approval with all reasons visible to the client.
+•	A client can report a payment against one or more invoices or on account, including proof and TDS information.
+•	A pending payment is visible but does not incorrectly alter approved exposure before verification.
+•	An approved payment triggers a refund-letter draft from the correct template and recalculates relevant dispatch eligibility.
+•	A client can request a ledger in one action and track delivery status.
+•	The system retrieves the correct client-period balance-confirmation PDF from Google Drive and prevents cross-client document leakage.
+•	A signed/stamped balance confirmation can be uploaded, reviewed and marked complete only by an authorized Mundra Brothers user.
+•	Dispatch requests are blocked after the configured balance-confirmation cutoff and automatically reconsidered after completion or a valid exception.
+•	A special approval cannot be used outside its amount, PO/dispatch, product or time scope.
+•	All approvals, rejections, credit changes, rate changes and permission changes appear in the audit trail.
+•	Email and in-app notifications are generated for configured approval, payment, credit and compliance triggers.
+16. Delivery Phases
+Phase	Recommended Scope
+Phase 1: Foundation	White-label login, client isolation, internal/client users, roles, company seal/signatory onboarding, product/rate masters, client terms, basic dashboard and audit trail
+Phase 2: PO and Dispatch Control MVP	PO creation, uploaded/generated PO documents, full/partial/no-dispatch choices, partial releases, client approvals, dispatch eligibility, credit/payment-term controls, rate-change balance cancellation, block reasons and special approvals
+Phase 3: Payments and Documents	Payment reporting, invoice allocation, TDS fields, verification, refund-letter generation, ledger requests and document repository
+Phase 4: Balance Confirmation Automation	Google Drive integration, scheduled distribution, client upload, internal verification, reminders and dispatch blocking
+Phase 5: Intelligence and Integrations	Management analytics, UltraTech/accounting synchronization, automated matching, WhatsApp and advanced risk alerts
+
+17. Assumptions, Dependencies and Open Questions
+17.1 Confirmed Working Assumptions
+•	The product will be a secure white-label web application under Mundra Brothers branding.
+•	UltraTech invoices clients directly; this software manages the Mundra Brothers control and coordination layer.
+•	Both client organizations and Mundra Brothers require multiple users with role-based restrictions and approvals.
+•	Credit limit, payment terms, generic rates and client-specific rates will be maintained by authorized Mundra Brothers users.
+•	A PO and a dispatch request are separate records: one PO may support multiple dispatch releases.
+•	Undispatched PO quantity does not consume credit by default; eligibility is checked when dispatch is requested.
+•	A new applicable rate cancels any undelivered balance under an affected older-rate PO, requiring a new PO for future dispatch.
+•	Clients may either upload their own signed/stamped PO or authorize generation through the platform's standard PO template.
+•	Balance confirmations are required periodically and may become a mandatory condition for future dispatches after a configured cutoff.
+•	Google Drive is the initial source for balance-confirmation PDFs.
+17.2 Details Required Before Final PRD Sign-Off
+Topic	Clarification Needed
+Refund letter	Exact business purpose, recipient, approved sample format, mandatory fields, trigger stage, signatory and how UltraTech responds.
+TDS	Applicable calculation rules, certificate requirements, invoice allocation behaviour, rounding and treatment in available credit.
+Ledger source	Whether ledger is uploaded manually, synchronized from UltraTech, generated from Tally or built from platform transactions.
+Credit exposure	Which PO/dispatch/invoice statuses count toward exposure and whether pending/provisional payments reduce it.
+Payment terms	Whether overdue is calculated invoice-wise, ledger-wise or through a value/age threshold; applicable grace periods.
+Dispatch fulfillment	Steps after approval, including UltraTech order placement, acknowledgement, allocation, dispatch, invoice and completion data.
+PO document authorization	Whether a stored seal/signature image is contractually sufficient, or whether an Aadhaar eSign, DSC or another legally recognized digital-signature provider is required.
+PO template	Approved standard PO format, numbering pattern, mandatory clauses, tax fields, signatory placement and amendment format.
+Rate-change cutoff	Whether old-rate dispatch requests already approved but not dispatched are cancelled, and the exact effective timestamp and exception authority.
+Rates	Tax, freight, destination, quantity and validity components; whether approval limits vary by rate deviation.
+Balance confirmation	Quarter schedule, send date, standard response due date, block date and exceptions for disputed balances.
+Commission	Whether commission calculation and settlement reconciliation belong in this product and the exact UltraTech rules.
+Notifications	Final channels, recipient hierarchy, escalation cadence, quiet hours and WhatsApp/push requirements.
+Scale	Expected number of clients, users, monthly POs and dispatch requests, ledger rows, payments and documents.
+Hosting and compliance	Preferred hosting region, contractual security requirements, retention period and backup objectives.
+
+17.3 Recommended Next Discovery Inputs
+•	One sample client ledger and its ageing logic.
+•	One approved refund-letter sample and one completed payment example with TDS.
+•	One unsigned and one signed/stamped balance-confirmation PDF.
+•	Current PO and dispatch-request formats, rate sheet and approval flow.
+•	Current client master including credit limits and payment terms.
+•	List of Mundra Brothers internal roles and who may approve which amount or exception.
+•	Sample email templates currently sent to clients and UltraTech.
+PRD status: This version captures the functional direction provided during initial discovery. It is suitable for structured discussion and scope validation, but refund-letter, TDS, ledger-source and post-approval dispatch-processing rules must be confirmed before development estimates are frozen.
+
