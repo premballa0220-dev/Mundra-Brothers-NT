@@ -7,8 +7,12 @@ import {
   invalidateSession,
   requireCurrentUser,
   getCurrentUser,
+  listPendingUsers as listPendingUsersServer,
+  approveUserById,
+  rejectUserById,
 } from "../auth.server";
 import { mapUserToSessionContext } from "../auth.server";
+import { requireAuth } from "@/integrations/auth/auth-middleware";
 import type { AppRole } from "../auth-types";
 
 const signInSchema = z.object({
@@ -48,9 +52,9 @@ export const signUp = createServerFn({ method: "POST" })
     const email = data.email.toLowerCase().trim();
     const fullName = data.fullName?.trim() ?? null;
     const organizationId = email;
-    const organizationName = "Client Organisation";
-    const orgType = "client" as const;
-    const roles: AppRole[] = ["client_admin"];
+    const organizationName = "Mundra Brothers";
+    const orgType = "mundra" as const;
+    const roles: AppRole[] = ["mundra_super_admin"];
 
     const user = await createUser({
       email,
@@ -85,3 +89,27 @@ export const getSessionContext = createServerFn({ method: "GET" }).handler(async
   if (!current) return null;
   return mapUserToSessionContext(current.user);
 });
+
+// ─── Admin: User Approval ────────────────────────────────────────────
+
+export const getPendingUsers = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .handler(async () => {
+    return await listPendingUsersServer();
+  });
+
+export const approveUser = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(z.object({ userId: z.string().min(1), roleType: z.enum(["client", "admin"]) }))
+  .handler(async ({ data }) => {
+    await approveUserById(data.userId, data.roleType);
+    return { success: true };
+  });
+
+export const rejectUser = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(z.object({ userId: z.string().min(1) }))
+  .handler(async ({ data }) => {
+    await rejectUserById(data.userId);
+    return { success: true };
+  });

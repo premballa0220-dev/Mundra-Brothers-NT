@@ -297,10 +297,10 @@ function ClientDispatchesPage() {
                             <Badge
                               variant={
                                 dr.status === "auto_approved" || dr.status === "approved"
-                                  ? "success"
+                                  ? "default"
                                   : dr.status === "blocked"
                                   ? "destructive"
-                                  : "warning"
+                                  : "secondary"
                               }
                               className="capitalize"
                             >

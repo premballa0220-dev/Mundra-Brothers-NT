@@ -97,7 +97,7 @@ function ClientLedgersPage() {
         </header>
 
         {pendingConfirmation && (
-          <Alert variant="warning" className="border-warning/50 bg-warning/5">
+          <Alert variant="default" className="border-warning/50 bg-warning/5">
             <AlertCircle className="h-5 w-5" />
             <AlertTitle className="font-semibold">Action Required: Quarterly Statement Pending</AlertTitle>
             <AlertDescription className="mt-2 space-y-2">
@@ -184,10 +184,10 @@ function ClientLedgersPage() {
                           <Badge
                             variant={
                               conf.status === "approved"
-                                ? "success"
-                                : conf.status === "under_review" || conf.status === "pending_upload"
-                                ? "warning"
-                                : "destructive"
+                                  ? "default"
+                                  : conf.status === "under_review" || conf.status === "pending_upload"
+                                  ? "secondary"
+                                  : "destructive"
                             }
                             className="capitalize"
                           >
@@ -248,10 +248,10 @@ function ClientLedgersPage() {
                           <Badge
                             variant={
                               inv.status === "paid"
-                                ? "success"
-                                : inv.status === "partially_paid"
-                                ? "warning"
-                                : "destructive"
+                                  ? "default"
+                                  : inv.status === "partially_paid"
+                                  ? "secondary"
+                                  : "destructive"
                             }
                             className="capitalize"
                           >

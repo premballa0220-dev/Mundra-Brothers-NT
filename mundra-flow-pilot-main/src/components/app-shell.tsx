@@ -59,7 +59,7 @@ const ADMIN_NAV: NavItem[] = [
   { to: "/admin/dispatch-queue", label: "Dispatch Queue", icon: Truck },
   { to: "/admin/payments", label: "Payments & Refunds", icon: Wallet },
   { to: "/admin/balance-confirmations", label: "Balance Confirmations", icon: BookOpenCheck },
-  { to: "/admin/approvals", label: "Special Approvals", icon: ShieldAlert },
+  { to: "/admin/approvals", label: "User Approvals", icon: Users },
   { to: "/admin/reports", label: "Reports", icon: BarChart3 },
   { to: "/admin/audit", label: "Audit Trail", icon: History },
   { to: "/admin/settings", label: "Platform Settings", icon: Settings2 },

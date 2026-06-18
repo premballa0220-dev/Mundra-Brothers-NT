@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getRates, getProducts, getClients, createOrUpdateRate } from "@/lib/api/business.functions";
+import { getRates, getProducts, getClients, proposeProductRate, approveProductRate } from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/select";
 import { useState } from "react";
 import { toast } from "sonner";
-import { IndianRupee, Plus, Loader2 } from "lucide-react";
+import { IndianRupee, Plus, Loader2, Check, X } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/admin/rates")({
   ssr: false,
@@ -67,16 +67,25 @@ function AdminRatesPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (newRate: any) => createOrUpdateRate({ data: newRate }),
+    mutationFn: (newRate: any) => proposeProductRate({ data: newRate }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-rates"] });
-      toast.success("Rate successfully updated!");
+      toast.success("Rate successfully proposed!");
       setOpen(false);
       resetForm();
     },
     onError: (err: any) => {
-      toast.error(err?.message ?? "Failed to save rate");
+      toast.error(err?.message ?? "Failed to propose rate");
     },
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: (data: { rateId: string; action: "approve" | "reject" }) => approveProductRate({ data }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-rates"] });
+      toast.success(`Rate ${variables.action === "approve" ? "approved" : "rejected"} successfully`);
+    },
+    onError: (err: any) => toast.error(err?.message ?? "Failed to process rate"),
   });
 
   function resetForm() {

@@ -41,8 +41,8 @@ function AuthPage() {
     try {
       const result =
         mode === "signin"
-          ? await signIn({ email, password })
-          : await signUp({ email, password, fullName });
+          ? await signIn({ data: { email, password } })
+          : await signUp({ data: { email, password, fullName } });
 
       setAccessToken(result.accessToken);
       router.invalidate();

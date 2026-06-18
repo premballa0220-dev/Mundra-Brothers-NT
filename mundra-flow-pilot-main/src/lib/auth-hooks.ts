@@ -2,18 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { getSessionContext } from "@/lib/api/auth.functions";
 import type { SessionContext } from "@/lib/auth-types";
 
+export type { SessionContext };
+
 export type AppRole = SessionContext["roles"][number];
 export type OrgType = SessionContext["orgType"];
-
-export interface SessionContext {
-  userId: string;
-  email: string;
-  fullName: string | null;
-  organizationId: string;
-  organizationName: string;
-  orgType: OrgType;
-  roles: AppRole[];
-}
 
 export const sessionQueryKey = ["session-context"] as const;
 

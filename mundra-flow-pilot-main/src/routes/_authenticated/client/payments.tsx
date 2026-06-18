@@ -334,10 +334,10 @@ function ClientPaymentsPage() {
                           <Badge
                             variant={
                               pm.status === "approved"
-                                ? "success"
-                                : pm.status === "submitted" || pm.status === "under_verification"
-                                ? "warning"
-                                : "destructive"
+                                  ? "default"
+                                  : pm.status === "submitted" || pm.status === "under_verification"
+                                  ? "secondary"
+                                  : "destructive"
                             }
                             className="capitalize"
                           >

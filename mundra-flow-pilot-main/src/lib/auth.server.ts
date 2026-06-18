@@ -6,13 +6,14 @@ import type { AuthSession, AuthUser, OrgType, SessionContext, AppRole } from "./
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY =
   process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
   throw new Error("Missing Supabase environment variables: SUPABASE_URL and/or SUPABASE_PUBLISHABLE_KEY/SUPABASE_ANON_KEY.");
 }
 
 function createSupabaseClient(token?: string) {
-  return createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  return createClient<Database>(SUPABASE_URL!, SUPABASE_PUBLISHABLE_KEY!, {
     auth: {
       storage: undefined,
       persistSession: false,
@@ -24,6 +25,19 @@ function createSupabaseClient(token?: string) {
             Authorization: `Bearer ${token}`,
           }
         : {},
+    },
+  });
+}
+
+export function createSupabaseAdminClient() {
+  if (!SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY environment variable.");
+  }
+  return createClient<Database>(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: {
+      storage: undefined,
+      persistSession: false,
+      autoRefreshToken: false,
     },
   });
 }
@@ -91,6 +105,7 @@ export async function createUser({
         organizationName,
         orgType,
         roles,
+        approved: false,
       },
     },
   });
@@ -105,9 +120,13 @@ export async function createUser({
 export async function signInUser({
   email,
   password,
+  ip,
+  userAgent,
 }: {
   email: string;
   password: string;
+  ip?: string;
+  userAgent?: string;
 }) {
   const supabase = createSupabaseClient();
   const { data, error } = await supabase.auth.signInWithPassword({
@@ -197,3 +216,52 @@ export async function requireCurrentUser() {
   }
   return result;
 }
+
+// ─── Admin user management ───────────────────────────────────────────
+
+export async function listPendingUsers() {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin.auth.admin.listUsers({ perPage: 1000 });
+  if (error) {
+    console.error("[listPendingUsers] Supabase admin error:", error.message);
+    throw new Error(error.message);
+  }
+
+  const users = data.users ?? [];
+  console.log(`[listPendingUsers] Found ${users.length} total users in Supabase`);
+
+  return users.map((u) => {
+    const meta = (u.user_metadata ?? {}) as Record<string, any>;
+    return {
+      id: u.id,
+      email: u.email ?? "",
+      fullName: meta.fullName ?? null,
+      approved: meta.approved === true,
+      orgType: meta.orgType ?? "mundra",
+      roles: meta.roles ?? [],
+      createdAt: u.created_at,
+    };
+  });
+}
+
+export async function approveUserById(userId: string, roleType: "client" | "admin") {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin.auth.admin.updateUserById(userId, {
+    user_metadata: {
+      approved: true,
+      orgType: roleType === "admin" ? "mundra" : "client",
+      roles: roleType === "admin" ? ["mundra_super_admin"] : ["client_admin"],
+      organizationName: roleType === "admin" ? "Mundra Brothers" : "Client User",
+    },
+  });
+  if (error) throw new Error(error.message);
+  return data.user;
+}
+
+export async function rejectUserById(userId: string) {
+  const admin = createSupabaseAdminClient();
+  const { error } = await admin.auth.admin.deleteUser(userId);
+  if (error) throw new Error(error.message);
+  return { success: true };
+}
+

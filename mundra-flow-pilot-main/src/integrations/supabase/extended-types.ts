@@ -8,7 +8,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export interface ProductRow {
+export type ProductRow = {
   id: string;
   name: string;
   grade: string | null;
@@ -17,30 +17,37 @@ export interface ProductRow {
   is_active: boolean;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface RateRow {
+export type RateRow = {
   id: string;
   product_id: string;
   organization_id: string | null;
   amount: number;
   effective_from: string;
   effective_to: string | null;
+  status: "pending_approval" | "active" | "inactive" | "rejected";
+  created_by: string | null;
+  approved_by: string | null;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface ClientCommercialProfileRow {
+export type ClientCommercialProfileRow = {
   id: string;
   organization_id: string;
   credit_limit: number;
   payment_terms_days: number;
   grace_period_days: number;
+  include_undispatched_pos: boolean;
+  include_dispatched_unbilled: boolean;
+  include_unpaid_invoices: boolean;
+  restrictions: string | null;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface ClientSealSignatoryRow {
+export type ClientSealSignatoryRow = {
   id: string;
   organization_id: string;
   signatory_name: string;
@@ -52,9 +59,9 @@ export interface ClientSealSignatoryRow {
   is_authorized: boolean;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface PurchaseOrderRow {
+export type PurchaseOrderRow = {
   id: string;
   organization_id: string;
   po_number: string;
@@ -71,9 +78,9 @@ export interface PurchaseOrderRow {
   approved_by: string | null;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface DispatchRequestRow {
+export type DispatchRequestRow = {
   id: string;
   purchase_order_id: string;
   organization_id: string;
@@ -86,9 +93,9 @@ export interface DispatchRequestRow {
   approved_by: string | null;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface InvoiceRow {
+export type InvoiceRow = {
   id: string;
   organization_id: string;
   dispatch_request_id: string | null;
@@ -99,9 +106,9 @@ export interface InvoiceRow {
   status: string;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface PaymentRow {
+export type PaymentRow = {
   id: string;
   organization_id: string;
   amount: number;
@@ -115,9 +122,9 @@ export interface PaymentRow {
   verified_at: string | null;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface InvoiceAllocationRow {
+export type InvoiceAllocationRow = {
   id: string;
   payment_id: string;
   invoice_id: string;
@@ -125,9 +132,9 @@ export interface InvoiceAllocationRow {
   tds_amount: number;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface RefundLetterRow {
+export type RefundLetterRow = {
   id: string;
   payment_id: string;
   organization_id: string;
@@ -135,9 +142,9 @@ export interface RefundLetterRow {
   status: string;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface BalanceConfirmationRow {
+export type BalanceConfirmationRow = {
   id: string;
   organization_id: string;
   quarter_end_date: string;
@@ -150,9 +157,9 @@ export interface BalanceConfirmationRow {
   reviewed_at: string | null;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface SpecialApprovalRow {
+export type SpecialApprovalRow = {
   id: string;
   organization_id: string;
   exception_type: string;
@@ -166,9 +173,9 @@ export interface SpecialApprovalRow {
   status: string;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface IssueRow {
+export type IssueRow = {
   id: string;
   organization_id: string;
   dispatch_request_id: string | null;
@@ -179,9 +186,9 @@ export interface IssueRow {
   assigned_to: string | null;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface NotificationRow {
+export type NotificationRow = {
   id: string;
   user_id: string;
   organization_id: string;
@@ -190,9 +197,9 @@ export interface NotificationRow {
   link: string | null;
   is_read: boolean;
   created_at: string;
-}
+};
 
-export interface AuditLogRow {
+export type AuditLogRow = {
   id: string;
   user_id: string | null;
   action: string;
@@ -201,11 +208,90 @@ export interface AuditLogRow {
   previous_values: Json;
   new_values: Json;
   created_at: string;
-}
+};
+
+export type ClientDeliveryLocationRow = {
+  id: string;
+  organization_id: string;
+  label: string;
+  address: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ClientApprovedProductRow = {
+  organization_id: string;
+  product_id: string;
+  created_at: string;
+};
+
+export type ClientCreditHistoryRow = {
+  id: string;
+  organization_id: string;
+  credit_limit: number;
+  effective_from: string;
+  created_by: string | null;
+  created_at: string;
+};
+
+export type OrganizationRow = {
+  id: string;
+  legal_name: string;
+  short_name: string | null;
+  trade_name: string | null;
+  billing_address: string | null;
+  org_type: "mundra" | "client";
+  gst_number: string | null;
+  pan_number: string | null;
+  primary_contact_name: string | null;
+  primary_contact_email: string | null;
+  primary_contact_phone: string | null;
+  status: "active" | "suspended" | "pending";
+  status_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
 
 export interface Database extends Omit<GeneratedDatabase, "public"> {
   public: Omit<GeneratedDatabase["public"], "Tables"> & {
     Tables: GeneratedDatabase["public"]["Tables"] & {
+      organizations: {
+        Row: OrganizationRow;
+        Insert: Omit<OrganizationRow, "id" | "created_at" | "updated_at"> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<OrganizationRow>;
+        Relationships: [];
+      };
+      client_delivery_locations: {
+        Row: ClientDeliveryLocationRow;
+        Insert: Omit<ClientDeliveryLocationRow, "id" | "created_at" | "updated_at"> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<ClientDeliveryLocationRow>;
+        Relationships: [];
+      };
+      client_approved_products: {
+        Row: ClientApprovedProductRow;
+        Insert: Omit<ClientApprovedProductRow, "created_at"> & {
+          created_at?: string;
+        };
+        Update: Partial<ClientApprovedProductRow>;
+        Relationships: [];
+      };
+      client_credit_history: {
+        Row: ClientCreditHistoryRow;
+        Insert: Omit<ClientCreditHistoryRow, "id" | "created_at"> & {
+          id?: string;
+          created_at?: string;
+        };
+        Update: Partial<ClientCreditHistoryRow>;
+        Relationships: [];
+      };
       products: {
         Row: ProductRow;
         Insert: Omit<ProductRow, "id" | "created_at" | "updated_at"> & {

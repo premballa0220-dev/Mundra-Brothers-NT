@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedClientRouteRouteImport } from './routes/_authenticated/client/route'
+import { Route as AuthenticatedAdminRouteRouteImport } from './routes/_authenticated/admin/route'
 import { Route as AuthenticatedClientIndexRouteImport } from './routes/_authenticated/client/index'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
 import { Route as AuthenticatedClientUsersRouteImport } from './routes/_authenticated/client/users'
@@ -46,121 +48,134 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedClientIndexRoute =
-  AuthenticatedClientIndexRouteImport.update({
-    id: '/client/',
-    path: '/client/',
+const AuthenticatedClientRouteRoute =
+  AuthenticatedClientRouteRouteImport.update({
+    id: '/client',
+    path: '/client',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
-  id: '/admin/',
-  path: '/admin/',
+const AuthenticatedAdminRouteRoute = AuthenticatedAdminRouteRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedClientIndexRoute =
+  AuthenticatedClientIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedClientRouteRoute,
+  } as any)
+const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthenticatedAdminRouteRoute,
 } as any)
 const AuthenticatedClientUsersRoute =
   AuthenticatedClientUsersRouteImport.update({
-    id: '/client/users',
-    path: '/client/users',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/users',
+    path: '/users',
+    getParentRoute: () => AuthenticatedClientRouteRoute,
   } as any)
 const AuthenticatedClientPurchaseOrdersRoute =
   AuthenticatedClientPurchaseOrdersRouteImport.update({
-    id: '/client/purchase-orders',
-    path: '/client/purchase-orders',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/purchase-orders',
+    path: '/purchase-orders',
+    getParentRoute: () => AuthenticatedClientRouteRoute,
   } as any)
 const AuthenticatedClientPaymentsRoute =
   AuthenticatedClientPaymentsRouteImport.update({
-    id: '/client/payments',
-    path: '/client/payments',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/payments',
+    path: '/payments',
+    getParentRoute: () => AuthenticatedClientRouteRoute,
   } as any)
 const AuthenticatedClientLedgersRoute =
   AuthenticatedClientLedgersRouteImport.update({
-    id: '/client/ledgers',
-    path: '/client/ledgers',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/ledgers',
+    path: '/ledgers',
+    getParentRoute: () => AuthenticatedClientRouteRoute,
   } as any)
 const AuthenticatedClientDocumentsRoute =
   AuthenticatedClientDocumentsRouteImport.update({
-    id: '/client/documents',
-    path: '/client/documents',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/documents',
+    path: '/documents',
+    getParentRoute: () => AuthenticatedClientRouteRoute,
   } as any)
 const AuthenticatedClientDispatchesRoute =
   AuthenticatedClientDispatchesRouteImport.update({
-    id: '/client/dispatches',
-    path: '/client/dispatches',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/dispatches',
+    path: '/dispatches',
+    getParentRoute: () => AuthenticatedClientRouteRoute,
   } as any)
 const AuthenticatedAdminSettingsRoute =
   AuthenticatedAdminSettingsRouteImport.update({
-    id: '/admin/settings',
-    path: '/admin/settings',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
 const AuthenticatedAdminReportsRoute =
   AuthenticatedAdminReportsRouteImport.update({
-    id: '/admin/reports',
-    path: '/admin/reports',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/reports',
+    path: '/reports',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
 const AuthenticatedAdminRatesRoute = AuthenticatedAdminRatesRouteImport.update({
-  id: '/admin/rates',
-  path: '/admin/rates',
-  getParentRoute: () => AuthenticatedRouteRoute,
+  id: '/rates',
+  path: '/rates',
+  getParentRoute: () => AuthenticatedAdminRouteRoute,
 } as any)
 const AuthenticatedAdminProductsRoute =
   AuthenticatedAdminProductsRouteImport.update({
-    id: '/admin/products',
-    path: '/admin/products',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/products',
+    path: '/products',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
 const AuthenticatedAdminPoQueueRoute =
   AuthenticatedAdminPoQueueRouteImport.update({
-    id: '/admin/po-queue',
-    path: '/admin/po-queue',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/po-queue',
+    path: '/po-queue',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
 const AuthenticatedAdminPaymentsRoute =
   AuthenticatedAdminPaymentsRouteImport.update({
-    id: '/admin/payments',
-    path: '/admin/payments',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/payments',
+    path: '/payments',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
 const AuthenticatedAdminDispatchQueueRoute =
   AuthenticatedAdminDispatchQueueRouteImport.update({
-    id: '/admin/dispatch-queue',
-    path: '/admin/dispatch-queue',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/dispatch-queue',
+    path: '/dispatch-queue',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
 const AuthenticatedAdminClientsRoute =
   AuthenticatedAdminClientsRouteImport.update({
-    id: '/admin/clients',
-    path: '/admin/clients',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/clients',
+    path: '/clients',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
 const AuthenticatedAdminBalanceConfirmationsRoute =
   AuthenticatedAdminBalanceConfirmationsRouteImport.update({
-    id: '/admin/balance-confirmations',
-    path: '/admin/balance-confirmations',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/balance-confirmations',
+    path: '/balance-confirmations',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
 const AuthenticatedAdminAuditRoute = AuthenticatedAdminAuditRouteImport.update({
-  id: '/admin/audit',
-  path: '/admin/audit',
-  getParentRoute: () => AuthenticatedRouteRoute,
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => AuthenticatedAdminRouteRoute,
 } as any)
 const AuthenticatedAdminApprovalsRoute =
   AuthenticatedAdminApprovalsRouteImport.update({
-    id: '/admin/approvals',
-    path: '/admin/approvals',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/approvals',
+    path: '/approvals',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/auth': typeof AuthRoute
+  '/admin': typeof AuthenticatedAdminRouteRouteWithChildren
+  '/client': typeof AuthenticatedClientRouteRouteWithChildren
   '/admin/approvals': typeof AuthenticatedAdminApprovalsRoute
   '/admin/audit': typeof AuthenticatedAdminAuditRoute
   '/admin/balance-confirmations': typeof AuthenticatedAdminBalanceConfirmationsRoute
@@ -208,6 +223,8 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRouteRouteWithChildren
+  '/_authenticated/client': typeof AuthenticatedClientRouteRouteWithChildren
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/admin/approvals': typeof AuthenticatedAdminApprovalsRoute
   '/_authenticated/admin/audit': typeof AuthenticatedAdminAuditRoute
@@ -234,6 +251,8 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/admin'
+    | '/client'
     | '/admin/approvals'
     | '/admin/audit'
     | '/admin/balance-confirmations'
@@ -280,6 +299,8 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_authenticated'
     | '/auth'
+    | '/_authenticated/admin'
+    | '/_authenticated/client'
     | '/_authenticated/'
     | '/_authenticated/admin/approvals'
     | '/_authenticated/admin/audit'
@@ -330,144 +351,157 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/client': {
+      id: '/_authenticated/client'
+      path: '/client'
+      fullPath: '/client'
+      preLoaderRoute: typeof AuthenticatedClientRouteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthenticatedAdminRouteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/client/': {
       id: '/_authenticated/client/'
-      path: '/client'
+      path: '/'
       fullPath: '/client/'
       preLoaderRoute: typeof AuthenticatedClientIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedClientRouteRoute
     }
     '/_authenticated/admin/': {
       id: '/_authenticated/admin/'
-      path: '/admin'
+      path: '/'
       fullPath: '/admin/'
       preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/client/users': {
       id: '/_authenticated/client/users'
-      path: '/client/users'
+      path: '/users'
       fullPath: '/client/users'
       preLoaderRoute: typeof AuthenticatedClientUsersRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedClientRouteRoute
     }
     '/_authenticated/client/purchase-orders': {
       id: '/_authenticated/client/purchase-orders'
-      path: '/client/purchase-orders'
+      path: '/purchase-orders'
       fullPath: '/client/purchase-orders'
       preLoaderRoute: typeof AuthenticatedClientPurchaseOrdersRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedClientRouteRoute
     }
     '/_authenticated/client/payments': {
       id: '/_authenticated/client/payments'
-      path: '/client/payments'
+      path: '/payments'
       fullPath: '/client/payments'
       preLoaderRoute: typeof AuthenticatedClientPaymentsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedClientRouteRoute
     }
     '/_authenticated/client/ledgers': {
       id: '/_authenticated/client/ledgers'
-      path: '/client/ledgers'
+      path: '/ledgers'
       fullPath: '/client/ledgers'
       preLoaderRoute: typeof AuthenticatedClientLedgersRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedClientRouteRoute
     }
     '/_authenticated/client/documents': {
       id: '/_authenticated/client/documents'
-      path: '/client/documents'
+      path: '/documents'
       fullPath: '/client/documents'
       preLoaderRoute: typeof AuthenticatedClientDocumentsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedClientRouteRoute
     }
     '/_authenticated/client/dispatches': {
       id: '/_authenticated/client/dispatches'
-      path: '/client/dispatches'
+      path: '/dispatches'
       fullPath: '/client/dispatches'
       preLoaderRoute: typeof AuthenticatedClientDispatchesRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedClientRouteRoute
     }
     '/_authenticated/admin/settings': {
       id: '/_authenticated/admin/settings'
-      path: '/admin/settings'
+      path: '/settings'
       fullPath: '/admin/settings'
       preLoaderRoute: typeof AuthenticatedAdminSettingsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/reports': {
       id: '/_authenticated/admin/reports'
-      path: '/admin/reports'
+      path: '/reports'
       fullPath: '/admin/reports'
       preLoaderRoute: typeof AuthenticatedAdminReportsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/rates': {
       id: '/_authenticated/admin/rates'
-      path: '/admin/rates'
+      path: '/rates'
       fullPath: '/admin/rates'
       preLoaderRoute: typeof AuthenticatedAdminRatesRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/products': {
       id: '/_authenticated/admin/products'
-      path: '/admin/products'
+      path: '/products'
       fullPath: '/admin/products'
       preLoaderRoute: typeof AuthenticatedAdminProductsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/po-queue': {
       id: '/_authenticated/admin/po-queue'
-      path: '/admin/po-queue'
+      path: '/po-queue'
       fullPath: '/admin/po-queue'
       preLoaderRoute: typeof AuthenticatedAdminPoQueueRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/payments': {
       id: '/_authenticated/admin/payments'
-      path: '/admin/payments'
+      path: '/payments'
       fullPath: '/admin/payments'
       preLoaderRoute: typeof AuthenticatedAdminPaymentsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/dispatch-queue': {
       id: '/_authenticated/admin/dispatch-queue'
-      path: '/admin/dispatch-queue'
+      path: '/dispatch-queue'
       fullPath: '/admin/dispatch-queue'
       preLoaderRoute: typeof AuthenticatedAdminDispatchQueueRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/clients': {
       id: '/_authenticated/admin/clients'
-      path: '/admin/clients'
+      path: '/clients'
       fullPath: '/admin/clients'
       preLoaderRoute: typeof AuthenticatedAdminClientsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/balance-confirmations': {
       id: '/_authenticated/admin/balance-confirmations'
-      path: '/admin/balance-confirmations'
+      path: '/balance-confirmations'
       fullPath: '/admin/balance-confirmations'
       preLoaderRoute: typeof AuthenticatedAdminBalanceConfirmationsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/audit': {
       id: '/_authenticated/admin/audit'
-      path: '/admin/audit'
+      path: '/audit'
       fullPath: '/admin/audit'
       preLoaderRoute: typeof AuthenticatedAdminAuditRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/approvals': {
       id: '/_authenticated/admin/approvals'
-      path: '/admin/approvals'
+      path: '/approvals'
       fullPath: '/admin/approvals'
       preLoaderRoute: typeof AuthenticatedAdminApprovalsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
   }
 }
 
-interface AuthenticatedRouteRouteChildren {
-  AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+interface AuthenticatedAdminRouteRouteChildren {
   AuthenticatedAdminApprovalsRoute: typeof AuthenticatedAdminApprovalsRoute
   AuthenticatedAdminAuditRoute: typeof AuthenticatedAdminAuditRoute
   AuthenticatedAdminBalanceConfirmationsRoute: typeof AuthenticatedAdminBalanceConfirmationsRoute
@@ -479,39 +513,68 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRatesRoute: typeof AuthenticatedAdminRatesRoute
   AuthenticatedAdminReportsRoute: typeof AuthenticatedAdminReportsRoute
   AuthenticatedAdminSettingsRoute: typeof AuthenticatedAdminSettingsRoute
+  AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
+}
+
+const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren =
+  {
+    AuthenticatedAdminApprovalsRoute: AuthenticatedAdminApprovalsRoute,
+    AuthenticatedAdminAuditRoute: AuthenticatedAdminAuditRoute,
+    AuthenticatedAdminBalanceConfirmationsRoute:
+      AuthenticatedAdminBalanceConfirmationsRoute,
+    AuthenticatedAdminClientsRoute: AuthenticatedAdminClientsRoute,
+    AuthenticatedAdminDispatchQueueRoute: AuthenticatedAdminDispatchQueueRoute,
+    AuthenticatedAdminPaymentsRoute: AuthenticatedAdminPaymentsRoute,
+    AuthenticatedAdminPoQueueRoute: AuthenticatedAdminPoQueueRoute,
+    AuthenticatedAdminProductsRoute: AuthenticatedAdminProductsRoute,
+    AuthenticatedAdminRatesRoute: AuthenticatedAdminRatesRoute,
+    AuthenticatedAdminReportsRoute: AuthenticatedAdminReportsRoute,
+    AuthenticatedAdminSettingsRoute: AuthenticatedAdminSettingsRoute,
+    AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
+  }
+
+const AuthenticatedAdminRouteRouteWithChildren =
+  AuthenticatedAdminRouteRoute._addFileChildren(
+    AuthenticatedAdminRouteRouteChildren,
+  )
+
+interface AuthenticatedClientRouteRouteChildren {
   AuthenticatedClientDispatchesRoute: typeof AuthenticatedClientDispatchesRoute
   AuthenticatedClientDocumentsRoute: typeof AuthenticatedClientDocumentsRoute
   AuthenticatedClientLedgersRoute: typeof AuthenticatedClientLedgersRoute
   AuthenticatedClientPaymentsRoute: typeof AuthenticatedClientPaymentsRoute
   AuthenticatedClientPurchaseOrdersRoute: typeof AuthenticatedClientPurchaseOrdersRoute
   AuthenticatedClientUsersRoute: typeof AuthenticatedClientUsersRoute
-  AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
   AuthenticatedClientIndexRoute: typeof AuthenticatedClientIndexRoute
 }
 
+const AuthenticatedClientRouteRouteChildren: AuthenticatedClientRouteRouteChildren =
+  {
+    AuthenticatedClientDispatchesRoute: AuthenticatedClientDispatchesRoute,
+    AuthenticatedClientDocumentsRoute: AuthenticatedClientDocumentsRoute,
+    AuthenticatedClientLedgersRoute: AuthenticatedClientLedgersRoute,
+    AuthenticatedClientPaymentsRoute: AuthenticatedClientPaymentsRoute,
+    AuthenticatedClientPurchaseOrdersRoute:
+      AuthenticatedClientPurchaseOrdersRoute,
+    AuthenticatedClientUsersRoute: AuthenticatedClientUsersRoute,
+    AuthenticatedClientIndexRoute: AuthenticatedClientIndexRoute,
+  }
+
+const AuthenticatedClientRouteRouteWithChildren =
+  AuthenticatedClientRouteRoute._addFileChildren(
+    AuthenticatedClientRouteRouteChildren,
+  )
+
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAdminRouteRoute: typeof AuthenticatedAdminRouteRouteWithChildren
+  AuthenticatedClientRouteRoute: typeof AuthenticatedClientRouteRouteWithChildren
+  AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+}
+
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAdminRouteRoute: AuthenticatedAdminRouteRouteWithChildren,
+  AuthenticatedClientRouteRoute: AuthenticatedClientRouteRouteWithChildren,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
-  AuthenticatedAdminApprovalsRoute: AuthenticatedAdminApprovalsRoute,
-  AuthenticatedAdminAuditRoute: AuthenticatedAdminAuditRoute,
-  AuthenticatedAdminBalanceConfirmationsRoute:
-    AuthenticatedAdminBalanceConfirmationsRoute,
-  AuthenticatedAdminClientsRoute: AuthenticatedAdminClientsRoute,
-  AuthenticatedAdminDispatchQueueRoute: AuthenticatedAdminDispatchQueueRoute,
-  AuthenticatedAdminPaymentsRoute: AuthenticatedAdminPaymentsRoute,
-  AuthenticatedAdminPoQueueRoute: AuthenticatedAdminPoQueueRoute,
-  AuthenticatedAdminProductsRoute: AuthenticatedAdminProductsRoute,
-  AuthenticatedAdminRatesRoute: AuthenticatedAdminRatesRoute,
-  AuthenticatedAdminReportsRoute: AuthenticatedAdminReportsRoute,
-  AuthenticatedAdminSettingsRoute: AuthenticatedAdminSettingsRoute,
-  AuthenticatedClientDispatchesRoute: AuthenticatedClientDispatchesRoute,
-  AuthenticatedClientDocumentsRoute: AuthenticatedClientDocumentsRoute,
-  AuthenticatedClientLedgersRoute: AuthenticatedClientLedgersRoute,
-  AuthenticatedClientPaymentsRoute: AuthenticatedClientPaymentsRoute,
-  AuthenticatedClientPurchaseOrdersRoute:
-    AuthenticatedClientPurchaseOrdersRoute,
-  AuthenticatedClientUsersRoute: AuthenticatedClientUsersRoute,
-  AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
-  AuthenticatedClientIndexRoute: AuthenticatedClientIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

@@ -1,39 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPurchaseOrders, createPurchaseOrder, getProducts, getRates } from "@/lib/api/business.functions";
+import { getPurchaseOrders, createPurchaseOrder, getProducts, getApplicableRate } from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { FileText, Plus, Loader2, IndianRupee } from "lucide-react";
+import { FileText, Plus, Loader2, IndianRupee, AlertCircle } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/client/purchase-orders")({
   ssr: false,
@@ -49,6 +29,7 @@ function ClientPurchaseOrdersPage() {
   const [productId, setProductId] = useState("");
   const [quantity, setQuantity] = useState<number>(0);
   const [lockedRate, setLockedRate] = useState<number>(0);
+  const [isExceptionRate, setIsExceptionRate] = useState(false);
   const [siteAddress, setSiteAddress] = useState("");
   const [deliveryContact, setDeliveryContact] = useState("");
   const [documentMethod, setDocumentMethod] = useState<"upload" | "generate">("upload");
@@ -64,22 +45,18 @@ function ClientPurchaseOrdersPage() {
     queryFn: () => getProducts(),
   });
 
-  const { data: rates } = useQuery({
-    queryKey: ["client-rates"],
-    queryFn: () => getRates(),
+  const { data: applicableRateInfo, isLoading: rateLoading } = useQuery({
+    queryKey: ["applicable-rate", productId],
+    queryFn: () => getApplicableRate({ data: { productId } }),
+    enabled: !!productId,
   });
 
-  // Automatically compute / set rate when product is selected
+  // Automatically compute / set rate when product is selected and not in exception mode
   useEffect(() => {
-    if (!productId || !rates) return;
-    // Look for client-specific rate first (rates query already filters to this client or generic)
-    const productRates = rates.filter((r: any) => r.product_id === productId);
-    const clientSpecific = productRates.find((r: any) => r.organization_id !== null);
-    const generic = productRates.find((r: any) => r.organization_id === null);
-
-    const activeRate = clientSpecific?.amount ?? generic?.amount ?? 0;
-    setLockedRate(Number(activeRate));
-  }, [productId, rates]);
+    if (applicableRateInfo && !isExceptionRate) {
+      setLockedRate(applicableRateInfo.rate);
+    }
+  }, [applicableRateInfo, isExceptionRate]);
 
   const createMutation = useMutation({
     mutationFn: (newPo: any) => createPurchaseOrder({ data: newPo }),
@@ -89,9 +66,7 @@ function ClientPurchaseOrdersPage() {
       setOpen(false);
       resetForm();
     },
-    onError: (err: any) => {
-      toast.error(err?.message ?? "Failed to submit Purchase Order");
-    },
+    onError: (err: any) => toast.error(err?.message ?? "Failed to submit Purchase Order"),
   });
 
   function resetForm() {
@@ -99,6 +74,7 @@ function ClientPurchaseOrdersPage() {
     setProductId("");
     setQuantity(0);
     setLockedRate(0);
+    setIsExceptionRate(false);
     setSiteAddress("");
     setDeliveryContact("");
     setDocumentMethod("upload");
@@ -112,19 +88,16 @@ function ClientPurchaseOrdersPage() {
       productId,
       originalQuantity: quantity,
       lockedRate,
+      isExceptionRate,
       siteAddress,
       deliveryContact,
       documentMethod,
-      documentUrl: documentUrl || "https://example.com/demo-po.pdf", // Mock file link
+      documentUrl: documentUrl || "https://example.com/demo-po.pdf",
     });
   }
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      maximumFractionDigits: 2,
-    }).format(amount);
+    return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(amount);
   };
 
   return (
@@ -143,7 +116,7 @@ function ClientPurchaseOrdersPage() {
                 <Plus className="h-4 w-4 mr-2" /> Raise PO
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
+            <DialogContent className="sm:max-w-[600px] overflow-y-auto max-h-[90vh]">
               <form onSubmit={handleSubmit}>
                 <DialogHeader>
                   <DialogTitle>Raise Purchase Order</DialogTitle>
@@ -152,49 +125,65 @@ function ClientPurchaseOrdersPage() {
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
-                  <div className="space-y-1">
-                    <Label htmlFor="poNumber">PO Number *</Label>
-                    <Input
-                      id="poNumber"
-                      value={poNumber}
-                      onChange={(e) => setPoNumber(e.target.value)}
-                      placeholder="e.g. PO-2026-001"
-                      required
-                    />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="poNumber">PO Number *</Label>
+                      <Input id="poNumber" value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="e.g. PO-2026-001" required />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="product">Product *</Label>
+                      <Select value={productId} onValueChange={setProductId} required>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Product" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {products?.map((p: any) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name} {p.grade ? `(${p.grade})` : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="product">Product *</Label>
-                    <Select value={productId} onValueChange={setProductId} required>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select Product" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {products?.map((p: any) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name} {p.grade ? `(${p.grade})` : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  
+                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <Label htmlFor="quantity">Quantity (MT) *</Label>
-                      <Input
-                        id="quantity"
-                        type="number"
-                        value={quantity}
-                        onChange={(e) => setQuantity(Number(e.target.value))}
+                      <Input id="quantity" type="number" value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} required />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center h-4 mb-1">
+                        <Label>Contract Rate per MT</Label>
+                        {rateLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                        {applicableRateInfo && !rateLoading && (
+                          <span className="text-[10px] uppercase text-muted-foreground bg-secondary px-1.5 py-0.5 rounded font-medium tracking-wider">
+                            {applicableRateInfo.source}
+                          </span>
+                        )}
+                      </div>
+                      <Input 
+                        type="number" 
+                        step="0.01"
+                        value={lockedRate || ""} 
+                        onChange={e => setLockedRate(Number(e.target.value))}
+                        disabled={!isExceptionRate}
+                        className={!isExceptionRate ? "bg-muted font-semibold text-primary" : "font-semibold"}
                         required
                       />
                     </div>
-                    <div className="space-y-1">
-                      <Label>Contract Rate per MT</Label>
-                      <div className="h-10 border border-input rounded-md flex items-center px-3 bg-muted font-semibold text-primary">
-                        {formatCurrency(lockedRate)}
-                      </div>
-                    </div>
                   </div>
+
+                  <div className="flex items-center space-x-2 border rounded-md p-3 bg-card mt-1">
+                    <Switch id="exception-rate" checked={isExceptionRate} onCheckedChange={setIsExceptionRate} />
+                    <Label htmlFor="exception-rate" className="flex flex-col cursor-pointer">
+                      <span>Request Exception Rate</span>
+                      <span className="font-normal text-xs text-muted-foreground leading-snug">
+                        Requires manual admin approval and may delay dispatch processing.
+                      </span>
+                    </Label>
+                  </div>
+
                   <div className="space-y-1">
                     <Label>Calculated PO Value</Label>
                     <div className="h-10 border border-success/30 rounded-md flex items-center px-3 bg-success/5 font-bold text-success text-lg">
@@ -203,63 +192,16 @@ function ClientPurchaseOrdersPage() {
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="siteAddress">Site Delivery Address *</Label>
-                    <Input
-                      id="siteAddress"
-                      value={siteAddress}
-                      onChange={(e) => setSiteAddress(e.target.value)}
-                      placeholder="Full site destination address"
-                      required
-                    />
+                    <Input id="siteAddress" value={siteAddress} onChange={(e) => setSiteAddress(e.target.value)} placeholder="Full site destination address" required />
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="deliveryContact">Site Contact Person / Phone</Label>
-                    <Input
-                      id="deliveryContact"
-                      value={deliveryContact}
-                      onChange={(e) => setDeliveryContact(e.target.value)}
-                      placeholder="Name, Phone details"
-                    />
+                    <Input id="deliveryContact" value={deliveryContact} onChange={(e) => setDeliveryContact(e.target.value)} placeholder="Name, Phone details" />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1 col-span-2">
-                      <Label>Document Method</Label>
-                      <Select
-                        value={documentMethod}
-                        onValueChange={(val: any) => setDocumentMethod(val)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="upload">Upload Signed Purchase Order PDF</SelectItem>
-                          <SelectItem value="generate">Generate using Seal & Signatory</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  {documentMethod === "upload" ? (
-                    <div className="space-y-1">
-                      <Label htmlFor="documentUrl">PO PDF Link *</Label>
-                      <Input
-                        id="documentUrl"
-                        value={documentUrl}
-                        onChange={(e) => setDocumentUrl(e.target.value)}
-                        placeholder="Paste URL or upload PO document"
-                        required
-                      />
-                    </div>
-                  ) : (
-                    <div className="p-3 bg-muted rounded-md border border-dashed text-xs text-muted-foreground text-center">
-                      Our system will autogenerate a clean, compliant PO. If you onboard client seals/signatures, they will be applied automatically.
-                    </div>
-                  )}
                 </div>
                 <DialogFooter>
-                  <Button type="submit" disabled={createMutation.isPending}>
-                    {createMutation.isPending && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
-                    Submit PO
+                  <Button type="submit" disabled={createMutation.isPending || (!lockedRate && quantity > 0)}>
+                    {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Submit PO
                   </Button>
                 </DialogFooter>
               </form>
@@ -268,13 +210,11 @@ function ClientPurchaseOrdersPage() {
         </header>
 
         {posLoading ? (
-          <div className="flex justify-center items-center py-20">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
+          <div className="flex justify-center items-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
         ) : (
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">Submitted Purchase Orders</CardTitle>
+              <CardTitle className="text-base font-semibold">My Purchase Orders</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -282,66 +222,37 @@ function ClientPurchaseOrdersPage() {
                   <TableRow>
                     <TableHead>PO Number</TableHead>
                     <TableHead>Product</TableHead>
-                    <TableHead>Quantity</TableHead>
-                    <TableHead>Locked Rate</TableHead>
-                    <TableHead>Total Value</TableHead>
-                    <TableHead>Site Address</TableHead>
+                    <TableHead className="text-right">Quantity (MT)</TableHead>
+                    <TableHead className="text-right">Rate</TableHead>
+                    <TableHead className="text-right">Total Value</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Document</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {pos && pos.length > 0 ? (
                     pos.map((po: any) => (
                       <TableRow key={po.id}>
-                        <TableCell className="font-semibold">{po.po_number}</TableCell>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4 text-muted-foreground" />
+                            {po.po_number}
+                          </div>
+                        </TableCell>
+                        <TableCell>{po.product?.name}</TableCell>
+                        <TableCell className="text-right font-medium">{po.original_quantity}</TableCell>
+                        <TableCell className="text-right text-muted-foreground">{formatCurrency(po.locked_rate)}/MT</TableCell>
+                        <TableCell className="text-right font-medium">{formatCurrency(po.total_value)}</TableCell>
                         <TableCell>
-                          {po.products?.name} {po.products?.grade ? `(${po.products?.grade})` : ""}
-                        </TableCell>
-                        <TableCell>
-                          {Number(po.original_quantity).toFixed(2)} {po.products?.unit ?? "MT"}
-                        </TableCell>
-                        <TableCell>{formatCurrency(po.locked_rate)}</TableCell>
-                        <TableCell className="font-bold text-success">
-                          {formatCurrency(po.total_value)}
-                        </TableCell>
-                        <TableCell className="truncate max-w-[200px]" title={po.site_address}>
-                          {po.site_address}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              po.status === "approved"
-                                ? "success"
-                                : po.status === "submitted" || po.status === "pending_approval"
-                                ? "warning"
-                                : "secondary"
-                            }
-                            className="capitalize"
-                          >
-                            {po.status === "pending_approval" ? "Pending Approval" : po.status}
+                          <Badge variant={po.status === "approved" ? "default" : "secondary"}>
+                            {po.status.replace("_", " ")}
                           </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {po.document_url ? (
-                            <a
-                              href={po.document_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs text-primary hover:underline flex items-center gap-1"
-                            >
-                              <FileText className="h-3.5 w-3.5" /> View
-                            </a>
-                          ) : (
-                            <span className="text-muted-foreground italic text-xs">None</span>
-                          )}
                         </TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
-                        No purchase orders raised yet. Click "Raise PO" to submit one.
+                      <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                        No purchase orders found.
                       </TableCell>
                     </TableRow>
                   )}
