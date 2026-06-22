@@ -10,6 +10,10 @@ import {
   listPendingUsers as listPendingUsersServer,
   approveUserById,
   rejectUserById,
+  changeUserRole as changeUserRoleServer,
+  deactivateUser as deactivateUserServer,
+  listOrganizationUsers,
+  createAdminUser,
 } from "../auth.server";
 import { mapUserToSessionContext } from "../auth.server";
 import { requireAuth } from "@/integrations/auth/auth-middleware";
@@ -51,19 +55,14 @@ export const signUp = createServerFn({ method: "POST" })
     const request = getRequest();
     const email = data.email.toLowerCase().trim();
     const fullName = data.fullName?.trim() ?? null;
-    const organizationId = email;
-    const organizationName = "Mundra Brothers";
-    const orgType = "mundra" as const;
-    const roles: AppRole[] = ["mundra_super_admin"];
 
     const user = await createUser({
       email,
       password: data.password,
       fullName,
-      organizationId,
-      organizationName,
-      orgType,
-      roles,
+      // Pass undefined so the DB trigger uses the default Mundra org UUID
+      organizationId: undefined,
+      roles: ["mundra_readonly"],
     });
 
     const signInResult = await signInUser({
@@ -100,16 +99,69 @@ export const getPendingUsers = createServerFn({ method: "GET" })
 
 export const approveUser = createServerFn({ method: "POST" })
   .middleware([requireAuth])
-  .validator(z.object({ userId: z.string().min(1), roleType: z.enum(["client", "admin"]) }))
+  .validator(z.object({ userId: z.string().min(1) }))
   .handler(async ({ data }) => {
-    await approveUserById(data.userId, data.roleType);
+    await approveUserById(data.userId);
+    return { success: true };
+  });
+
+export const changeUserRole = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(z.object({ userId: z.string().min(1), roleType: z.string() }))
+  .handler(async ({ data }) => {
+    await changeUserRoleServer(data.userId, data.roleType as AppRole);
     return { success: true };
   });
 
 export const rejectUser = createServerFn({ method: "POST" })
   .middleware([requireAuth])
+  .validator(z.object({ userId: z.string().min(1), reason: z.string().optional() }))
+  .handler(async ({ data }) => {
+    await rejectUserById(data.userId, data.reason);
+    return { success: true };
+  });
+
+export const deactivateUser = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
   .validator(z.object({ userId: z.string().min(1) }))
   .handler(async ({ data }) => {
-    await rejectUserById(data.userId);
+    await deactivateUserServer(data.userId);
+    return { success: true };
+  });
+
+// ─── Client: User Management ──────────────────────────────────────────
+
+export const getOrganizationUsers = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .handler(async () => {
+    const current = await requireCurrentUser();
+    return await listOrganizationUsers(current.user.organizationId);
+  });
+
+const createClientUserSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8).optional(),
+  fullName: z.string().min(1),
+  phone: z.string().optional(),
+  role: z.string().min(1),
+});
+
+export const createClientUser = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(createClientUserSchema)
+  .handler(async ({ data }) => {
+    const current = await requireCurrentUser();
+    if (!current.user.roles.includes("client_admin")) {
+      throw new Error("Unauthorized. Only Client Admin can create users.");
+    }
+    
+    await createAdminUser({
+      email: data.email,
+      password: data.password,
+      fullName: data.fullName,
+      phone: data.phone,
+      organizationId: current.user.organizationId,
+      role: data.role,
+    });
     return { success: true };
   });

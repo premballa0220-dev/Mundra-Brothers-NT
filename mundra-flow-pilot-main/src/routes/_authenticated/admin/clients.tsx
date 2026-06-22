@@ -88,6 +88,7 @@ function AdminClientsPage() {
     mutationFn: (newClient: any) => createClient({ data: newClient }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-clients"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-dashboard-stats"] });
       toast.success("Client organization onboarded successfully!");
       setOpen(false);
       resetForm();
@@ -101,6 +102,7 @@ function AdminClientsPage() {
     mutationFn: (data: any) => updateClientStatus({ data }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-clients"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-dashboard-stats"] });
       toast.success("Client status updated!");
       setStatusModalOpen(false);
       setStatusReason("");
@@ -114,6 +116,7 @@ function AdminClientsPage() {
     mutationFn: (data: any) => updateClientCommercials({ data }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-clients"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-dashboard-stats"] });
       toast.success("Commercial terms updated successfully!");
     },
     onError: (err: any) => {

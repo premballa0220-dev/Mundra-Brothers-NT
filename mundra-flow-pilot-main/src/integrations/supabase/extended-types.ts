@@ -25,11 +25,36 @@ export type RateRow = {
   organization_id: string | null;
   amount: number;
   effective_from: string;
-  effective_to: string | null;
+  effective_to?: string | null;
   status: "pending_approval" | "active" | "inactive" | "rejected";
-  created_by: string | null;
-  approved_by: string | null;
+  created_by?: string | null;
+  approved_by?: string | null;
   created_at: string;
+  updated_at: string;
+};
+
+export type UserApprovalStatus = "pending" | "approved" | "rejected";
+
+export type ProfileRow = {
+  id: string;
+  organization_id: string;
+  email: string;
+  full_name: string | null;
+  phone: string | null;
+  is_active: boolean;
+  approval_status: UserApprovalStatus;
+  status_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WorkflowType = "maker_only" | "maker_approver";
+
+export type ClientWorkflowSettingRow = {
+  organization_id: string;
+  po_workflow: WorkflowType;
+  payment_workflow: WorkflowType;
+  updated_by: string | null;
   updated_at: string;
 };
 
@@ -310,6 +335,26 @@ export interface Database extends Omit<GeneratedDatabase, "public"> {
           updated_at?: string;
         };
         Update: Partial<RateRow>;
+        Relationships: [];
+      };
+      profiles: {
+        Row: ProfileRow;
+        Insert: Omit<ProfileRow, "id" | "created_at" | "updated_at" | "approval_status" | "status_reason"> & {
+          id?: string;
+          approval_status?: UserApprovalStatus;
+          status_reason?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<ProfileRow>;
+        Relationships: GeneratedDatabase["public"]["Tables"]["profiles"]["Relationships"];
+      };
+      client_workflow_settings: {
+        Row: ClientWorkflowSettingRow;
+        Insert: Omit<ClientWorkflowSettingRow, "updated_at"> & {
+          updated_at?: string;
+        };
+        Update: Partial<ClientWorkflowSettingRow>;
         Relationships: [];
       };
       client_commercial_profiles: {

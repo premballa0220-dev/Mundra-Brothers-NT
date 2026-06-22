@@ -22,6 +22,7 @@ export interface SessionContext {
   organizationName: string;
   orgType: OrgType;
   roles: AppRole[];
+  approvalStatus: "pending" | "approved" | "rejected";
 }
 
 export interface AuthUser extends SessionContext {

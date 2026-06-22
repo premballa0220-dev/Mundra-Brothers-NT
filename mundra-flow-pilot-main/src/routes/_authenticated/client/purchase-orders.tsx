@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { FileText, Plus, Loader2, IndianRupee, AlertCircle } from "lucide-react";
+import { FileText, Plus, Loader2, IndianRupee, AlertCircle, UploadCloud, FileIcon, X } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/client/purchase-orders")({
   ssr: false,
@@ -30,10 +30,38 @@ function ClientPurchaseOrdersPage() {
   const [quantity, setQuantity] = useState<number>(0);
   const [lockedRate, setLockedRate] = useState<number>(0);
   const [isExceptionRate, setIsExceptionRate] = useState(false);
+  const [globalSiteAddress, setGlobalSiteAddress] = useState(
+    typeof window !== "undefined" ? localStorage.getItem("defaultSiteAddress") || "" : ""
+  );
+  const [globalDeliveryContact, setGlobalDeliveryContact] = useState(
+    typeof window !== "undefined" ? localStorage.getItem("defaultDeliveryContact") || "" : ""
+  );
+  const [useEverytime, setUseEverytime] = useState(
+    typeof window !== "undefined" ? localStorage.getItem("useEverytime") === "true" : false
+  );
+
   const [siteAddress, setSiteAddress] = useState("");
   const [deliveryContact, setDeliveryContact] = useState("");
   const [documentMethod, setDocumentMethod] = useState<"upload" | "generate">("upload");
   const [documentUrl, setDocumentUrl] = useState("");
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+
+  // Persist global settings when they change
+  useEffect(() => {
+    localStorage.setItem("defaultSiteAddress", globalSiteAddress);
+    localStorage.setItem("defaultDeliveryContact", globalDeliveryContact);
+    localStorage.setItem("useEverytime", String(useEverytime));
+  }, [globalSiteAddress, globalDeliveryContact, useEverytime]);
+
+  // When modal opens, pre-fill if not using everytime (if using everytime, they are disabled and use global)
+  useEffect(() => {
+    if (open) {
+      if (!useEverytime) {
+        setSiteAddress("");
+        setDeliveryContact("");
+      }
+    }
+  }, [open, useEverytime]);
 
   const { data: pos, isLoading: posLoading } = useQuery({
     queryKey: ["client-pos"],
@@ -79,6 +107,7 @@ function ClientPurchaseOrdersPage() {
     setDeliveryContact("");
     setDocumentMethod("upload");
     setDocumentUrl("");
+    setDocumentFile(null);
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -89,8 +118,8 @@ function ClientPurchaseOrdersPage() {
       originalQuantity: quantity,
       lockedRate,
       isExceptionRate,
-      siteAddress,
-      deliveryContact,
+      siteAddress: useEverytime ? globalSiteAddress : siteAddress,
+      deliveryContact: useEverytime ? globalDeliveryContact : deliveryContact,
       documentMethod,
       documentUrl: documentUrl || "https://example.com/demo-po.pdf",
     });
@@ -190,13 +219,64 @@ function ClientPurchaseOrdersPage() {
                       {formatCurrency(quantity * lockedRate)}
                     </div>
                   </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="siteAddress">Site Delivery Address *</Label>
-                    <Input id="siteAddress" value={siteAddress} onChange={(e) => setSiteAddress(e.target.value)} placeholder="Full site destination address" required />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="siteAddress">Site Delivery Address *</Label>
+                      <Input id="siteAddress" value={useEverytime ? globalSiteAddress : siteAddress} onChange={(e) => setSiteAddress(e.target.value)} placeholder="Full site destination address" required={!useEverytime} disabled={useEverytime} className={useEverytime ? "bg-muted" : ""} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="deliveryContact">Site Contact Person / Phone</Label>
+                      <Input id="deliveryContact" value={useEverytime ? globalDeliveryContact : deliveryContact} onChange={(e) => setDeliveryContact(e.target.value)} placeholder="Name, Phone details" disabled={useEverytime} className={useEverytime ? "bg-muted" : ""} />
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="deliveryContact">Site Contact Person / Phone</Label>
-                    <Input id="deliveryContact" value={deliveryContact} onChange={(e) => setDeliveryContact(e.target.value)} placeholder="Name, Phone details" />
+                  {useEverytime && (
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Using the default delivery settings from the top of the page.
+                    </p>
+                  )}
+                  
+                  <div className="space-y-2 pt-3 border-t mt-1">
+                    <Label>PO Document (PDF/Image)</Label>
+                    {!documentFile ? (
+                      <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-accent/50 transition-colors relative">
+                        <Input 
+                          type="file" 
+                          accept=".pdf,image/*"
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              if (file.size > 1024 * 1024) {
+                                toast.error("File size must be less than 1MB");
+                                e.target.value = "";
+                                return;
+                              }
+                              setDocumentFile(file);
+                              setDocumentUrl(URL.createObjectURL(file));
+                              setDocumentMethod("upload");
+                            }
+                          }}
+                        />
+                        <UploadCloud className="h-8 w-8 text-muted-foreground mb-2" />
+                        <p className="text-sm font-medium">Click or drag file to upload</p>
+                        <p className="text-xs text-muted-foreground mt-1">Supports PDF, PNG, JPG up to 1MB</p>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/30">
+                        <div className="flex items-center space-x-3 overflow-hidden">
+                          <div className="h-10 w-10 shrink-0 bg-primary/10 text-primary rounded flex items-center justify-center">
+                            <FileIcon className="h-5 w-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">{documentFile.name}</p>
+                            <p className="text-xs text-muted-foreground">{(documentFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                          </div>
+                        </div>
+                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => { setDocumentFile(null); setDocumentUrl(""); }}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <DialogFooter>
@@ -208,6 +288,23 @@ function ClientPurchaseOrdersPage() {
             </DialogContent>
           </Dialog>
         </header>
+
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="p-4 flex flex-col md:flex-row gap-4 items-end">
+            <div className="flex-1 space-y-1 w-full">
+              <Label htmlFor="globalSiteAddress">Default Site Delivery Address</Label>
+              <Input id="globalSiteAddress" value={globalSiteAddress} onChange={(e) => setGlobalSiteAddress(e.target.value)} placeholder="Full site destination address" className="bg-background" />
+            </div>
+            <div className="flex-1 space-y-1 w-full">
+              <Label htmlFor="globalDeliveryContact">Default Contact Person / Phone</Label>
+              <Input id="globalDeliveryContact" value={globalDeliveryContact} onChange={(e) => setGlobalDeliveryContact(e.target.value)} placeholder="Name, Phone details" className="bg-background" />
+            </div>
+            <div className="flex items-center space-x-2 pb-2 shrink-0">
+              <Switch id="useEverytime" checked={useEverytime} onCheckedChange={setUseEverytime} />
+              <Label htmlFor="useEverytime" className="text-sm font-medium cursor-pointer whitespace-nowrap">Use Everytime</Label>
+            </div>
+          </CardContent>
+        </Card>
 
         {posLoading ? (
           <div className="flex justify-center items-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>

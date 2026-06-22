@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPendingUsers, approveUser, rejectUser } from "@/lib/api/auth.functions";
+import { getPendingUsers, approveUser, rejectUser, changeUserRole } from "@/lib/api/auth.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,8 +13,25 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { UserCheck, UserX, Loader2, Users, ShieldCheck, Clock } from "lucide-react";
+import { UserCheck, UserX, Loader2, Users, ShieldCheck, Clock, Settings2 } from "lucide-react";
+import React, { useState } from "react";
 
 export const Route = createFileRoute("/_authenticated/admin/approvals")({
   ssr: false,
@@ -23,6 +40,7 @@ export const Route = createFileRoute("/_authenticated/admin/approvals")({
 
 function AdminUserApprovalsPage() {
   const queryClient = useQueryClient();
+  const [confirmRoleChange, setConfirmRoleChange] = useState<{ userId: string; roleType: string } | null>(null);
 
   const { data: users, isLoading } = useQuery({
     queryKey: ["admin-pending-users"],
@@ -30,7 +48,7 @@ function AdminUserApprovalsPage() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: ({ userId, roleType }: { userId: string, roleType: 'admin' | 'client' }) => approveUser({ data: { userId, roleType } }),
+    mutationFn: (userId: string) => approveUser({ data: { userId } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-pending-users"] });
       toast.success("User approved successfully!");
@@ -41,18 +59,36 @@ function AdminUserApprovalsPage() {
   });
 
   const rejectMutation = useMutation({
-    mutationFn: (userId: string) => rejectUser({ data: { userId } }),
+    mutationFn: ({ userId, reason }: { userId: string, reason?: string }) => rejectUser({ data: { userId, reason } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-pending-users"] });
-      toast.success("User rejected and removed.");
+      toast.success("User rejected.");
     },
     onError: (err: any) => {
       toast.error(err?.message ?? "Failed to reject user");
     },
   });
 
+  const changeRoleMutation = useMutation({
+    mutationFn: ({ userId, roleType }: { userId: string, roleType: string }) => changeUserRole({ data: { userId, roleType } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-pending-users"] });
+      toast.success("User role updated successfully!");
+    },
+    onError: (err: any) => {
+      toast.error(err?.message ?? "Failed to update user role");
+    },
+  });
+
   const pendingUsers = (users ?? []).filter((u: any) => !u.approved);
   const approvedUsers = (users ?? []).filter((u: any) => u.approved);
+
+  const approvedUsersByOrg = approvedUsers.reduce((acc: any, user: any) => {
+    const org = user.organizationName || "Unknown Client";
+    if (!acc[org]) acc[org] = [];
+    acc[org].push(user);
+    return acc;
+  }, {});
 
   const formatDate = (dateStr: string) => {
     try {
@@ -123,6 +159,7 @@ function AdminUserApprovalsPage() {
                     <TableRow>
                       <TableHead>Full Name</TableHead>
                       <TableHead>Email</TableHead>
+                      <TableHead>Role / Org Type</TableHead>
                       <TableHead>Registered</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -135,6 +172,10 @@ function AdminUserApprovalsPage() {
                             {user.fullName || <span className="text-muted-foreground italic">Not provided</span>}
                           </TableCell>
                           <TableCell className="font-mono text-xs">{user.email}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground capitalize">
+                            {user.roles?.join(", ")?.replace(/_/g, " ")} <br/>
+                            <span className="text-xs opacity-70">({user.orgType})</span>
+                          </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {formatDate(user.createdAt)}
                           </TableCell>
@@ -142,7 +183,7 @@ function AdminUserApprovalsPage() {
                             <div className="flex items-center justify-end gap-2">
                               <Button
                                 size="sm"
-                                onClick={() => approveMutation.mutate({ userId: user.id, roleType: 'admin' })}
+                                onClick={() => approveMutation.mutate(user.id)}
                                 disabled={approveMutation.isPending || rejectMutation.isPending}
                                 variant="outline"
                               >
@@ -151,24 +192,17 @@ function AdminUserApprovalsPage() {
                                 ) : (
                                   <UserCheck className="mr-1 h-3.5 w-3.5" />
                                 )}
-                                Approve Admin
-                              </Button>
-                              <Button
-                                size="sm"
-                                onClick={() => approveMutation.mutate({ userId: user.id, roleType: 'client' })}
-                                disabled={approveMutation.isPending || rejectMutation.isPending}
-                              >
-                                {approveMutation.isPending ? (
-                                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <UserCheck className="mr-1 h-3.5 w-3.5" />
-                                )}
-                                Approve Client
+                                Approve
                               </Button>
                               <Button
                                 size="sm"
                                 variant="destructive"
-                                onClick={() => rejectMutation.mutate(user.id)}
+                                onClick={() => {
+                                  const reason = prompt("Enter reason for rejection (optional):");
+                                  if (reason !== null) {
+                                    rejectMutation.mutate({ userId: user.id, reason });
+                                  }
+                                }}
                                 disabled={approveMutation.isPending || rejectMutation.isPending}
                               >
                                 {rejectMutation.isPending ? (
@@ -218,37 +252,75 @@ function AdminUserApprovalsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {approvedUsers.length > 0 ? (
-                      approvedUsers.map((user: any) => (
-                        <TableRow key={user.id}>
-                          <TableCell className="font-medium">
-                            {user.fullName || <span className="text-muted-foreground italic">Not provided</span>}
-                          </TableCell>
-                          <TableCell className="font-mono text-xs">{user.email}</TableCell>
-                          <TableCell>
-                            <Badge variant="secondary" className="capitalize text-[10px]">
-                              {Array.isArray(user.roles) ? user.roles.join(", ").replace(/_/g, " ") : "admin"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {formatDate(user.createdAt)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => rejectMutation.mutate(user.id)}
-                              disabled={rejectMutation.isPending}
-                            >
-                              {rejectMutation.isPending ? (
-                                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <UserX className="mr-1 h-3.5 w-3.5" />
-                              )}
-                              Delete
-                            </Button>
-                          </TableCell>
-                        </TableRow>
+                    {Object.keys(approvedUsersByOrg).length > 0 ? (
+                      Object.entries(approvedUsersByOrg).map(([orgName, orgUsers]: [string, any]) => (
+                        <React.Fragment key={orgName}>
+                          <TableRow className="bg-muted/50 hover:bg-muted/50">
+                            <TableCell colSpan={5} className="font-semibold text-primary py-2">
+                              {orgName}
+                            </TableCell>
+                          </TableRow>
+                          {orgUsers.map((user: any) => (
+                            <TableRow key={user.id}>
+                              <TableCell className="font-medium">
+                                {user.fullName || <span className="text-muted-foreground italic">Not provided</span>}
+                              </TableCell>
+                              <TableCell className="font-mono text-xs">{user.email}</TableCell>
+                              <TableCell>
+                                <Badge variant="secondary" className="capitalize text-[10px]">
+                                  {Array.isArray(user.roles) ? user.roles.join(", ").replace(/_/g, " ") : "admin"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground">
+                                {formatDate(user.createdAt)}
+                              </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          disabled={changeRoleMutation.isPending || rejectMutation.isPending}
+                                        >
+                                          {changeRoleMutation.isPending ? (
+                                            <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                                          ) : (
+                                            <Settings2 className="mr-1 h-3.5 w-3.5" />
+                                          )}
+                                          Edit Role
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                          <DropdownMenuItem onClick={() => setConfirmRoleChange({ userId: user.id, roleType: 'mundra_super_admin' })}>
+                                            Make Mundra Admin
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => setConfirmRoleChange({ userId: user.id, roleType: 'mundra_approver' })}>
+                                            Make Mundra Approver
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => setConfirmRoleChange({ userId: user.id, roleType: 'client_admin' })}>
+                                            Make Client Admin
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                      <Button
+                                        size="sm"
+                                        variant="destructive"
+                                        onClick={() => rejectMutation.mutate({ userId: user.id })}
+                                      disabled={rejectMutation.isPending || changeRoleMutation.isPending}
+                                    >
+                                      {rejectMutation.isPending ? (
+                                        <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <UserX className="mr-1 h-3.5 w-3.5" />
+                                      )}
+                                      Delete
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                            </TableRow>
+                          ))}
+                        </React.Fragment>
                       ))
                     ) : (
                       <TableRow>
@@ -264,6 +336,30 @@ function AdminUserApprovalsPage() {
           </>
         )}
       </div>
+
+      <AlertDialog open={!!confirmRoleChange} onOpenChange={(open) => !open && setConfirmRoleChange(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to change this user's role?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You are about to change this user's role to <strong>{confirmRoleChange?.roleType?.replace(/_/g, " ")}</strong>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => {
+                if (confirmRoleChange) {
+                  changeRoleMutation.mutate(confirmRoleChange);
+                  setConfirmRoleChange(null);
+                }
+              }}
+            >
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }

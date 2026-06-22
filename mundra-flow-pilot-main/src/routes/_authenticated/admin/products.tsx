@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getProducts, createProduct, getRatesForProduct, proposeProductRate, approveProductRate, getClients } from "@/lib/api/business.functions";
+import { getProducts, createProduct, updateProduct, deleteProduct, getRatesForProduct, proposeProductRate, approveProductRate, getClients } from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Package, Plus, Loader2, IndianRupee, Clock, Check, X } from "lucide-react";
+import { Package, Plus, Loader2, IndianRupee, Clock, Check, X, Pencil, Trash2 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/admin/products")({
   ssr: false,
@@ -81,16 +81,44 @@ function ProductDetailsSheet({ product, open, setOpen }: { product: any; open: b
             <TabsContent value="overview" className="space-y-4 pt-4">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <div className="text-muted-foreground">Grade</div>
-                  <div className="font-medium">{product.grade || "N/A"}</div>
-                </div>
-                <div>
                   <div className="text-muted-foreground">Packaging</div>
                   <div className="font-medium">{product.packaging || "N/A"}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Standard Unit</div>
                   <div className="font-medium">{product.unit}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">HSN Code</div>
+                  <div className="font-medium">{product.hsn_code || "—"}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Price (ex. GST)</div>
+                  <div className="font-medium">
+                    {product.basePrice ? `₹${Number(product.basePrice).toLocaleString("en-IN")}` : "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">GST Rate (%)</div>
+                  <div className="font-medium">
+                    {product.gst_rate != null ? `${product.gst_rate}%` : "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Calculated GST Amount</div>
+                  <div className="font-medium text-amber-600 dark:text-amber-400">
+                    {product.basePrice != null && product.gst_rate != null
+                      ? `₹${(Number(product.basePrice) * (Number(product.gst_rate) / 100)).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
+                      : "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Price (incl. GST)</div>
+                  <div className="font-semibold text-primary">
+                    {product.basePrice != null && product.gst_rate != null
+                      ? `₹${(Number(product.basePrice) * (1 + Number(product.gst_rate) / 100)).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
+                      : product.basePrice ? `₹${Number(product.basePrice).toLocaleString("en-IN")}` : "—"}
+                  </div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Status</div>
@@ -123,7 +151,7 @@ function ProductDetailsSheet({ product, open, setOpen }: { product: any; open: b
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Amount (₹)</Label>
+                        <Label>Amount (excluding GST) (₹)</Label>
                         <Input value={rateAmount} onChange={e => setRateAmount(e.target.value)} type="number" step="0.01" required />
                       </div>
                       <div className="space-y-2">
@@ -200,9 +228,15 @@ function AdminProductsPage() {
 
   // Form states
   const [name, setName] = useState("");
-  const [grade, setGrade] = useState("");
   const [packaging, setPackaging] = useState("");
-  const [unit, setUnit] = useState("MT");
+  const [basePrice, setBasePrice] = useState("");
+  const [hsnCode, setHsnCode] = useState("");
+  const [gstRate, setGstRate] = useState("");
+  const [unitSelection, setUnitSelection] = useState("Bag");
+  const [customUnit, setCustomUnit] = useState("");
+  
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<any>(null);
 
   const { data: products, isLoading } = useQuery({
     queryKey: ["admin-products"],
@@ -220,16 +254,92 @@ function AdminProductsPage() {
     onError: (err: any) => toast.error(err?.message ?? "Failed to create product"),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: (prodData: any) => updateProduct({ data: prodData }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-products"] });
+      toast.success("Product successfully updated!");
+      setEditOpen(false);
+      setEditingProduct(null);
+    },
+    onError: (err: any) => toast.error(err?.message ?? "Failed to update product"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteProduct({ data: { id } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-products"] });
+      toast.success("Product deleted successfully");
+    },
+    onError: (err: any) => toast.error(err?.message ?? "Failed to delete product"),
+  });
+
   function resetForm() {
     setName("");
-    setGrade("");
     setPackaging("");
-    setUnit("MT");
+    setBasePrice("");
+    setUnitSelection("Bag");
+    setCustomUnit("");
+    setHsnCode("");
+    setGstRate("");
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    createMutation.mutate({ name, grade, packaging, unit });
+    const finalUnit = unitSelection === "Other" ? customUnit : unitSelection;
+    if (!finalUnit.trim()) {
+      toast.error("Please specify a unit");
+      return;
+    }
+    createMutation.mutate({ 
+      name, 
+      packaging, 
+      unit: finalUnit,
+      basePrice: basePrice ? Number(basePrice) : undefined,
+      hsnCode,
+      gstRate: gstRate ? Number(gstRate) : undefined 
+    });
+  }
+
+  function openEditDialog(prod: any) {
+    setEditingProduct(prod);
+    setName(prod.name);
+    setPackaging(prod.packaging || "");
+    setBasePrice(prod.basePrice ? String(prod.basePrice) : "");
+    setHsnCode(prod.hsn_code || "");
+    setGstRate(prod.gst_rate ? String(prod.gst_rate) : "");
+    if (prod.unit === "Bag" || prod.unit === "Bulker") {
+      setUnitSelection(prod.unit);
+      setCustomUnit("");
+    } else {
+      setUnitSelection("Other");
+      setCustomUnit(prod.unit || "");
+    }
+    setEditOpen(true);
+  }
+
+  function handleEditSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const finalUnit = unitSelection === "Other" ? customUnit : unitSelection;
+    if (!finalUnit.trim()) {
+      toast.error("Please specify a unit");
+      return;
+    }
+    updateMutation.mutate({ 
+      id: editingProduct.id,
+      name, 
+      packaging, 
+      unit: finalUnit,
+      basePrice: basePrice ? Number(basePrice) : undefined,
+      hsnCode,
+      gstRate: gstRate ? Number(gstRate) : undefined 
+    });
+  }
+
+  function handleDelete(id: string) {
+    if (confirm("Are you sure you want to delete this product?")) {
+      deleteMutation.mutate(id);
+    }
   }
 
   return (
@@ -252,7 +362,7 @@ function AdminProductsPage() {
               <form onSubmit={handleSubmit}>
                 <DialogHeader>
                   <DialogTitle>Add Product to Master</DialogTitle>
-                  <DialogDescription>Define product parameters including name, grade (optional), and standard packaging.</DialogDescription>
+                  <DialogDescription>Define product parameters including name, and standard packaging.</DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="grid grid-cols-4 items-center gap-4">
@@ -260,21 +370,101 @@ function AdminProductsPage() {
                     <Input id="name" value={name} onChange={(e) => setName(e.target.value)} className="col-span-3" placeholder="e.g. UltraTech Premium Cement" required />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="grade" className="text-right">Grade</Label>
-                    <Input id="grade" value={grade} onChange={(e) => setGrade(e.target.value)} className="col-span-3" placeholder="e.g. OPC 53 Grade" />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="packaging" className="text-right">Packaging</Label>
                     <Input id="packaging" value={packaging} onChange={(e) => setPackaging(e.target.value)} className="col-span-3" placeholder="e.g. 50kg HDPE Bag" />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="unit" className="text-right">Unit *</Label>
-                    <Input id="unit" value={unit} onChange={(e) => setUnit(e.target.value)} className="col-span-3" required />
+                    <div className="col-span-3 space-y-2">
+                      <Select value={unitSelection} onValueChange={setUnitSelection}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Unit" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Bag">Bag</SelectItem>
+                          <SelectItem value="Bulker">Bulker</SelectItem>
+                          <SelectItem value="Other">Other (Specify)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {unitSelection === "Other" && (
+                        <Input value={customUnit} onChange={(e) => setCustomUnit(e.target.value)} placeholder="Enter custom unit" required />
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="basePrice" className="text-right">Price (ex. GST)</Label>
+                    <Input id="basePrice" type="number" step="0.01" value={basePrice} onChange={(e) => setBasePrice(e.target.value)} className="col-span-3" placeholder="e.g. 350" />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="hsnCode" className="text-right">HSN Code</Label>
+                    <Input id="hsnCode" value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} className="col-span-3" placeholder="e.g. 2523" />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="gstRate" className="text-right">GST Rate (%)</Label>
+                    <Input id="gstRate" type="number" step="0.01" value={gstRate} onChange={(e) => setGstRate(e.target.value)} className="col-span-3" placeholder="e.g. 18" />
                   </div>
                 </div>
                 <DialogFooter>
                   <Button type="submit" disabled={createMutation.isPending}>
                     {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Product
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={editOpen} onOpenChange={(o) => {
+            if (!o) { setEditOpen(false); setEditingProduct(null); resetForm(); }
+          }}>
+            <DialogContent className="sm:max-w-[425px]">
+              <form onSubmit={handleEditSubmit}>
+                <DialogHeader>
+                  <DialogTitle>Edit Product</DialogTitle>
+                  <DialogDescription>Modify product parameters.</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="edit-name" className="text-right">Name *</Label>
+                    <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} className="col-span-3" required />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="edit-packaging" className="text-right">Packaging</Label>
+                    <Input id="edit-packaging" value={packaging} onChange={(e) => setPackaging(e.target.value)} className="col-span-3" />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label className="text-right">Unit *</Label>
+                    <div className="col-span-3 space-y-2">
+                      <Select value={unitSelection} onValueChange={setUnitSelection}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Unit" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Bag">Bag</SelectItem>
+                          <SelectItem value="Bulker">Bulker</SelectItem>
+                          <SelectItem value="Other">Other (Specify)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {unitSelection === "Other" && (
+                        <Input value={customUnit} onChange={(e) => setCustomUnit(e.target.value)} placeholder="Enter custom unit" required />
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="edit-basePrice" className="text-right">Price (ex. GST)</Label>
+                    <Input id="edit-basePrice" type="number" step="0.01" value={basePrice} onChange={(e) => setBasePrice(e.target.value)} className="col-span-3" />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="edit-hsnCode" className="text-right">HSN Code</Label>
+                    <Input id="edit-hsnCode" value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} className="col-span-3" />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="edit-gstRate" className="text-right">GST Rate (%)</Label>
+                    <Input id="edit-gstRate" type="number" step="0.01" value={gstRate} onChange={(e) => setGstRate(e.target.value)} className="col-span-3" />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button type="submit" disabled={updateMutation.isPending}>
+                    {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
                   </Button>
                 </DialogFooter>
               </form>
@@ -294,9 +484,11 @@ function AdminProductsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product Name</TableHead>
-                    <TableHead>Grade</TableHead>
                     <TableHead>Packaging</TableHead>
                     <TableHead>Standard Unit</TableHead>
+                    <TableHead>Price (ex. GST)</TableHead>
+                    <TableHead>GST %</TableHead>
+                    <TableHead>Price (incl. GST)</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -311,24 +503,38 @@ function AdminProductsPage() {
                             {prod.name}
                           </div>
                         </TableCell>
-                        <TableCell>{prod.grade || "—"}</TableCell>
                         <TableCell>{prod.packaging || "—"}</TableCell>
                         <TableCell>{prod.unit}</TableCell>
+                        <TableCell>{prod.basePrice ? `₹${Number(prod.basePrice).toLocaleString("en-IN")}` : "—"}</TableCell>
+                        <TableCell>{prod.gst_rate != null ? `${prod.gst_rate}%` : "—"}</TableCell>
+                        <TableCell className="font-semibold">
+                          {prod.basePrice != null && prod.gst_rate != null
+                            ? `₹${(Number(prod.basePrice) * (1 + Number(prod.gst_rate) / 100)).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
+                            : prod.basePrice ? `₹${Number(prod.basePrice).toLocaleString("en-IN")}` : "—"}
+                        </TableCell>
                         <TableCell>
                           <Badge variant={prod.is_active ? "default" : "secondary"}>
                             {prod.is_active ? "Active" : "Inactive"}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button variant="outline" size="sm" onClick={() => setSelectedProduct(prod)}>
-                            Details & Rates
-                          </Button>
+                          <div className="flex items-center justify-end gap-2">
+                            <Button variant="outline" size="sm" onClick={() => setSelectedProduct(prod)}>
+                              Details & Rates
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-500 hover:text-blue-600 hover:bg-blue-500/10" onClick={() => openEditDialog(prod)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => handleDelete(prod.id)} disabled={deleteMutation.isPending}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">No products configured yet.</TableCell>
+                      <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">No products configured yet.</TableCell>
                     </TableRow>
                   )}
                 </TableBody>

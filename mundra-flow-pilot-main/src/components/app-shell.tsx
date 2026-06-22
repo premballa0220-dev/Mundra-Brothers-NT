@@ -47,7 +47,7 @@ const CLIENT_NAV: NavItem[] = [
   { to: "/client/payments", label: "Payments", icon: Wallet },
   { to: "/client/ledgers", label: "Ledgers & Compliance", icon: BookOpenCheck },
   { to: "/client/documents", label: "Documents", icon: Files },
-  { to: "/client/users", label: "Users & Workflows", icon: Users },
+  { to: "/client/users", label: "My Team", icon: Users },
 ];
 
 const ADMIN_NAV: NavItem[] = [

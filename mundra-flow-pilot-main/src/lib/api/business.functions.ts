@@ -381,13 +381,19 @@ export const updateClientCommercials = createServerFn({ method: "POST" })
     await createAuditLog(context.userId, "UPDATE_COMMERCIALS", "client_commercial_profiles", data.organizationId, null, data);
     return { success: true };
   });
-
 export const getProducts = createServerFn({ method: "GET" })
   .middleware([requireAuth])
   .handler(async () => {
     const supabase = createSupabaseAdminClient();
-    const { data: products } = await supabase.from("products").select("*").eq("is_active", true).order("name", { ascending: true });
-    return products || [];
+    const { data: products } = await supabase.from("products").select("*, rates(*)").eq("is_active", true).order("name", { ascending: true });
+    return (products || []).map((p: any) => {
+      const activeGenericRate = (p.rates || []).find((r: any) => !r.organization_id && r.status === "active");
+      const { rates, ...rest } = p;
+      return {
+        ...rest,
+        basePrice: activeGenericRate ? activeGenericRate.amount : null
+      };
+    });
   });
 
 export const createProduct = createServerFn({ method: "POST" })
@@ -398,6 +404,9 @@ export const createProduct = createServerFn({ method: "POST" })
       grade: z.string().optional(),
       packaging: z.string().optional(),
       unit: z.string().default("MT"),
+      hsnCode: z.string().optional(),
+      gstRate: z.number().optional(),
+      basePrice: z.number().optional(),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -411,13 +420,114 @@ export const createProduct = createServerFn({ method: "POST" })
       grade: data.grade || null,
       packaging: data.packaging || null,
       unit: data.unit,
+      hsn_code: data.hsnCode || null,
+      gst_rate: data.gstRate ?? null,
       is_active: true,
     };
 
     const { error } = await supabase.from("products").insert(product);
     if (error) throw new Error("Failed to create product: " + error.message);
+
+    if (data.basePrice !== undefined) {
+      await supabase.from("rates").insert({
+        id: randomUUID(),
+        product_id: product.id,
+        organization_id: null,
+        amount: data.basePrice,
+        effective_from: new Date().toISOString().split("T")[0],
+        status: "active"
+      });
+    }
+
     await createAuditLog(context.userId, "CREATE_PRODUCT", "products", product.id, null, product);
     return product;
+  });
+
+export const updateProduct = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      grade: z.string().optional(),
+      packaging: z.string().optional(),
+      unit: z.string().default("MT"),
+      hsnCode: z.string().optional(),
+      gstRate: z.number().optional(),
+      basePrice: z.number().optional(),
+    }),
+  )
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+
+    const supabase = createSupabaseAdminClient();
+    const updates = {
+      name: data.name,
+      grade: data.grade || null,
+      packaging: data.packaging || null,
+      unit: data.unit,
+      hsn_code: data.hsnCode || null,
+      gst_rate: data.gstRate ?? null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase.from("products").update(updates).eq("id", data.id);
+    if (error) throw new Error("Failed to update product: " + error.message);
+
+    if (data.basePrice !== undefined) {
+      const { data: activeRates } = await supabase.from("rates")
+        .select("*")
+        .eq("product_id", data.id)
+        .is("organization_id", null)
+        .eq("status", "active");
+        
+      const currentRate = activeRates?.[0];
+      if (!currentRate || Number(currentRate.amount) !== Number(data.basePrice)) {
+        if (currentRate) {
+          await supabase.from("rates").update({ status: "inactive", effective_to: new Date().toISOString().split("T")[0] }).eq("id", currentRate.id);
+        }
+        await supabase.from("rates").insert({
+          id: randomUUID(),
+          product_id: data.id,
+          organization_id: null,
+          amount: data.basePrice,
+          effective_from: new Date().toISOString().split("T")[0],
+          status: "active"
+        });
+      }
+    }
+
+    await createAuditLog(context.userId, "UPDATE_PRODUCT", "products", data.id, null, updates);
+    return { success: true };
+  });
+
+export const deleteProduct = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      id: z.string().min(1),
+    }),
+  )
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+
+    const supabase = createSupabaseAdminClient();
+    
+    // Check if product has any rates or POs tied to it (soft delete via is_active = false)
+    const { count } = await supabase.from("rates").select("*", { count: "exact", head: true }).eq("product_id", data.id);
+    if (count && count > 0) {
+      // Soft delete if linked to rates
+      const { error } = await supabase.from("products").update({ is_active: false }).eq("id", data.id);
+      if (error) throw new Error("Failed to deactivate product: " + error.message);
+      await createAuditLog(context.userId, "DEACTIVATE_PRODUCT", "products", data.id, null, { is_active: false });
+    } else {
+      // Hard delete if no relations
+      const { error } = await supabase.from("products").delete().eq("id", data.id);
+      if (error) throw new Error("Failed to delete product: " + error.message);
+      await createAuditLog(context.userId, "DELETE_PRODUCT", "products", data.id, null, null);
+    }
+    
+    return { success: true };
   });
 
 export const getRates = createServerFn({ method: "GET" })
@@ -1284,4 +1394,52 @@ export const getAuditLogs = createServerFn({ method: "GET" })
     const supabase = createSupabaseAdminClient();
     const { data: logs } = await supabase.from("audit_logs").select("*").order("created_at", { ascending: false });
     return logs || [];
+  });
+
+export const getWorkflowSettings = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .handler(async ({ context }) => {
+    const supabase = createSupabaseAdminClient();
+    const orgId = context.organizationId;
+    const { data, error } = await supabase
+      .from("client_workflow_settings")
+      .select("*")
+      .eq("organization_id", orgId)
+      .single();
+
+    if (error && error.code !== "PGRST116") {
+      throw new Error("Failed to fetch workflow settings: " + error.message);
+    }
+    return data || { po_workflow: "maker_approver", payment_workflow: "maker_approver" };
+  });
+
+export const updateWorkflowSettings = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      poWorkflow: z.enum(["maker_only", "maker_approver"]),
+      paymentWorkflow: z.enum(["maker_only", "maker_approver"]),
+    })
+  )
+  .handler(async ({ data, context }) => {
+    if (!context.roles.includes("client_admin") && !context.roles.includes("mundra_super_admin")) {
+      throw new Error("Unauthorized");
+    }
+
+    const supabase = createSupabaseAdminClient();
+    const { error } = await supabase
+      .from("client_workflow_settings")
+      .upsert({
+        organization_id: context.organizationId,
+        po_workflow: data.poWorkflow,
+        payment_workflow: data.paymentWorkflow,
+        updated_by: context.userId,
+      });
+
+    if (error) {
+      throw new Error("Failed to update workflow settings: " + error.message);
+    }
+
+    await createAuditLog(context.userId, "UPDATE_WORKFLOW_SETTINGS", "client_workflow_settings", context.organizationId, null, data);
+    return { success: true };
   });
