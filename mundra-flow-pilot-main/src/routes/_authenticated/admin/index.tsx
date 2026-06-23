@@ -27,12 +27,8 @@ export const Route = createFileRoute("/_authenticated/admin/")({
 const INR = (n: number) =>
   new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(n);
 
-// PORTFOLIO and QUEUES will be loaded dynamically
-const ALERTS = [
-  { type: "danger", text: "3 special approvals expire in <48h", href: "/admin/approvals" },
-  { type: "warning", text: "Reliance Cement Co. — Q1 balance confirmation cutoff in 2 days", href: "/admin/balance-confirmations" },
-  { type: "warning", text: "Payment verification SLA breach: 4 items >24h", href: "/admin/payments" },
-];function AdminDashboard() {
+// PORTFOLIO and QUEUES are loaded dynamically
+function AdminDashboard() {
   const { data, isLoading } = useQuery({
     queryKey: ["admin-dashboard-stats"],
     queryFn: () => getDashboardStats(),
@@ -66,6 +62,23 @@ const ALERTS = [
     balanceConfPending: 0,
     specialApprovalsActive: 0,
   };
+
+  const ALERTS = [];
+  if (PORTFOLIO.overdueClients > 0) {
+    ALERTS.push({ type: "danger", text: `${PORTFOLIO.overdueClients} clients have overdue payments`, href: "/admin/clients" });
+  }
+  if (QUEUES.posBlocked > 0) {
+    ALERTS.push({ type: "danger", text: `${QUEUES.posBlocked} POs are currently blocked`, href: "/admin/po-queue" });
+  }
+  if (QUEUES.dispatchPending > 0) {
+    ALERTS.push({ type: "warning", text: `${QUEUES.dispatchPending} dispatches awaiting review`, href: "/admin/dispatch-queue" });
+  }
+  if (QUEUES.paymentsUnderVerification > 0) {
+    ALERTS.push({ type: "warning", text: `${QUEUES.paymentsUnderVerification} payments require verification`, href: "/admin/payments" });
+  }
+  if (QUEUES.balanceConfPending > 0) {
+    ALERTS.push({ type: "warning", text: `${QUEUES.balanceConfPending} balance confirmations pending or overdue`, href: "/admin/balance-confirmations" });
+  }
 
   return (
     <AppShell variant="admin">

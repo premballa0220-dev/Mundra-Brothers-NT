@@ -240,6 +240,7 @@ export type ClientDeliveryLocationRow = {
   organization_id: string;
   label: string;
   address: string;
+  is_default: boolean;
   created_at: string;
   updated_at: string;
 };

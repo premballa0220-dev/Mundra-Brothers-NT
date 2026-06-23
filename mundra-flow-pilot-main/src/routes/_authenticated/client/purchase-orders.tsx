@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPurchaseOrders, createPurchaseOrder, getProducts, getApplicableRate } from "@/lib/api/business.functions";
+import { getPurchaseOrders, createPurchaseOrder, getProducts, getApplicableRate, getClientDeliveryLocations } from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,38 +30,30 @@ function ClientPurchaseOrdersPage() {
   const [quantity, setQuantity] = useState<number>(0);
   const [lockedRate, setLockedRate] = useState<number>(0);
   const [isExceptionRate, setIsExceptionRate] = useState(false);
-  const [globalSiteAddress, setGlobalSiteAddress] = useState(
-    typeof window !== "undefined" ? localStorage.getItem("defaultSiteAddress") || "" : ""
-  );
-  const [globalDeliveryContact, setGlobalDeliveryContact] = useState(
-    typeof window !== "undefined" ? localStorage.getItem("defaultDeliveryContact") || "" : ""
-  );
-  const [useEverytime, setUseEverytime] = useState(
-    typeof window !== "undefined" ? localStorage.getItem("useEverytime") === "true" : false
-  );
-
   const [siteAddress, setSiteAddress] = useState("");
   const [deliveryContact, setDeliveryContact] = useState("");
   const [documentMethod, setDocumentMethod] = useState<"upload" | "generate">("upload");
   const [documentUrl, setDocumentUrl] = useState("");
   const [documentFile, setDocumentFile] = useState<File | null>(null);
 
-  // Persist global settings when they change
-  useEffect(() => {
-    localStorage.setItem("defaultSiteAddress", globalSiteAddress);
-    localStorage.setItem("defaultDeliveryContact", globalDeliveryContact);
-    localStorage.setItem("useEverytime", String(useEverytime));
-  }, [globalSiteAddress, globalDeliveryContact, useEverytime]);
+  const { data: deliveryLocations } = useQuery({
+    queryKey: ["client-delivery-locations"],
+    queryFn: () => getClientDeliveryLocations(),
+  });
 
-  // When modal opens, pre-fill if not using everytime (if using everytime, they are disabled and use global)
+  // When modal opens, pre-fill with default delivery location
   useEffect(() => {
     if (open) {
-      if (!useEverytime) {
+      if (deliveryLocations && deliveryLocations.length > 0) {
+        const defaultLoc = deliveryLocations.find((l: any) => l.is_default) || deliveryLocations[0];
+        setSiteAddress(defaultLoc.address);
+        setDeliveryContact(""); // We don't have default contact person saved in the address yet, just the address
+      } else {
         setSiteAddress("");
         setDeliveryContact("");
       }
     }
-  }, [open, useEverytime]);
+  }, [open, deliveryLocations]);
 
   const { data: pos, isLoading: posLoading } = useQuery({
     queryKey: ["client-pos"],
@@ -112,14 +104,18 @@ function ClientPurchaseOrdersPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (quantity <= 0) {
+      toast.error("Quantity must be greater than 0");
+      return;
+    }
     createMutation.mutate({
       poNumber,
       productId,
       originalQuantity: quantity,
       lockedRate,
       isExceptionRate,
-      siteAddress: useEverytime ? globalSiteAddress : siteAddress,
-      deliveryContact: useEverytime ? globalDeliveryContact : deliveryContact,
+      siteAddress,
+      deliveryContact,
       documentMethod,
       documentUrl: documentUrl || "https://example.com/demo-po.pdf",
     });
@@ -179,7 +175,7 @@ function ClientPurchaseOrdersPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <Label htmlFor="quantity">Quantity (MT) *</Label>
-                      <Input id="quantity" type="number" value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} required />
+                      <Input id="quantity" type="number" min="0.01" step="0.01" value={quantity || ""} onChange={(e) => setQuantity(Number(e.target.value))} required />
                     </div>
                     <div className="space-y-1">
                       <div className="flex justify-between items-center h-4 mb-1">
@@ -222,16 +218,31 @@ function ClientPurchaseOrdersPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <Label htmlFor="siteAddress">Site Delivery Address *</Label>
-                      <Input id="siteAddress" value={useEverytime ? globalSiteAddress : siteAddress} onChange={(e) => setSiteAddress(e.target.value)} placeholder="Full site destination address" required={!useEverytime} disabled={useEverytime} className={useEverytime ? "bg-muted" : ""} />
+                      {deliveryLocations && deliveryLocations.length > 0 ? (
+                        <Select value={siteAddress} onValueChange={setSiteAddress} required>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select Delivery Address" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {deliveryLocations.map((loc: any) => (
+                              <SelectItem key={loc.id} value={loc.address}>
+                                <span className="font-semibold">{loc.label}</span> - <span className="text-muted-foreground">{loc.address.substring(0, 30)}...</span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input id="siteAddress" value={siteAddress} onChange={(e) => setSiteAddress(e.target.value)} placeholder="Full site destination address" required />
+                      )}
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="deliveryContact">Site Contact Person / Phone</Label>
-                      <Input id="deliveryContact" value={useEverytime ? globalDeliveryContact : deliveryContact} onChange={(e) => setDeliveryContact(e.target.value)} placeholder="Name, Phone details" disabled={useEverytime} className={useEverytime ? "bg-muted" : ""} />
+                      <Input id="deliveryContact" value={deliveryContact} onChange={(e) => setDeliveryContact(e.target.value)} placeholder="Name, Phone details" />
                     </div>
                   </div>
-                  {useEverytime && (
+                  {deliveryLocations && deliveryLocations.length > 0 && (
                     <p className="text-[11px] text-muted-foreground mt-1">
-                      Using the default delivery settings from the top of the page.
+                      Address is selected from your pre-configured delivery locations.
                     </p>
                   )}
                   
@@ -289,22 +300,9 @@ function ClientPurchaseOrdersPage() {
           </Dialog>
         </header>
 
-        <Card className="bg-primary/5 border-primary/20">
-          <CardContent className="p-4 flex flex-col md:flex-row gap-4 items-end">
-            <div className="flex-1 space-y-1 w-full">
-              <Label htmlFor="globalSiteAddress">Default Site Delivery Address</Label>
-              <Input id="globalSiteAddress" value={globalSiteAddress} onChange={(e) => setGlobalSiteAddress(e.target.value)} placeholder="Full site destination address" className="bg-background" />
-            </div>
-            <div className="flex-1 space-y-1 w-full">
-              <Label htmlFor="globalDeliveryContact">Default Contact Person / Phone</Label>
-              <Input id="globalDeliveryContact" value={globalDeliveryContact} onChange={(e) => setGlobalDeliveryContact(e.target.value)} placeholder="Name, Phone details" className="bg-background" />
-            </div>
-            <div className="flex items-center space-x-2 pb-2 shrink-0">
-              <Switch id="useEverytime" checked={useEverytime} onCheckedChange={setUseEverytime} />
-              <Label htmlFor="useEverytime" className="text-sm font-medium cursor-pointer whitespace-nowrap">Use Everytime</Label>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="hidden">
+           {/* Legacy settings removed */}
+        </div>
 
         {posLoading ? (
           <div className="flex justify-center items-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>

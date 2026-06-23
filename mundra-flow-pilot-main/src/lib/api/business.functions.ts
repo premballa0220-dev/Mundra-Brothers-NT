@@ -160,7 +160,7 @@ export const getDashboardStats = createServerFn({ method: "GET" })
     const { count: pendingPaymentApprovals } = await supabase.from("payments").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).eq("status", "submitted");
     const { count: pendingBalanceConfirmations } = await supabase.from("balance_confirmations").select("*", { count: "exact", head: true }).eq("organization_id", organizationId).in("status", ["pending_upload", "under_review"]);
 
-    const { data: blockedDispatches } = await supabase.from("dispatch_requests").select("*").eq("organization_id", organizationId).eq("status", "blocked");
+    const { data: blockedDispatches } = await supabase.from("dispatch_requests").select("*, purchase_orders(po_number)").eq("organization_id", organizationId).eq("status", "blocked");
 
     return {
       isAdmin: false,
@@ -183,7 +183,7 @@ export const getDashboardStats = createServerFn({ method: "GET" })
         reason: d.eligibility_result && typeof d.eligibility_result === 'object' && Array.isArray((d.eligibility_result as any).reasons)
           ? (d.eligibility_result as any).reasons.join(", ")
           : "Blocked by eligibility rules",
-        po: d.purchase_order_id,
+        po: d.purchase_orders?.po_number || d.purchase_order_id,
         site: d.site_address,
       })),
     };
@@ -225,6 +225,15 @@ export const getClients = createServerFn({ method: "GET" })
     }));
   });
 
+export const getClientDeliveryLocations = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .handler(async ({ context }) => {
+    if (context.orgType !== "client") throw new Error("Unauthorized");
+    const supabase = createSupabaseAdminClient();
+    const { data } = await supabase.from("client_delivery_locations").select("*").eq("organization_id", context.organizationId);
+    return data || [];
+  });
+
 export const createClient = createServerFn({ method: "POST" })
   .middleware([requireAuth])
   .validator(
@@ -237,7 +246,7 @@ export const createClient = createServerFn({ method: "POST" })
       billingAddress: z.string().optional(),
       primaryContactName: z.string().optional(),
       primaryContactEmail: z.string().optional(),
-      primaryContactPhone: z.string().optional(),
+      primaryContactPhone: z.string().regex(/^\d{10}$/, "Must be exactly 10 digits").optional().or(z.literal('')),
       creditLimit: z.number().nonnegative(),
       paymentTermsDays: z.number().nonnegative(),
       gracePeriodDays: z.number().nonnegative(),
@@ -245,6 +254,12 @@ export const createClient = createServerFn({ method: "POST" })
       includeDispatchedUnbilled: z.boolean().default(true),
       includeUnpaidInvoices: z.boolean().default(true),
       restrictions: z.string().optional(),
+      deliveryLocations: z.array(z.object({
+        id: z.string().optional(),
+        label: z.string().min(1),
+        address: z.string().min(1),
+        isDefault: z.boolean().default(false),
+      })).optional(),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -297,8 +312,104 @@ export const createClient = createServerFn({ method: "POST" })
       created_by: context.userId,
     });
 
+    if (data.deliveryLocations && data.deliveryLocations.length > 0) {
+      const locations = data.deliveryLocations.map(loc => ({
+        id: randomUUID(),
+        organization_id: orgId,
+        label: loc.label,
+        address: loc.address,
+        is_default: loc.isDefault,
+      }));
+      await supabase.from("client_delivery_locations").insert(locations);
+    }
+
     await createAuditLog(context.userId, "CREATE_CLIENT", "organizations", org.id, null, { org, profile });
     return { org, profile };
+  });
+
+export const updateClient = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      organizationId: z.string().min(1),
+      legalName: z.string().min(1),
+      shortName: z.string().optional(),
+      tradeName: z.string().optional(),
+      gstNumber: z.string().optional(),
+      panNumber: z.string().optional(),
+      billingAddress: z.string().optional(),
+      primaryContactName: z.string().optional(),
+      primaryContactEmail: z.string().optional(),
+      primaryContactPhone: z.string().regex(/^\d{10}$/, "Must be exactly 10 digits").optional().or(z.literal('')),
+      deliveryLocations: z.array(z.object({
+        id: z.string().optional(),
+        label: z.string().min(1),
+        address: z.string().min(1),
+        isDefault: z.boolean().default(false),
+      })).optional(),
+    }),
+  )
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+    try {
+      const updates = {
+        legal_name: data.legalName,
+        short_name: data.shortName || null,
+        trade_name: data.tradeName || null,
+        gst_number: data.gstNumber || null,
+        pan_number: data.panNumber || null,
+        billing_address: data.billingAddress || null,
+        primary_contact_name: data.primaryContactName || null,
+        primary_contact_email: data.primaryContactEmail || null,
+        primary_contact_phone: data.primaryContactPhone || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error: orgError } = await supabase.from("organizations").update(updates).eq("id", data.organizationId);
+      if (orgError) throw new Error("Failed to update organization: " + orgError.message);
+
+      if (data.deliveryLocations) {
+        await supabase.from("client_delivery_locations").delete().eq("organization_id", data.organizationId);
+        if (data.deliveryLocations.length > 0) {
+          const locations = data.deliveryLocations.map(loc => ({
+            id: randomUUID(),
+            organization_id: data.organizationId,
+            label: loc.label,
+            address: loc.address,
+            is_default: loc.isDefault,
+          }));
+          const { error: insertError } = await supabase.from("client_delivery_locations").insert(locations);
+          if (insertError) throw new Error("Failed to insert locations: " + insertError.message);
+        }
+      }
+
+      await createAuditLog(context.userId, "UPDATE_CLIENT", "organizations", data.organizationId, null, updates);
+
+      // Fetch all users for this organization
+      const { data: profiles } = await supabase.from("profiles").select("id").eq("organization_id", data.organizationId);
+      
+      // Create notifications for all users of the client organization
+      if (profiles && profiles.length > 0) {
+        const notifications = profiles.map((p: any) => ({
+          id: randomUUID(),
+          organization_id: data.organizationId,
+          user_id: p.id,
+          title: "Profile Updated",
+          message: "Your organization details have been updated by Mundra admin.",
+          is_read: false,
+          link: "/client",
+        }));
+        
+        const { error: notifError } = await supabase.from("notifications").insert(notifications);
+        if (notifError) console.error("Failed to insert notifications:", notifError);
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error("updateClient failed:", err);
+      throw new Error(err.message || "Failed to update client");
+    }
   });
 
 export const updateClientStatus = createServerFn({ method: "POST" })
@@ -351,25 +462,44 @@ export const updateClientCommercials = createServerFn({ method: "POST" })
       .eq("organization_id", data.organizationId)
       .single();
 
-    if (fetchErr) throw new Error("Failed to fetch current profile");
+    if (fetchErr && fetchErr.code !== "PGRST116") throw new Error("Failed to fetch current profile: " + fetchErr.message);
 
-    const { error: updateErr } = await supabase
-      .from("client_commercial_profiles")
-      .update({
-        credit_limit: data.creditLimit,
-        payment_terms_days: data.paymentTermsDays,
-        grace_period_days: data.gracePeriodDays,
-        include_undispatched_pos: data.includeUndispatchedPos,
-        include_dispatched_unbilled: data.includeDispatchedUnbilled,
-        include_unpaid_invoices: data.includeUnpaidInvoices,
-        restrictions: data.restrictions || null,
-      })
-      .eq("organization_id", data.organizationId);
+    let updateErr;
+    if (fetchErr && fetchErr.code === "PGRST116") {
+      const { error } = await supabase
+        .from("client_commercial_profiles")
+        .insert({
+          id: randomUUID(),
+          organization_id: data.organizationId,
+          credit_limit: data.creditLimit,
+          payment_terms_days: data.paymentTermsDays,
+          grace_period_days: data.gracePeriodDays,
+          include_undispatched_pos: data.includeUndispatchedPos,
+          include_dispatched_unbilled: data.includeDispatchedUnbilled,
+          include_unpaid_invoices: data.includeUnpaidInvoices,
+          restrictions: data.restrictions || null,
+        });
+      updateErr = error;
+    } else {
+      const { error } = await supabase
+        .from("client_commercial_profiles")
+        .update({
+          credit_limit: data.creditLimit,
+          payment_terms_days: data.paymentTermsDays,
+          grace_period_days: data.gracePeriodDays,
+          include_undispatched_pos: data.includeUndispatchedPos,
+          include_dispatched_unbilled: data.includeDispatchedUnbilled,
+          include_unpaid_invoices: data.includeUnpaidInvoices,
+          restrictions: data.restrictions || null,
+        })
+        .eq("organization_id", data.organizationId);
+      updateErr = error;
+    }
 
     if (updateErr) throw new Error("Failed to update commercial profile");
 
     // Add to history if credit limit changed
-    if (existing.credit_limit !== data.creditLimit) {
+    if (!existing || existing.credit_limit !== data.creditLimit) {
       await supabase.from("client_credit_history").insert({
         organization_id: data.organizationId,
         credit_limit: data.creditLimit,

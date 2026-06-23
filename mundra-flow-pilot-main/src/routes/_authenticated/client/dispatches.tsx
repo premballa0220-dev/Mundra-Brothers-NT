@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getDispatchRequests, createDispatchRequest, getPurchaseOrders } from "@/lib/api/business.functions";
+import { getDispatchRequests, createDispatchRequest, getPurchaseOrders, getClientDeliveryLocations } from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +35,7 @@ import {
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Truck, Plus, Loader2, AlertTriangle, CreditCard, FileSignature, HelpCircle } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 export const Route = createFileRoute("/_authenticated/client/dispatches")({
   ssr: false,
@@ -52,6 +53,11 @@ function ClientDispatchesPage() {
   const [siteAddress, setSiteAddress] = useState("");
   const [deliveryContact, setDeliveryContact] = useState("");
 
+  const { data: deliveryLocations } = useQuery({
+    queryKey: ["client-delivery-locations"],
+    queryFn: () => getClientDeliveryLocations(),
+  });
+
   const { data: dispatches, isLoading: dispatchesLoading } = useQuery({
     queryKey: ["client-dispatches"],
     queryFn: () => getDispatchRequests(),
@@ -62,15 +68,28 @@ function ClientDispatchesPage() {
     queryFn: () => getPurchaseOrders(),
   });
 
-  // Automatically pre-fill site address and contact when PO is selected
+  // Automatically pre-fill site address and contact when modal opens or PO is selected
   useEffect(() => {
-    if (!purchaseOrderId || !pos) return;
-    const selectedPo = pos.find((p: any) => p.id === purchaseOrderId);
-    if (selectedPo) {
-      setSiteAddress(selectedPo.site_address);
-      setDeliveryContact(selectedPo.delivery_contact ?? "");
+    if (!open) return;
+    if (purchaseOrderId && pos) {
+      const selectedPo = pos.find((p: any) => p.id === purchaseOrderId);
+      if (selectedPo) {
+        setSiteAddress(selectedPo.site_address);
+        setDeliveryContact(selectedPo.delivery_contact ?? "");
+        return;
+      }
     }
-  }, [purchaseOrderId, pos]);
+    
+    // Fallback to default delivery location if PO doesn't have one or none selected
+    if (deliveryLocations && deliveryLocations.length > 0) {
+      const defaultLoc = deliveryLocations.find((l: any) => l.is_default) || deliveryLocations[0];
+      setSiteAddress(defaultLoc.address);
+      setDeliveryContact("");
+    } else {
+      setSiteAddress("");
+      setDeliveryContact("");
+    }
+  }, [open, purchaseOrderId, pos, deliveryLocations]);
 
   const createMutation = useMutation({
     mutationFn: (newDr: any) => createDispatchRequest({ data: newDr }),
@@ -95,6 +114,10 @@ function ClientDispatchesPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (quantity <= 0) {
+      toast.error("Quantity must be greater than 0");
+      return;
+    }
     createMutation.mutate({
       purchaseOrderId,
       quantity,
@@ -160,7 +183,9 @@ function ClientDispatchesPage() {
                       <Input
                         id="qty"
                         type="number"
-                        value={quantity}
+                        min="0.01"
+                        step="0.01"
+                        value={quantity || ""}
                         onChange={(e) => setQuantity(Number(e.target.value))}
                         required
                       />
@@ -178,12 +203,32 @@ function ClientDispatchesPage() {
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="address">Site Address *</Label>
-                    <Input
-                      id="address"
-                      value={siteAddress}
-                      onChange={(e) => setSiteAddress(e.target.value)}
-                      required
-                    />
+                    {deliveryLocations && deliveryLocations.length > 0 ? (
+                      <Select value={siteAddress} onValueChange={setSiteAddress} required>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Delivery Address" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {deliveryLocations.map((loc: any) => (
+                            <SelectItem key={loc.id} value={loc.address}>
+                              <span className="font-semibold">{loc.label}</span> - <span className="text-muted-foreground">{loc.address.substring(0, 30)}...</span>
+                            </SelectItem>
+                          ))}
+                          {purchaseOrderId && pos?.find((p: any) => p.id === purchaseOrderId)?.site_address && !deliveryLocations.find((l: any) => l.address === pos?.find((p: any) => p.id === purchaseOrderId)?.site_address) && (
+                            <SelectItem value={pos.find((p: any) => p.id === purchaseOrderId).site_address}>
+                              <span className="font-semibold">PO Address</span> - <span className="text-muted-foreground">{pos.find((p: any) => p.id === purchaseOrderId).site_address.substring(0, 30)}...</span>
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        id="address"
+                        value={siteAddress}
+                        onChange={(e) => setSiteAddress(e.target.value)}
+                        required
+                      />
+                    )}
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="contact">Site Contact Info</Label>
@@ -193,6 +238,11 @@ function ClientDispatchesPage() {
                       onChange={(e) => setDeliveryContact(e.target.value)}
                     />
                   </div>
+                  {deliveryLocations && deliveryLocations.length > 0 && (
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Address is selected from your pre-configured delivery locations or PO address.
+                    </p>
+                  )}
                 </div>
                 <DialogFooter>
                   <Button type="submit" disabled={createMutation.isPending}>
@@ -206,6 +256,10 @@ function ClientDispatchesPage() {
             </DialogContent>
           </Dialog>
         </header>
+
+        <div className="hidden">
+          {/* Legacy global address settings removed */}
+        </div>
 
         {dispatchesLoading ? (
           <div className="flex justify-center items-center py-20">

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getClients, createClient, updateClientStatus, updateClientCommercials } from "@/lib/api/business.functions";
+import { getClients, createClient, updateClientStatus, updateClientCommercials, updateClient } from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,7 +42,65 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Building2, Plus, Loader2, MoreVertical, Ban, CheckCircle2 } from "lucide-react";
+import { Building2, Plus, Loader2, MoreVertical, Ban, CheckCircle2, X } from "lucide-react";
+
+function DeliveryLocationsBuilder({ locations, setLocations }: { locations: any[], setLocations: any }) {
+  const addLocation = () => setLocations([...locations, { label: "", address: "", isDefault: locations.length === 0 }]);
+  const updateLocation = (index: number, key: string, value: any) => {
+    const newLocs = [...locations];
+    if (key === "isDefault" && value === true) {
+      newLocs.forEach(l => l.isDefault = false);
+    }
+    newLocs[index][key] = value;
+    setLocations(newLocs);
+  };
+  const removeLocation = (index: number) => {
+    const newLocs = locations.filter((_, i) => i !== index);
+    if (locations[index].isDefault && newLocs.length > 0) {
+      newLocs[0].isDefault = true;
+    }
+    setLocations(newLocs);
+  };
+
+  return (
+    <div className="col-span-2 space-y-3">
+      <div className="flex items-center justify-between">
+        <Label className="font-semibold text-sm">Delivery Locations</Label>
+        <Button type="button" variant="outline" size="sm" onClick={addLocation}>
+          <Plus className="h-3 w-3 mr-1" /> Add Location
+        </Button>
+      </div>
+      {locations.length === 0 && (
+        <p className="text-xs text-muted-foreground italic">No delivery locations added. Add at least one if required.</p>
+      )}
+      {locations.map((loc, i) => (
+        <div key={i} className="flex items-start gap-3 p-3 border rounded-md relative bg-muted/20">
+          <div className="flex-1 space-y-3">
+            <div className="flex gap-3">
+               <div className="flex-1 space-y-1">
+                 <Label className="text-xs">Location Label (e.g. Site A)</Label>
+                 <Input value={loc.label} onChange={(e) => updateLocation(i, "label", e.target.value)} required placeholder="e.g. Main Warehouse" />
+               </div>
+               <div className="flex items-end pb-2">
+                 <Label className="flex items-center gap-2 cursor-pointer text-xs bg-background border px-3 py-2 rounded-md">
+                   <input type="radio" name="defaultLocationNew" checked={loc.isDefault} onChange={() => updateLocation(i, "isDefault", true)} className="w-3.5 h-3.5 accent-primary" />
+                   Set as Default
+                 </Label>
+               </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Full Address</Label>
+              <Textarea value={loc.address} onChange={(e) => updateLocation(i, "address", e.target.value)} required rows={2} placeholder="Enter full shipping address..." />
+            </div>
+          </div>
+          <Button type="button" variant="ghost" size="icon" className="text-destructive h-8 w-8 mt-5" onClick={() => removeLocation(i)}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export const Route = createFileRoute("/_authenticated/admin/clients")({
   ssr: false,
@@ -78,6 +136,7 @@ function AdminClientsPage() {
   const [includeDispatched, setIncludeDispatched] = useState(true);
   const [includeInvoices, setIncludeInvoices] = useState(true);
   const [restrictions, setRestrictions] = useState("");
+  const [deliveryLocations, setDeliveryLocations] = useState<{ id?: string, label: string, address: string, isDefault: boolean }[]>([]);
 
   const { data: clients, isLoading } = useQuery({
     queryKey: ["admin-clients"],
@@ -124,6 +183,17 @@ function AdminClientsPage() {
     },
   });
 
+  const updateMasterMutation = useMutation({
+    mutationFn: (data: any) => updateClient({ data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-clients"] });
+      toast.success("Client details updated successfully!");
+    },
+    onError: (err: any) => {
+      toast.error(err?.message ?? "Failed to update client");
+    },
+  });
+
   function resetForm() {
     setLegalName("");
     setShortName("");
@@ -141,6 +211,7 @@ function AdminClientsPage() {
     setIncludeDispatched(true);
     setIncludeInvoices(true);
     setRestrictions("");
+    setDeliveryLocations([]);
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -152,7 +223,8 @@ function AdminClientsPage() {
       includeUndispatchedPos: includeUndispatched,
       includeDispatchedUnbilled: includeDispatched,
       includeUnpaidInvoices: includeInvoices,
-      restrictions
+      restrictions,
+      deliveryLocations: deliveryLocations.map(l => ({ ...l, isDefault: !!l.isDefault }))
     });
   }
 
@@ -238,9 +310,24 @@ function AdminClientsPage() {
                         <Label>Primary Contact Email</Label>
                         <Input type="email" value={primaryContactEmail} onChange={(e) => setPrimaryContactEmail(e.target.value)} />
                       </div>
+                      <div className="space-y-2">
+                        <Label>Whatsapp / Contact Number</Label>
+                        <Input 
+                          type="tel"
+                          pattern="[0-9]{10}"
+                          maxLength={10}
+                          title="Please enter exactly 10 digits"
+                          value={primaryContactPhone} 
+                          onChange={(e) => setPrimaryContactPhone(e.target.value.replace(/\D/g, ''))} 
+                        />
+                      </div>
                       <div className="space-y-2 col-span-2">
                         <Label>Billing Address</Label>
                         <Textarea value={billingAddress} onChange={(e) => setBillingAddress(e.target.value)} />
+                      </div>
+                      
+                      <div className="col-span-2 pt-2">
+                         <DeliveryLocationsBuilder locations={deliveryLocations} setLocations={setDeliveryLocations} />
                       </div>
                     </div>
                   </div>
@@ -399,6 +486,7 @@ function AdminClientsPage() {
                 client={selectedClient} 
                 onClose={() => setSelectedClient(null)} 
                 mutation={commercialsMutation} 
+                masterMutation={updateMasterMutation}
               />
             )}
           </SheetContent>
@@ -441,7 +529,7 @@ function AdminClientsPage() {
   );
 }
 
-function ClientDetailsForm({ client, onClose, mutation }: { client: any, onClose: () => void, mutation: any }) {
+function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { client: any, onClose: () => void, mutation: any, masterMutation: any }) {
   const comm = client.client_commercial_profile || {};
   
   const [cl, setCl] = useState(comm.credit_limit || 0);
@@ -451,6 +539,33 @@ function ClientDetailsForm({ client, onClose, mutation }: { client: any, onClose
   const [dispatched, setDispatched] = useState(comm.include_dispatched_unbilled !== false);
   const [unpaid, setUnpaid] = useState(comm.include_unpaid_invoices !== false);
   const [rest, setRest] = useState(comm.restrictions || "");
+
+  const [isEditingMaster, setIsEditingMaster] = useState(false);
+  const [mLegal, setMLegal] = useState(client.legal_name || "");
+  const [mShort, setMShort] = useState(client.short_name || "");
+  const [mTrade, setMTrade] = useState(client.trade_name || "");
+  const [mGst, setMGst] = useState(client.gst_number || "");
+  const [mPan, setMPan] = useState(client.pan_number || "");
+  const [mBilling, setMBilling] = useState(client.billing_address || "");
+  const [mContactName, setMContactName] = useState(client.primary_contact_name || "");
+  const [mContactEmail, setMContactEmail] = useState(client.primary_contact_email || "");
+  const [mContactPhone, setMContactPhone] = useState(client.primary_contact_phone || "");
+  const [mDeliveryLocations, setMDeliveryLocations] = useState<{ id?: string, label: string, address: string, isDefault: boolean }[]>(
+    client.delivery_locations?.map((l: any) => ({ ...l, isDefault: l.is_default })) || []
+  );
+
+  useEffect(() => {
+    setMLegal(client.legal_name || "");
+    setMShort(client.short_name || "");
+    setMTrade(client.trade_name || "");
+    setMGst(client.gst_number || "");
+    setMPan(client.pan_number || "");
+    setMBilling(client.billing_address || "");
+    setMContactName(client.primary_contact_name || "");
+    setMContactEmail(client.primary_contact_email || "");
+    setMContactPhone(client.primary_contact_phone || "");
+    setMDeliveryLocations(client.delivery_locations?.map((l: any) => ({ ...l, isDefault: l.is_default })) || []);
+  }, [client]);
 
   const handleSave = () => {
     mutation.mutate({
@@ -462,6 +577,24 @@ function ClientDetailsForm({ client, onClose, mutation }: { client: any, onClose
       includeDispatchedUnbilled: dispatched,
       includeUnpaidInvoices: unpaid,
       restrictions: rest,
+    });
+  };
+
+  const handleSaveMaster = () => {
+    masterMutation.mutate({
+      organizationId: client.id,
+      legalName: mLegal,
+      shortName: mShort,
+      tradeName: mTrade,
+      gstNumber: mGst,
+      panNumber: mPan,
+      billingAddress: mBilling,
+      primaryContactName: mContactName,
+      primaryContactEmail: mContactEmail,
+      primaryContactPhone: mContactPhone,
+      deliveryLocations: mDeliveryLocations.map(l => ({ ...l, isDefault: !!l.isDefault })),
+    }, {
+      onSuccess: () => setIsEditingMaster(false)
     });
   };
 
@@ -482,28 +615,92 @@ function ClientDetailsForm({ client, onClose, mutation }: { client: any, onClose
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="font-semibold text-muted-foreground">Trade Name</p>
-              <p>{client.trade_name || "—"}</p>
-            </div>
-            <div>
-              <p className="font-semibold text-muted-foreground">PAN</p>
-              <p>{client.pan_number || "—"}</p>
-            </div>
-            <div className="col-span-2">
-              <p className="font-semibold text-muted-foreground">Billing Address</p>
-              <p>{client.billing_address || "—"}</p>
-            </div>
-            <div>
-              <p className="font-semibold text-muted-foreground">Contact Name</p>
-              <p>{client.primary_contact_name || "—"}</p>
-            </div>
-            <div>
-              <p className="font-semibold text-muted-foreground">Contact Details</p>
-              <p>{client.primary_contact_email} {client.primary_contact_phone && `| ${client.primary_contact_phone}`}</p>
-            </div>
+          <div className="flex justify-between items-center mb-2 border-b pb-2">
+            <h4 className="font-semibold text-sm">Overview Details</h4>
+            <Button variant="ghost" size="sm" onClick={() => setIsEditingMaster(!isEditingMaster)}>
+              {isEditingMaster ? "Cancel Edit" : "Edit ✏️"}
+            </Button>
           </div>
+
+          {isEditingMaster ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="space-y-2">
+                  <Label>Legal Name</Label>
+                  <Input value={mLegal} onChange={(e) => setMLegal(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Trade Name</Label>
+                  <Input value={mTrade} onChange={(e) => setMTrade(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Short Name</Label>
+                  <Input value={mShort} onChange={(e) => setMShort(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>GST Number</Label>
+                  <Input value={mGst} onChange={(e) => setMGst(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>PAN Number</Label>
+                  <Input value={mPan} onChange={(e) => setMPan(e.target.value)} />
+                </div>
+                <div className="col-span-2 space-y-2">
+                  <Label>Billing Address</Label>
+                  <Textarea value={mBilling} onChange={(e) => setMBilling(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Contact Name</Label>
+                  <Input value={mContactName} onChange={(e) => setMContactName(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Contact Email</Label>
+                  <Input type="email" value={mContactEmail} onChange={(e) => setMContactEmail(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Whatsapp / Contact Number</Label>
+                  <Input 
+                    type="tel"
+                    pattern="[0-9]{10}"
+                    maxLength={10}
+                    title="Please enter exactly 10 digits"
+                    value={mContactPhone} 
+                    onChange={(e) => setMContactPhone(e.target.value.replace(/\D/g, ''))} 
+                  />
+                </div>
+                
+                <div className="col-span-2 pt-2 border-t mt-2">
+                  <DeliveryLocationsBuilder locations={mDeliveryLocations} setLocations={setMDeliveryLocations} />
+                </div>
+              </div>
+              <Button onClick={handleSaveMaster} className="w-full" disabled={masterMutation.isPending}>
+                {masterMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Details
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="font-semibold text-muted-foreground">Trade Name</p>
+                <p>{client.trade_name || "—"}</p>
+              </div>
+              <div>
+                <p className="font-semibold text-muted-foreground">PAN</p>
+                <p>{client.pan_number || "—"}</p>
+              </div>
+              <div className="col-span-2">
+                <p className="font-semibold text-muted-foreground">Billing Address</p>
+                <p>{client.billing_address || "—"}</p>
+              </div>
+              <div>
+                <p className="font-semibold text-muted-foreground">Contact Name</p>
+                <p>{client.primary_contact_name || "—"}</p>
+              </div>
+              <div>
+                <p className="font-semibold text-muted-foreground">Contact Details</p>
+                <p>{client.primary_contact_email} {client.primary_contact_phone && `| ${client.primary_contact_phone}`}</p>
+              </div>
+            </div>
+          )}
           
           {client.status_reason && (
             <div className="p-3 bg-muted rounded-md text-sm border">
@@ -516,9 +713,12 @@ function ClientDetailsForm({ client, onClose, mutation }: { client: any, onClose
             {client.delivery_locations?.length > 0 ? (
               <ul className="space-y-2 text-sm mt-2">
                 {client.delivery_locations.map((loc: any) => (
-                  <li key={loc.id} className="p-2 border rounded-md">
-                    <span className="font-semibold block">{loc.label}</span>
-                    <span className="text-muted-foreground">{loc.address}</span>
+                  <li key={loc.id} className="p-3 border rounded-md bg-muted/20 flex flex-col gap-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold block">{loc.label}</span>
+                      {loc.is_default && <Badge variant="outline" className="text-[10px] uppercase bg-background">Default</Badge>}
+                    </div>
+                    <span className="text-muted-foreground whitespace-pre-wrap">{loc.address}</span>
                   </li>
                 ))}
               </ul>
