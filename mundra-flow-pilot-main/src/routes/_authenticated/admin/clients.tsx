@@ -45,7 +45,7 @@ import { toast } from "sonner";
 import { Building2, Plus, Loader2, MoreVertical, Ban, CheckCircle2, X } from "lucide-react";
 
 function DeliveryLocationsBuilder({ locations, setLocations }: { locations: any[], setLocations: any }) {
-  const addLocation = () => setLocations([...locations, { label: "", address: "", isDefault: locations.length === 0 }]);
+  const addLocation = () => setLocations([...locations, { label: "", address: "", isDefault: locations.length === 0, contactPerson: "", contactPhone: "" }]);
   const updateLocation = (index: number, key: string, value: any) => {
     const newLocs = [...locations];
     if (key === "isDefault" && value === true) {
@@ -67,7 +67,7 @@ function DeliveryLocationsBuilder({ locations, setLocations }: { locations: any[
       <div className="flex items-center justify-between">
         <Label className="font-semibold text-sm">Delivery Locations</Label>
         <Button type="button" variant="outline" size="sm" onClick={addLocation}>
-          <Plus className="h-3 w-3 mr-1" /> Add Location
+          <Plus className="h-3 w-3 mr-1" /> Add More Location
         </Button>
       </div>
       {locations.length === 0 && (
@@ -78,7 +78,7 @@ function DeliveryLocationsBuilder({ locations, setLocations }: { locations: any[
           <div className="flex-1 space-y-3">
             <div className="flex gap-3">
                <div className="flex-1 space-y-1">
-                 <Label className="text-xs">Location Label (e.g. Site A)</Label>
+                 <Label className="text-xs">Location Label (e.g. Site A) *</Label>
                  <Input value={loc.label} onChange={(e) => updateLocation(i, "label", e.target.value)} required placeholder="e.g. Main Warehouse" />
                </div>
                <div className="flex items-end pb-2">
@@ -89,8 +89,21 @@ function DeliveryLocationsBuilder({ locations, setLocations }: { locations: any[
                </div>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Full Address</Label>
+              <Label className="text-xs">Full Address *</Label>
               <Textarea value={loc.address} onChange={(e) => updateLocation(i, "address", e.target.value)} required rows={2} placeholder="Enter full shipping address..." />
+            </div>
+            <div className="flex gap-3">
+               <div className="flex-1 space-y-1">
+                 <Label className="text-xs">Contact Person *</Label>
+                 <Input value={loc.contactPerson || ""} onChange={(e) => updateLocation(i, "contactPerson", e.target.value)} placeholder="e.g. John Doe" required />
+               </div>
+               <div className="flex-1 space-y-1">
+                 <Label className="text-xs">Contact Phone *</Label>
+                 <Input value={loc.contactPhone || ""} onChange={(e) => updateLocation(i, "contactPhone", e.target.value.replace(/\D/g, ''))} placeholder="10-digit number" maxLength={10} required />
+                 {loc.contactPhone && loc.contactPhone.length > 0 && loc.contactPhone.length < 10 && (
+                   <span className="text-[10px] text-destructive block">Must be exactly 10 digits</span>
+                 )}
+               </div>
             </div>
           </div>
           <Button type="button" variant="ghost" size="icon" className="text-destructive h-8 w-8 mt-5" onClick={() => removeLocation(i)}>
@@ -136,7 +149,8 @@ function AdminClientsPage() {
   const [includeDispatched, setIncludeDispatched] = useState(true);
   const [includeInvoices, setIncludeInvoices] = useState(true);
   const [restrictions, setRestrictions] = useState("");
-  const [deliveryLocations, setDeliveryLocations] = useState<{ id?: string, label: string, address: string, isDefault: boolean }[]>([]);
+  const [commissionPercentage, setCommissionPercentage] = useState<number | "">("");
+  const [deliveryLocations, setDeliveryLocations] = useState<{ id?: string, label: string, address: string, isDefault: boolean, contactPerson?: string, contactPhone?: string }[]>([{ label: "", address: "", isDefault: true, contactPerson: "", contactPhone: "" }]);
 
   const { data: clients, isLoading } = useQuery({
     queryKey: ["admin-clients"],
@@ -211,7 +225,8 @@ function AdminClientsPage() {
     setIncludeDispatched(true);
     setIncludeInvoices(true);
     setRestrictions("");
-    setDeliveryLocations([]);
+    setCommissionPercentage("");
+    setDeliveryLocations([{ label: "", address: "", isDefault: true, contactPerson: "", contactPhone: "" }]);
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -224,6 +239,7 @@ function AdminClientsPage() {
       includeDispatchedUnbilled: includeDispatched,
       includeUnpaidInvoices: includeInvoices,
       restrictions,
+      commissionPercentage: commissionPercentage === "" ? null : Number(commissionPercentage),
       deliveryLocations: deliveryLocations.map(l => ({ ...l, isDefault: !!l.isDefault }))
     });
   }
@@ -320,6 +336,9 @@ function AdminClientsPage() {
                           value={primaryContactPhone} 
                           onChange={(e) => setPrimaryContactPhone(e.target.value.replace(/\D/g, ''))} 
                         />
+                        {primaryContactPhone && primaryContactPhone.length > 0 && primaryContactPhone.length < 10 && (
+                          <span className="text-[10px] text-destructive block mt-1">Must be exactly 10 digits</span>
+                        )}
                       </div>
                       <div className="space-y-2 col-span-2">
                         <Label>Billing Address</Label>
@@ -337,7 +356,7 @@ function AdminClientsPage() {
                   {/* Commercials */}
                   <div className="space-y-4">
                     <h4 className="text-sm font-medium">Commercial Terms</h4>
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="space-y-2">
                         <Label>Credit Limit *</Label>
                         <Input type="number" value={creditLimit} onChange={(e) => setCreditLimit(Number(e.target.value))} required />
@@ -349,6 +368,10 @@ function AdminClientsPage() {
                       <div className="space-y-2">
                         <Label>Grace (Days)</Label>
                         <Input type="number" value={gracePeriodDays} onChange={(e) => setGracePeriodDays(Number(e.target.value))} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Commission (%)</Label>
+                        <Input type="number" min="0" max="100" step="0.01" value={commissionPercentage} onChange={(e) => setCommissionPercentage(e.target.value === "" ? "" : Number(e.target.value))} />
                       </div>
                     </div>
                     
@@ -396,6 +419,7 @@ function AdminClientsPage() {
                     <TableHead>Trade / Short Name</TableHead>
                     <TableHead>GST Number</TableHead>
                     <TableHead>Credit Limit</TableHead>
+                    <TableHead>Wallet (Extra)</TableHead>
                     <TableHead>Payment Terms</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="w-[100px]"></TableHead>
@@ -419,6 +443,9 @@ function AdminClientsPage() {
                           </TableCell>
                           <TableCell className="font-semibold text-primary">
                             {formatCurrency(comm.credit_limit ?? 0)}
+                          </TableCell>
+                          <TableCell className="font-semibold text-success">
+                            {formatCurrency(comm.wallet_balance ?? 0)}
                           </TableCell>
                           <TableCell>{comm.payment_terms_days ?? 30} Days</TableCell>
                           <TableCell>
@@ -539,6 +566,7 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
   const [dispatched, setDispatched] = useState(comm.include_dispatched_unbilled !== false);
   const [unpaid, setUnpaid] = useState(comm.include_unpaid_invoices !== false);
   const [rest, setRest] = useState(comm.restrictions || "");
+  const [commPerc, setCommPerc] = useState<number | "">(comm.commission_percentage ?? "");
 
   const [isEditingMaster, setIsEditingMaster] = useState(false);
   const [mLegal, setMLegal] = useState(client.legal_name || "");
@@ -550,8 +578,8 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
   const [mContactName, setMContactName] = useState(client.primary_contact_name || "");
   const [mContactEmail, setMContactEmail] = useState(client.primary_contact_email || "");
   const [mContactPhone, setMContactPhone] = useState(client.primary_contact_phone || "");
-  const [mDeliveryLocations, setMDeliveryLocations] = useState<{ id?: string, label: string, address: string, isDefault: boolean }[]>(
-    client.delivery_locations?.map((l: any) => ({ ...l, isDefault: l.is_default })) || []
+  const [mDeliveryLocations, setMDeliveryLocations] = useState<{ id?: string, label: string, address: string, isDefault: boolean, contactPerson?: string, contactPhone?: string }[]>(
+    client.delivery_locations?.map((l: any) => ({ ...l, isDefault: l.is_default, contactPerson: l.contact_person, contactPhone: l.contact_phone })) || []
   );
 
   useEffect(() => {
@@ -564,7 +592,7 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
     setMContactName(client.primary_contact_name || "");
     setMContactEmail(client.primary_contact_email || "");
     setMContactPhone(client.primary_contact_phone || "");
-    setMDeliveryLocations(client.delivery_locations?.map((l: any) => ({ ...l, isDefault: l.is_default })) || []);
+    setMDeliveryLocations(client.delivery_locations?.map((l: any) => ({ ...l, isDefault: l.is_default, contactPerson: l.contact_person, contactPhone: l.contact_phone })) || []);
   }, [client]);
 
   const handleSave = () => {
@@ -577,6 +605,7 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
       includeDispatchedUnbilled: dispatched,
       includeUnpaidInvoices: unpaid,
       restrictions: rest,
+      commissionPercentage: commPerc === "" ? null : Number(commPerc),
     });
   };
 
@@ -667,6 +696,9 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
                     value={mContactPhone} 
                     onChange={(e) => setMContactPhone(e.target.value.replace(/\D/g, ''))} 
                   />
+                  {mContactPhone && mContactPhone.length > 0 && mContactPhone.length < 10 && (
+                    <span className="text-[10px] text-destructive block mt-1">Must be exactly 10 digits</span>
+                  )}
                 </div>
                 
                 <div className="col-span-2 pt-2 border-t mt-2">
@@ -729,7 +761,7 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
         </TabsContent>
 
         <TabsContent value="commercials" className="space-y-6">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label>Credit Limit (₹)</Label>
               <Input type="number" value={cl} onChange={(e) => setCl(Number(e.target.value))} />
@@ -741,6 +773,10 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
             <div className="space-y-2">
               <Label>Grace (Days)</Label>
               <Input type="number" value={gp} onChange={(e) => setGp(Number(e.target.value))} />
+            </div>
+            <div className="space-y-2">
+              <Label>Commission (%)</Label>
+              <Input type="number" min="0" max="100" step="0.01" value={commPerc} onChange={(e) => setCommPerc(e.target.value === "" ? "" : Number(e.target.value))} />
             </div>
           </div>
 

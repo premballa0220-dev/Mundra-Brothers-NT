@@ -80,6 +80,12 @@ export type Database = {
           id: string
           organization_id: string
           quarter_end_date: string
+          outstanding_amount: number | null
+          period_from: string | null
+          period_to: string | null
+          ref_no: string | null
+          client_name: string | null
+          client_address: string | null
           reviewed_at: string | null
           reviewed_by: string | null
           signed_pdf_url: string | null
@@ -94,6 +100,12 @@ export type Database = {
           id?: string
           organization_id: string
           quarter_end_date: string
+          outstanding_amount?: number | null
+          period_from?: string | null
+          period_to?: string | null
+          ref_no?: string | null
+          client_name?: string | null
+          client_address?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           signed_pdf_url?: string | null
@@ -108,6 +120,12 @@ export type Database = {
           id?: string
           organization_id?: string
           quarter_end_date?: string
+          outstanding_amount?: number | null
+          period_from?: string | null
+          period_to?: string | null
+          ref_no?: string | null
+          client_name?: string | null
+          client_address?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           signed_pdf_url?: string | null
@@ -171,6 +189,7 @@ export type Database = {
           payment_terms_days: number
           restrictions: string | null
           updated_at: string
+          wallet_balance: number
         }
         Insert: {
           created_at?: string
@@ -184,6 +203,7 @@ export type Database = {
           payment_terms_days?: number
           restrictions?: string | null
           updated_at?: string
+          wallet_balance?: number
         }
         Update: {
           created_at?: string
@@ -197,6 +217,7 @@ export type Database = {
           payment_terms_days?: number
           restrictions?: string | null
           updated_at?: string
+          wallet_balance?: number
         }
         Relationships: [
           {

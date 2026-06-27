@@ -47,7 +47,11 @@ function ClientPurchaseOrdersPage() {
       if (deliveryLocations && deliveryLocations.length > 0) {
         const defaultLoc = deliveryLocations.find((l: any) => l.is_default) || deliveryLocations[0];
         setSiteAddress(defaultLoc.address);
-        setDeliveryContact(""); // We don't have default contact person saved in the address yet, just the address
+        if (defaultLoc.contact_person) {
+          setDeliveryContact(`${defaultLoc.contact_person} ${defaultLoc.contact_phone ? `(${defaultLoc.contact_phone})` : ""}`.trim());
+        } else {
+          setDeliveryContact("");
+        }
       } else {
         setSiteAddress("");
         setDeliveryContact("");
@@ -164,7 +168,7 @@ function ClientPurchaseOrdersPage() {
                         <SelectContent>
                           {products?.map((p: any) => (
                             <SelectItem key={p.id} value={p.id}>
-                              {p.name} {p.grade ? `(${p.grade})` : ""}
+                              {p.name} {p.packaging ? `- ${p.packaging}` : ""} {p.grade ? `(${p.grade})` : ""}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -174,7 +178,7 @@ function ClientPurchaseOrdersPage() {
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <Label htmlFor="quantity">Quantity (MT) *</Label>
+                      <Label htmlFor="quantity">Quantity *</Label>
                       <Input id="quantity" type="number" min="0.01" step="0.01" value={quantity || ""} onChange={(e) => setQuantity(Number(e.target.value))} required />
                     </div>
                     <div className="space-y-1">
@@ -219,7 +223,18 @@ function ClientPurchaseOrdersPage() {
                     <div className="space-y-1">
                       <Label htmlFor="siteAddress">Site Delivery Address *</Label>
                       {deliveryLocations && deliveryLocations.length > 0 ? (
-                        <Select value={siteAddress} onValueChange={setSiteAddress} required>
+                        <Select 
+                          value={siteAddress} 
+                          onValueChange={(val) => {
+                            setSiteAddress(val);
+                            const loc = deliveryLocations.find((l: any) => l.address === val);
+                            if (loc?.contact_person) {
+                              setDeliveryContact(`${loc.contact_person} ${loc.contact_phone ? `(${loc.contact_phone})` : ""}`.trim());
+                            } else {
+                              setDeliveryContact("");
+                            }
+                          }} 
+                          required>
                           <SelectTrigger>
                             <SelectValue placeholder="Select Delivery Address" />
                           </SelectTrigger>
@@ -317,7 +332,7 @@ function ClientPurchaseOrdersPage() {
                   <TableRow>
                     <TableHead>PO Number</TableHead>
                     <TableHead>Product</TableHead>
-                    <TableHead className="text-right">Quantity (MT)</TableHead>
+                    <TableHead className="text-right">Quantity</TableHead>
                     <TableHead className="text-right">Rate</TableHead>
                     <TableHead className="text-right">Total Value</TableHead>
                     <TableHead>Status</TableHead>

@@ -1,11 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPurchaseOrders, updatePurchaseOrderStatus } from "@/lib/api/business.functions";
+import { getPurchaseOrders, updatePurchaseOrderStatus, getClients, getProducts, getApplicableRate, createPurchaseOrderAdmin, getClientDeliveryLocationsAdmin, deletePurchaseOrdersAdmin } from "@/lib/api/business.functions";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -39,7 +43,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import {
   Loader2,
@@ -57,6 +61,11 @@ import {
   FileWarning,
   ExternalLink,
   Undo2,
+  Plus,
+  UploadCloud,
+  AlertCircle,
+  X,
+  Trash2,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/admin/po-queue")({
@@ -89,6 +98,68 @@ function AdminPOQueuePage() {
   const [confirmAction, setConfirmAction] = useState<"approve" | "reject" | "revert_approve" | "revert_reject" | null>(null);
   const [confirmPOId, setConfirmPOId] = useState<string | null>(null);
   const [confirmPONumber, setConfirmPONumber] = useState<string>("");
+
+  const [selectedPOIds, setSelectedPOIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+
+  // Admin PO Creation Form States
+  const [createPOOpen, setCreatePOOpen] = useState(false);
+  const [selectedClientId, setSelectedClientId] = useState("");
+  const [poNumber, setPoNumber] = useState("");
+  const [productId, setProductId] = useState("");
+  const [quantity, setQuantity] = useState<number>(0);
+  const [lockedRate, setLockedRate] = useState<number>(0);
+  const [isExceptionRate, setIsExceptionRate] = useState(false);
+  const [siteAddress, setSiteAddress] = useState("");
+  const [deliveryContact, setDeliveryContact] = useState("");
+  const [documentMethod, setDocumentMethod] = useState<"upload" | "generate">("upload");
+  const [documentUrl, setDocumentUrl] = useState("");
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+
+  const { data: clients } = useQuery({
+    queryKey: ["admin-clients"],
+    queryFn: () => getClients(),
+  });
+
+  const { data: products } = useQuery({
+    queryKey: ["admin-products"],
+    queryFn: () => getProducts(),
+  });
+
+  const { data: deliveryLocations } = useQuery({
+    queryKey: ["admin-client-locations", selectedClientId],
+    queryFn: () => getClientDeliveryLocationsAdmin({ data: { organizationId: selectedClientId } }),
+    enabled: !!selectedClientId,
+  });
+
+  const { data: applicableRateInfo } = useQuery({
+    queryKey: ["applicable-rate", productId, selectedClientId],
+    queryFn: () => getApplicableRate({ data: { productId, organizationId: selectedClientId } }),
+    enabled: !!productId && !!selectedClientId,
+  });
+
+  // Effect to pre-fill default delivery location when client locations are loaded
+  useEffect(() => {
+    if (deliveryLocations && deliveryLocations.length > 0 && createPOOpen) {
+      const defaultLoc = deliveryLocations.find((l: any) => l.is_default) || deliveryLocations[0];
+      setSiteAddress(defaultLoc.address);
+      if (defaultLoc.contact_person) {
+        setDeliveryContact(`${defaultLoc.contact_person} ${defaultLoc.contact_phone ? `(${defaultLoc.contact_phone})` : ""}`.trim());
+      } else {
+        setDeliveryContact("");
+      }
+    } else {
+      setSiteAddress("");
+      setDeliveryContact("");
+    }
+  }, [deliveryLocations, createPOOpen]);
+
+  // Effect to set rate
+  useEffect(() => {
+    if (applicableRateInfo && !isExceptionRate) {
+      setLockedRate(applicableRateInfo.rate);
+    }
+  }, [applicableRateInfo, isExceptionRate]);
 
   const { data: allPOs, isLoading } = useQuery({
     queryKey: ["admin-po-queue"],
@@ -134,6 +205,69 @@ function AdminPOQueuePage() {
     onError: (err: any) => toast.error(err?.message ?? "Failed to revert PO"),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (ids: string[]) => deletePurchaseOrdersAdmin({ data: { ids } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-po-queue"] });
+      toast.success("Purchase Orders deleted successfully");
+      setSelectedPOIds(new Set());
+      setBulkDeleteConfirmOpen(false);
+    },
+    onError: (err: any) => toast.error(err?.message ?? "Failed to delete POs"),
+  });
+
+  const createPOMutation = useMutation({
+    mutationFn: (newPo: any) => createPurchaseOrderAdmin({ data: newPo }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-po-queue"] });
+      toast.success("Purchase Order submitted successfully!");
+      setCreatePOOpen(false);
+      resetCreatePOForm();
+    },
+    onError: (err: any) => toast.error(err?.message ?? "Failed to submit Purchase Order"),
+  });
+
+  function resetCreatePOForm() {
+    setSelectedClientId("");
+    setPoNumber("");
+    setProductId("");
+    setQuantity(0);
+    setLockedRate(0);
+    setIsExceptionRate(false);
+    setSiteAddress("");
+    setDeliveryContact("");
+    setDocumentMethod("upload");
+    setDocumentUrl("");
+    setDocumentFile(null);
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      setDocumentFile(file);
+      // In reality we upload to storage here. Using mock URL:
+      setDocumentUrl(`https://storage.example.com/pos/${file.name}`);
+    }
+  };
+
+  const handleCreatePOSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedClientId) return toast.error("Please select a client.");
+    if (documentMethod === "upload" && !documentUrl) return toast.error("Please upload a PO document.");
+    createPOMutation.mutate({
+      organizationId: selectedClientId,
+      poNumber,
+      productId,
+      originalQuantity: quantity,
+      lockedRate,
+      isExceptionRate,
+      siteAddress,
+      deliveryContact,
+      documentMethod,
+      documentUrl,
+    });
+  };
+
   const filteredPOs = (allPOs || []).filter((po: any) => {
     const matchesStatus = filterStatus === "all" || po.status === filterStatus;
     const matchesSearch =
@@ -146,6 +280,21 @@ function AdminPOQueuePage() {
   });
 
   const pendingCount = (allPOs || []).filter((po: any) => po.status === "pending_approval").length;
+
+  const toggleSelectAll = () => {
+    if (selectedPOIds.size === filteredPOs.length && filteredPOs.length > 0) {
+      setSelectedPOIds(new Set());
+    } else {
+      setSelectedPOIds(new Set(filteredPOs.map((po: any) => po.id)));
+    }
+  };
+
+  const toggleSelectPO = (id: string) => {
+    const newSet = new Set(selectedPOIds);
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
+    setSelectedPOIds(newSet);
+  };
   const approvedCount = (allPOs || []).filter((po: any) => po.status === "approved").length;
   const rejectedCount = (allPOs || []).filter((po: any) => po.status === "rejected").length;
 
@@ -174,12 +323,18 @@ function AdminPOQueuePage() {
   return (
     <AppShell variant="admin">
       <div className="space-y-6 max-w-[1600px] mx-auto">
-        <header>
-          <h1 className="text-2xl font-semibold tracking-tight">PO Queue</h1>
-          <p className="text-sm text-muted-foreground">
-            Review submitted Purchase Orders from clients, validate documents,
-            and approve or reject them.
-          </p>
+        <header className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">PO Queue</h1>
+            <p className="text-sm text-muted-foreground">
+              Review submitted Purchase Orders from clients, validate documents,
+              and approve or reject them.
+            </p>
+          </div>
+          <Button onClick={() => setCreatePOOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create PO On Behalf
+          </Button>
         </header>
 
         {/* Summary cards */}
@@ -253,6 +408,15 @@ function AdminPOQueuePage() {
           </Select>
         </div>
 
+        {selectedPOIds.size > 0 && (
+          <div className="bg-muted p-3 rounded-md flex items-center justify-between border">
+            <span className="text-sm font-medium">{selectedPOIds.size} Purchase Order(s) selected</span>
+            <Button variant="destructive" size="sm" onClick={() => setBulkDeleteConfirmOpen(true)}>
+              <Trash2 className="h-4 w-4 mr-2" /> Delete Selected
+            </Button>
+          </div>
+        )}
+
         {/* PO Table */}
         {isLoading ? (
           <div className="flex justify-center items-center py-20">
@@ -269,10 +433,16 @@ function AdminPOQueuePage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12 text-center">
+                      <Checkbox 
+                        checked={filteredPOs.length > 0 && selectedPOIds.size === filteredPOs.length}
+                        onCheckedChange={toggleSelectAll}
+                      />
+                    </TableHead>
                     <TableHead>PO Number</TableHead>
                     <TableHead>Client</TableHead>
                     <TableHead>Product</TableHead>
-                    <TableHead className="text-right">Qty (MT)</TableHead>
+                    <TableHead className="text-right">Quantity</TableHead>
                     <TableHead className="text-right">Rate / MT</TableHead>
                     <TableHead className="text-right">Total Value</TableHead>
                     <TableHead>Document</TableHead>
@@ -290,6 +460,12 @@ function AdminPOQueuePage() {
                       };
                       return (
                         <TableRow key={po.id} className="group">
+                          <TableCell className="text-center">
+                            <Checkbox 
+                              checked={selectedPOIds.has(po.id)}
+                              onCheckedChange={() => toggleSelectPO(po.id)}
+                            />
+                          </TableCell>
                           <TableCell className="font-semibold">
                             <div className="flex items-center gap-2">
                               <FileText className="h-4 w-4 text-muted-foreground" />
@@ -403,7 +579,7 @@ function AdminPOQueuePage() {
                   ) : (
                     <TableRow>
                       <TableCell
-                        colSpan={9}
+                        colSpan={10}
                         className="text-center py-10 text-muted-foreground"
                       >
                         No purchase orders match your filter.
@@ -665,7 +841,193 @@ function AdminPOQueuePage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <AlertDialog open={bulkDeleteConfirmOpen} onOpenChange={setBulkDeleteConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm Bulk Deletion</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete {selectedPOIds.size} Purchase Order(s)? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => deleteMutation.mutate(Array.from(selectedPOIds))}
+                disabled={deleteMutation.isPending}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Yes, Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Create PO Dialog */}
+        <Dialog open={createPOOpen} onOpenChange={setCreatePOOpen}>
+          <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+            <form onSubmit={handleCreatePOSubmit}>
+              <DialogHeader>
+                <DialogTitle>Create Purchase Order (On Behalf of Client)</DialogTitle>
+                <DialogDescription>
+                  This PO will be created securely as an admin and assigned directly to the selected client.
+                </DialogDescription>
+              </DialogHeader>
+              
+              <div className="space-y-6 py-4">
+                <div className="space-y-2">
+                  <Label>Select Client *</Label>
+                  <Select value={selectedClientId} onValueChange={setSelectedClientId} required>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a client..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(clients || []).map((client: any) => (
+                        <SelectItem key={client.id} value={client.id}>
+                          {client.trade_name || client.legal_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {selectedClientId && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>PO Number *</Label>
+                        <Input value={poNumber} onChange={(e) => setPoNumber(e.target.value)} required placeholder="e.g. PO-2026-001" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Product *</Label>
+                        <Select value={productId} onValueChange={setProductId} required>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select product..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(products || []).map((prod: any) => (
+                              <SelectItem key={prod.id} value={prod.id}>
+                                {prod.name} {prod.packaging ? `- ${prod.packaging}` : ""} {prod.grade ? `(${prod.grade})` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Quantity *</Label>
+                        <Input type="number" min="0" step="0.01" value={quantity || ""} onChange={(e) => setQuantity(parseFloat(e.target.value))} required placeholder="Enter quantity" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Rate / MT (INR) *</Label>
+                        <div className="flex gap-2 items-center">
+                          <Input 
+                            type="number" min="0" step="1" 
+                            value={lockedRate || ""} 
+                            onChange={(e) => setLockedRate(parseFloat(e.target.value))} 
+                            required 
+                            disabled={!isExceptionRate} 
+                          />
+                          <div className="flex items-center gap-2 border px-3 py-2 rounded-md bg-muted/20 whitespace-nowrap">
+                            <Switch checked={isExceptionRate} onCheckedChange={setIsExceptionRate} id="exc-rate" />
+                            <Label htmlFor="exc-rate" className="text-xs cursor-pointer">Exception</Label>
+                          </div>
+                        </div>
+                        {!isExceptionRate && applicableRateInfo && (
+                          <div className="text-xs text-muted-foreground">
+                            Using active {applicableRateInfo.source.toLowerCase()} rate.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {quantity > 0 && lockedRate > 0 && (
+                      <div className="bg-primary/5 border border-primary/20 rounded-md p-3 flex justify-between items-center text-sm">
+                        <div className="text-muted-foreground font-medium">Total Order Value</div>
+                        <div className="text-lg font-bold text-primary flex items-center">
+                          <IndianRupee className="h-4 w-4 mr-1" />
+                          {new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(quantity * lockedRate)}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-4 pt-2 border-t">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label>Delivery Site Address *</Label>
+                          {deliveryLocations && deliveryLocations.length > 0 && (
+                            <Select 
+                              onValueChange={(val) => {
+                                const loc = deliveryLocations.find((l: any) => l.address === val);
+                                setSiteAddress(loc?.address || val);
+                                if (loc?.contact_person) {
+                                  setDeliveryContact(`${loc.contact_person} ${loc.contact_phone ? `(${loc.contact_phone})` : ""}`.trim());
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="w-[200px] h-8 text-xs">
+                                <SelectValue placeholder="Select saved address" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {deliveryLocations.map((loc: any, i: number) => (
+                                  <SelectItem key={i} value={loc.address}>{loc.label || `Location ${i+1}`}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </div>
+                        <Textarea value={siteAddress} onChange={(e) => setSiteAddress(e.target.value)} required rows={2} placeholder="Enter the complete delivery address..." />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Site Contact Information</Label>
+                        <Input value={deliveryContact} onChange={(e) => setDeliveryContact(e.target.value)} placeholder="e.g. John Doe (9876543210)" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 pt-2 border-t">
+                      <Label>PO Document</Label>
+                      <div className="border rounded-md p-4 bg-muted/10 space-y-4">
+                        <div className="flex gap-4">
+                          <Label className="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="docMethod" checked={documentMethod === "upload"} onChange={() => setDocumentMethod("upload")} className="accent-primary" />
+                            Upload Client PO PDF
+                          </Label>
+                          <Label className="flex items-center gap-2 cursor-pointer text-muted-foreground">
+                            <input type="radio" name="docMethod" checked={documentMethod === "generate"} onChange={() => setDocumentMethod("generate")} className="accent-primary" disabled />
+                            Generate Proforma (Coming Soon)
+                          </Label>
+                        </div>
+                        
+                        {documentMethod === "upload" && (
+                          <div className="flex flex-col gap-2">
+                            <Input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileUpload} className="cursor-pointer file:cursor-pointer" />
+                            {documentFile && (
+                              <div className="text-xs text-success flex items-center gap-1 mt-1">
+                                <CheckCircle2 className="h-3 w-3" /> {documentFile.name} ready to upload
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setCreatePOOpen(false)}>Cancel</Button>
+                <Button type="submit" disabled={createPOMutation.isPending || !selectedClientId}>
+                  {createPOMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+                  Create & Approve PO
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </AppShell>
   );
 }
+

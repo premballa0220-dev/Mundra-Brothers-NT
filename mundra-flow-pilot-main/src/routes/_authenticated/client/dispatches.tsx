@@ -37,6 +37,15 @@ import { toast } from "sonner";
 import { Truck, Plus, Loader2, AlertTriangle, CreditCard, FileSignature, HelpCircle } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
+function formatBlockReason(reason: string): string {
+  // Normalize legacy format: "Credit limit exceeded (Exposure: ₹X vs Limit: ₹Y)"
+  const creditMatch = reason.match(/Credit limit exceeded \(Exposure: (₹[\d,]+) vs Limit: (₹[\d,]+)\)/);
+  if (creditMatch) {
+    return `Credit limit breached — current exposure of ${creditMatch[1]} exceeds the approved limit of ${creditMatch[2]}`;
+  }
+  return reason;
+}
+
 export const Route = createFileRoute("/_authenticated/client/dispatches")({
   ssr: false,
   component: ClientDispatchesPage,
@@ -118,6 +127,10 @@ function ClientDispatchesPage() {
       toast.error("Quantity must be greater than 0");
       return;
     }
+    if (quantity > remainingQty) {
+      toast.error(`Cannot request dispatch. Requested ${quantity} MT exceeds remaining quantity ${remainingQty.toFixed(2)} MT`);
+      return;
+    }
     createMutation.mutate({
       purchaseOrderId,
       quantity,
@@ -136,6 +149,15 @@ function ClientDispatchesPage() {
   };
 
   const approvedPOs = pos?.filter((p: any) => p.status === "approved") ?? [];
+
+  const selectedPO = approvedPOs.find((p: any) => p.id === purchaseOrderId);
+  const poOriginalQty = selectedPO ? Number(selectedPO.original_quantity) : 0;
+  const usedQty = selectedPO && dispatches
+    ? dispatches
+        .filter((dr: any) => dr.purchase_order_id === purchaseOrderId && dr.status !== "rejected")
+        .reduce((sum: number, dr: any) => sum + Number(dr.quantity), 0)
+    : 0;
+  const remainingQty = Math.max(0, poOriginalQty - usedQty);
 
   return (
     <AppShell variant="client">
@@ -179,16 +201,28 @@ function ClientDispatchesPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label htmlFor="qty">Dispatch Qty (MT) *</Label>
+                      <div className="flex justify-between items-end gap-2">
+                        <Label htmlFor="qty" className="shrink-0">Dispatch Qty (MT) *</Label>
+                        {selectedPO && (
+                          <span className="text-[10px] text-muted-foreground font-medium bg-muted px-2 py-0.5 rounded text-right">
+                            PO: {poOriginalQty.toFixed(2)} | Used: {usedQty.toFixed(2)} | Rem: {remainingQty.toFixed(2)}
+                          </span>
+                        )}
+                      </div>
                       <Input
                         id="qty"
                         type="number"
                         min="0.01"
+                        max={selectedPO ? remainingQty : undefined}
                         step="0.01"
                         value={quantity || ""}
                         onChange={(e) => setQuantity(Number(e.target.value))}
                         required
+                        className={quantity > remainingQty ? "border-destructive focus-visible:ring-destructive" : ""}
                       />
+                      {quantity > remainingQty && (
+                        <p className="text-[10px] text-destructive mt-1 font-medium">Quantity exceeds remaining balance.</p>
+                      )}
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="date">Requested Date *</Label>
@@ -284,9 +318,9 @@ function ClientDispatchesPage() {
                       <p className="text-sm">
                         This dispatch request failed automated compliance checks:
                       </p>
-                      <ul className="list-disc list-inside text-xs space-y-1 pl-2 font-mono">
+                      <ul className="list-disc list-inside text-sm space-y-1.5 pl-2">
                         {reasonsList.map((reason: string, i: number) => (
-                          <li key={i}>{reason}</li>
+                          <li key={i} className="text-destructive/90">{formatBlockReason(reason)}</li>
                         ))}
                       </ul>
                       <div className="flex flex-wrap gap-2 pt-2">

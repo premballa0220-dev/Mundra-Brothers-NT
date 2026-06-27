@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPayments, getInvoices, submitPayment } from "@/lib/api/business.functions";
+import { getPayments, getInvoices, submitPayment, editPayment } from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { useState } from "react";
 import { toast } from "sonner";
-import { CreditCard, Plus, Loader2, Link as LinkIcon, AlertCircle } from "lucide-react";
+import { CreditCard, Plus, Loader2, Link as LinkIcon, AlertCircle, Edit } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/client/payments")({
   ssr: false,
@@ -36,6 +36,8 @@ export const Route = createFileRoute("/_authenticated/client/payments")({
 function ClientPaymentsPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<any>(null);
 
   // Form states
   const [amount, setAmount] = useState<number>(0);
@@ -73,6 +75,20 @@ function ClientPaymentsPage() {
     },
     onError: (err: any) => {
       toast.error(err?.message ?? "Failed to submit payment update");
+    },
+  });
+
+  const editMutation = useMutation({
+    mutationFn: (data: any) => editPayment({ data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-payments"] });
+      toast.success("Payment updated successfully!");
+      setEditOpen(false);
+      setEditingPayment(null);
+      resetForm();
+    },
+    onError: (err: any) => {
+      toast.error(err?.message ?? "Failed to update payment");
     },
   });
 
@@ -134,6 +150,31 @@ function ClientPaymentsPage() {
       maximumFractionDigits: 0,
     }).format(amount);
   };
+
+  function handleEditOpen(payment: any) {
+    setEditingPayment(payment);
+    setAmount(payment.amount);
+    setPaymentDate(new Date(payment.payment_date).toISOString().split("T")[0]);
+    setPaymentMode(payment.payment_mode);
+    setReferenceNumber(payment.reference_number);
+    setBankName(payment.bank_name || "");
+    setProofUrl(payment.proof_url || "");
+    setEditOpen(true);
+  }
+
+  function handleEditSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingPayment) return;
+    editMutation.mutate({
+      id: editingPayment.id,
+      amount,
+      paymentDate,
+      paymentMode,
+      referenceNumber,
+      bankName,
+      proofUrl: proofUrl || "https://example.com/demo-receipt.pdf",
+    });
+  }
 
   return (
     <AppShell variant="client">
@@ -297,6 +338,96 @@ function ClientPaymentsPage() {
               </form>
             </DialogContent>
           </Dialog>
+
+          {/* Edit Payment Dialog */}
+          <Dialog open={editOpen} onOpenChange={(isOpen) => {
+            setEditOpen(isOpen);
+            if (!isOpen) {
+              setEditingPayment(null);
+              resetForm();
+            }
+          }}>
+            <DialogContent className="sm:max-w-[500px]">
+              <form onSubmit={handleEditSubmit}>
+                <DialogHeader>
+                  <DialogTitle>Edit Payment Details</DialogTitle>
+                  <DialogDescription>
+                    Update the UTR or other details of this payment.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="edit-amount">Payment Amount (₹) *</Label>
+                      <Input
+                        id="edit-amount"
+                        type="number"
+                        value={amount || ""}
+                        onChange={(e) => setAmount(Number(e.target.value))}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="edit-date">Payment Date *</Label>
+                      <Input
+                        id="edit-date"
+                        type="date"
+                        value={paymentDate}
+                        onChange={(e) => setPaymentDate(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="edit-mode">Mode *</Label>
+                      <Input
+                        id="edit-mode"
+                        value={paymentMode}
+                        onChange={(e) => setPaymentMode(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1 col-span-2">
+                      <Label htmlFor="edit-ref">Reference / UTR Number *</Label>
+                      <Input
+                        id="edit-ref"
+                        value={referenceNumber}
+                        onChange={(e) => setReferenceNumber(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="edit-bank">Bank Name</Label>
+                      <Input
+                        id="edit-bank"
+                        value={bankName}
+                        onChange={(e) => setBankName(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="edit-proof">Proof URL</Label>
+                      <Input
+                        id="edit-proof"
+                        value={proofUrl}
+                        onChange={(e) => setProofUrl(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button type="submit" disabled={editMutation.isPending}>
+                    {editMutation.isPending && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
+                    Save Changes
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </header>
 
         {paymentsLoading ? (
@@ -319,6 +450,7 @@ function ClientPaymentsPage() {
                     <TableHead>Amount</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Verification Link</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -358,11 +490,16 @@ function ClientPaymentsPage() {
                             <span className="text-muted-foreground italic text-xs">None</span>
                           )}
                         </TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditOpen(pm)}>
+                            <Edit className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
+                      <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
                         No payments reported yet. Click "Report Payment" to upload transfer details.
                       </TableCell>
                     </TableRow>

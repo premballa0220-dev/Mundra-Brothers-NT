@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getRates, getProducts, getClients, proposeProductRate, approveProductRate } from "@/lib/api/business.functions";
+import { getRates, getProducts, getClients, proposeProductRate, approveProductRate, deleteRates } from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -31,7 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { IndianRupee, Plus, Loader2, Check, X } from "lucide-react";
 
@@ -43,6 +44,28 @@ export const Route = createFileRoute("/_authenticated/admin/rates")({
 function AdminRatesPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [selectedRates, setSelectedRates] = useState<string[]>([]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (selectedRates.length === 0) return;
+      
+      const target = event.target as HTMLElement;
+      
+      // Don't deselect if clicking inside a dialog (e.g. create rate modal)
+      if (target.closest('[role="dialog"]')) return;
+      
+      // Don't deselect if clicking inside an element marked to preserve selection
+      if (target.closest('[data-selection-container="true"]')) return;
+      
+      setSelectedRates([]);
+    }
+    
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [selectedRates.length]);
 
   // Form states
   const [productId, setProductId] = useState("");
@@ -88,6 +111,18 @@ function AdminRatesPage() {
     onError: (err: any) => toast.error(err?.message ?? "Failed to process rate"),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (ids: string[]) => deleteRates({ data: { ids } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-rates"] });
+      toast.success("Selected rates deleted successfully");
+      setSelectedRates([]);
+    },
+    onError: (err: any) => {
+      toast.error(err?.message ?? "Failed to delete rates");
+    },
+  });
+
   function resetForm() {
     setProductId("");
     setOrganizationId("generic");
@@ -125,8 +160,24 @@ function AdminRatesPage() {
               Define standard/generic rates and override rates per client organization.
             </p>
           </div>
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
+          <div className="flex gap-2">
+            {selectedRates.length > 0 && (
+              <Button
+                variant="destructive"
+                data-selection-container="true"
+                onClick={() => {
+                  if (confirm("Are you sure you want to delete the selected rates?")) {
+                    deleteMutation.mutate(selectedRates);
+                  }
+                }}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Delete Selected ({selectedRates.length})
+              </Button>
+            )}
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild>
               <Button>
                 <Plus className="h-4 w-4 mr-2" /> Set New Rate
               </Button>
@@ -215,6 +266,7 @@ function AdminRatesPage() {
               </form>
             </DialogContent>
           </Dialog>
+          </div>
         </header>
 
         {ratesLoading ? (
@@ -222,7 +274,7 @@ function AdminRatesPage() {
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : (
-          <Card>
+          <Card data-selection-container="true">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-semibold">Pricing Rates Register</CardTitle>
             </CardHeader>
@@ -230,6 +282,19 @@ function AdminRatesPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={rates && rates.length > 0 && selectedRates.length === rates.length}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedRates(rates.map((r: any) => r.id));
+                          } else {
+                            setSelectedRates([]);
+                          }
+                        }}
+                        aria-label="Select all"
+                      />
+                    </TableHead>
                     <TableHead>Product</TableHead>
                     <TableHead>Client Scope</TableHead>
                     <TableHead>Rate Amount</TableHead>
@@ -242,6 +307,19 @@ function AdminRatesPage() {
                   {rates && rates.length > 0 ? (
                     rates.map((rate: any) => (
                       <TableRow key={rate.id}>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedRates.includes(rate.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedRates((prev) => [...prev, rate.id]);
+                              } else {
+                                setSelectedRates((prev) => prev.filter((id) => id !== rate.id));
+                              }
+                            }}
+                            aria-label="Select row"
+                          />
+                        </TableCell>
                         <TableCell className="font-medium">
                           {rate.products?.name} {rate.products?.grade ? `(${rate.products?.grade})` : ""}
                         </TableCell>
@@ -272,7 +350,7 @@ function AdminRatesPage() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                      <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
                         No rates configured yet. Click "Set New Rate" to define pricing rules.
                       </TableCell>
                     </TableRow>

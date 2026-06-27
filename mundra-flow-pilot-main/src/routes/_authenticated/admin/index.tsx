@@ -57,6 +57,7 @@ function AdminDashboard() {
     posPending: 0,
     posBlocked: 0,
     dispatchPending: 0,
+    dispatchBlocked: 0,
     paymentsUnderVerification: 0,
     refundLettersPending: 0,
     balanceConfPending: 0,
@@ -72,6 +73,9 @@ function AdminDashboard() {
   }
   if (QUEUES.dispatchPending > 0) {
     ALERTS.push({ type: "warning", text: `${QUEUES.dispatchPending} dispatches awaiting review`, href: "/admin/dispatch-queue" });
+  }
+  if (QUEUES.dispatchBlocked > 0) {
+    ALERTS.push({ type: "danger", text: `${QUEUES.dispatchBlocked} dispatches are blocked`, href: "/admin/dispatch-queue" });
   }
   if (QUEUES.paymentsUnderVerification > 0) {
     ALERTS.push({ type: "warning", text: `${QUEUES.paymentsUnderVerification} payments require verification`, href: "/admin/payments" });
@@ -133,7 +137,10 @@ function AdminDashboard() {
             <QueueCard
               icon={Truck}
               label="Dispatches"
-              metrics={[{ l: "Awaiting review", v: QUEUES.dispatchPending, tone: "warning" }]}
+              metrics={[
+                { l: "Awaiting review", v: QUEUES.dispatchPending, tone: "warning" },
+                { l: "Blocked", v: QUEUES.dispatchBlocked, tone: "danger" },
+              ]}
               href="/admin/dispatch-queue"
             />
             <QueueCard

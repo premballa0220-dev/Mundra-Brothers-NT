@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getPendingUsers, approveUser, rejectUser, changeUserRole } from "@/lib/api/auth.functions";
+import { getClients } from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +20,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,17 +52,27 @@ export const Route = createFileRoute("/_authenticated/admin/approvals")({
 function AdminUserApprovalsPage() {
   const queryClient = useQueryClient();
   const [confirmRoleChange, setConfirmRoleChange] = useState<{ userId: string; roleType: string } | null>(null);
+  const [clientAdminApproval, setClientAdminApproval] = useState<{ userId: string } | null>(null);
+  const [selectedClientOrgId, setSelectedClientOrgId] = useState<string>("");
 
   const { data: users, isLoading } = useQuery({
     queryKey: ["admin-pending-users"],
     queryFn: () => getPendingUsers(),
   });
 
+  const { data: clients } = useQuery({
+    queryKey: ["admin-clients"],
+    queryFn: () => getClients(),
+  });
+
   const approveMutation = useMutation({
-    mutationFn: (userId: string) => approveUser({ data: { userId } }),
+    mutationFn: ({ userId, roleType, organizationId }: { userId: string, roleType?: string, organizationId?: string }) => 
+      approveUser({ data: { userId, roleType, organizationId } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-pending-users"] });
       toast.success("User approved successfully!");
+      setClientAdminApproval(null);
+      setSelectedClientOrgId("");
     },
     onError: (err: any) => {
       toast.error(err?.message ?? "Failed to approve user");
@@ -181,19 +202,33 @@ function AdminUserApprovalsPage() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <Button
-                                size="sm"
-                                onClick={() => approveMutation.mutate(user.id)}
-                                disabled={approveMutation.isPending || rejectMutation.isPending}
-                                variant="outline"
-                              >
-                                {approveMutation.isPending ? (
-                                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <UserCheck className="mr-1 h-3.5 w-3.5" />
-                                )}
-                                Approve
-                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    disabled={approveMutation.isPending || rejectMutation.isPending}
+                                    variant="outline"
+                                  >
+                                    {approveMutation.isPending ? (
+                                      <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <UserCheck className="mr-1 h-3.5 w-3.5" />
+                                    )}
+                                    Approve As...
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => approveMutation.mutate({ userId: user.id, roleType: 'mundra_super_admin' })}>
+                                    Admin (Full Access)
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => approveMutation.mutate({ userId: user.id, roleType: 'mundra_readonly' })}>
+                                    Read-Only (Viewer)
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => setClientAdminApproval({ userId: user.id })}>
+                                    Client Admin
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                               <Button
                                 size="sm"
                                 variant="destructive"
@@ -360,6 +395,58 @@ function AdminUserApprovalsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!clientAdminApproval} onOpenChange={(open) => !open && setClientAdminApproval(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Assign Client Organization</DialogTitle>
+            <DialogDescription>
+              To approve this user as a Client Admin, you must link them to a specific client organization.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label>Select Client</Label>
+              {clients && clients.length > 0 ? (
+                <Select value={selectedClientOrgId} onValueChange={setSelectedClientOrgId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a client..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clients.map((client: any) => (
+                      <SelectItem key={client.id} value={client.id}>
+                        {client.legal_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="p-3 text-sm text-warning bg-warning/10 rounded-md border border-warning/20">
+                  Client not found. Please onboard the client first before approving a Client Admin.
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setClientAdminApproval(null)}>Cancel</Button>
+            <Button 
+              disabled={!selectedClientOrgId || approveMutation.isPending}
+              onClick={() => {
+                if (clientAdminApproval) {
+                  approveMutation.mutate({
+                    userId: clientAdminApproval.userId,
+                    roleType: 'client_admin',
+                    organizationId: selectedClientOrgId
+                  });
+                }
+              }}
+            >
+              {approveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Approve \u0026 Link
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

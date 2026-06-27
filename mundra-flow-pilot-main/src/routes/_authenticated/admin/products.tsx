@@ -81,7 +81,7 @@ function ProductDetailsSheet({ product, open, setOpen }: { product: any; open: b
             <TabsContent value="overview" className="space-y-4 pt-4">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <div className="text-muted-foreground">Packaging</div>
+                  <div className="text-muted-foreground">Weight</div>
                   <div className="font-medium">{product.packaging || "N/A"}</div>
                 </div>
                 <div>
@@ -229,6 +229,7 @@ function AdminProductsPage() {
   // Form states
   const [name, setName] = useState("");
   const [packaging, setPackaging] = useState("");
+  const [weightUnit, setWeightUnit] = useState("kg");
   const [basePrice, setBasePrice] = useState("");
   const [hsnCode, setHsnCode] = useState("");
   const [gstRate, setGstRate] = useState("");
@@ -277,6 +278,7 @@ function AdminProductsPage() {
   function resetForm() {
     setName("");
     setPackaging("");
+    setWeightUnit("kg");
     setBasePrice("");
     setUnitSelection("Bag");
     setCustomUnit("");
@@ -291,9 +293,13 @@ function AdminProductsPage() {
       toast.error("Please specify a unit");
       return;
     }
+
+    const finalName = name.trim().endsWith("(1T)") ? name.trim() : `${name.trim()} (1T)`;
+    const finalPackaging = packaging.trim() ? `${packaging.trim()} ${weightUnit}` : "";
+
     createMutation.mutate({ 
-      name, 
-      packaging, 
+      name: finalName, 
+      packaging: finalPackaging, 
       unit: finalUnit,
       basePrice: basePrice ? Number(basePrice) : undefined,
       hsnCode,
@@ -304,7 +310,21 @@ function AdminProductsPage() {
   function openEditDialog(prod: any) {
     setEditingProduct(prod);
     setName(prod.name);
-    setPackaging(prod.packaging || "");
+    
+    if (prod.packaging) {
+      const match = prod.packaging.match(/^([\d.]+)\s*(kg|T|MT)$/i);
+      if (match) {
+        setPackaging(match[1]);
+        setWeightUnit(match[2].toUpperCase() === 'T' ? 'T' : match[2].toUpperCase() === 'MT' ? 'MT' : 'kg');
+      } else {
+        setPackaging(prod.packaging);
+        setWeightUnit("kg");
+      }
+    } else {
+      setPackaging("");
+      setWeightUnit("kg");
+    }
+    
     setBasePrice(prod.basePrice ? String(prod.basePrice) : "");
     setHsnCode(prod.hsn_code || "");
     setGstRate(prod.gst_rate ? String(prod.gst_rate) : "");
@@ -325,10 +345,14 @@ function AdminProductsPage() {
       toast.error("Please specify a unit");
       return;
     }
+
+    const finalName = name.trim().endsWith("(1T)") ? name.trim() : `${name.trim()} (1T)`;
+    const finalPackaging = packaging.trim() ? `${packaging.trim()} ${weightUnit}` : "";
+
     updateMutation.mutate({ 
       id: editingProduct.id,
-      name, 
-      packaging, 
+      name: finalName, 
+      packaging: finalPackaging, 
       unit: finalUnit,
       basePrice: basePrice ? Number(basePrice) : undefined,
       hsnCode,
@@ -349,7 +373,7 @@ function AdminProductsPage() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Product Catalogue</h1>
             <p className="text-sm text-muted-foreground">
-              Define the types, packaging, grades, and units of products offered.
+              Define the types, weight, grades, and units of products offered.
             </p>
           </div>
           <Dialog open={open} onOpenChange={setOpen}>
@@ -362,7 +386,7 @@ function AdminProductsPage() {
               <form onSubmit={handleSubmit}>
                 <DialogHeader>
                   <DialogTitle>Add Product to Master</DialogTitle>
-                  <DialogDescription>Define product parameters including name, and standard packaging.</DialogDescription>
+                  <DialogDescription>Define product parameters including name, and standard weight.</DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="grid grid-cols-4 items-center gap-4">
@@ -370,8 +394,20 @@ function AdminProductsPage() {
                     <Input id="name" value={name} onChange={(e) => setName(e.target.value)} className="col-span-3" placeholder="e.g. UltraTech Premium Cement" required />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="packaging" className="text-right">Packaging</Label>
-                    <Input id="packaging" value={packaging} onChange={(e) => setPackaging(e.target.value)} className="col-span-3" placeholder="e.g. 50kg HDPE Bag" />
+                    <Label htmlFor="packaging" className="text-right">Weight</Label>
+                    <div className="col-span-3 flex gap-2">
+                      <Input id="packaging" value={packaging} onChange={(e) => setPackaging(e.target.value)} placeholder="e.g. 50" />
+                      <Select value={weightUnit} onValueChange={setWeightUnit}>
+                        <SelectTrigger className="w-[100px]">
+                          <SelectValue placeholder="Unit" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="kg">kg</SelectItem>
+                          <SelectItem value="T">T</SelectItem>
+                          <SelectItem value="MT">MT</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="unit" className="text-right">Unit *</Label>
@@ -428,8 +464,20 @@ function AdminProductsPage() {
                     <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} className="col-span-3" required />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="edit-packaging" className="text-right">Packaging</Label>
-                    <Input id="edit-packaging" value={packaging} onChange={(e) => setPackaging(e.target.value)} className="col-span-3" />
+                    <Label htmlFor="edit-packaging" className="text-right">Weight</Label>
+                    <div className="col-span-3 flex gap-2">
+                      <Input id="edit-packaging" value={packaging} onChange={(e) => setPackaging(e.target.value)} />
+                      <Select value={weightUnit} onValueChange={setWeightUnit}>
+                        <SelectTrigger className="w-[100px]">
+                          <SelectValue placeholder="Unit" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="kg">kg</SelectItem>
+                          <SelectItem value="T">T</SelectItem>
+                          <SelectItem value="MT">MT</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label className="text-right">Unit *</Label>
@@ -484,7 +532,7 @@ function AdminProductsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product Name</TableHead>
-                    <TableHead>Packaging</TableHead>
+                    <TableHead>Weight</TableHead>
                     <TableHead>Standard Unit</TableHead>
                     <TableHead>Price (ex. GST)</TableHead>
                     <TableHead>GST %</TableHead>

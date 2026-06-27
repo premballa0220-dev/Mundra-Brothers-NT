@@ -68,6 +68,7 @@ export type ClientCommercialProfileRow = {
   include_dispatched_unbilled: boolean;
   include_unpaid_invoices: boolean;
   restrictions: string | null;
+  commission_percentage: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -136,6 +137,7 @@ export type InvoiceRow = {
 export type PaymentRow = {
   id: string;
   organization_id: string;
+  purchase_order_id: string | null;
   amount: number;
   payment_date: string;
   payment_mode: string;
@@ -241,6 +243,8 @@ export type ClientDeliveryLocationRow = {
   label: string;
   address: string;
   is_default: boolean;
+  contact_person: string | null;
+  contact_phone: string | null;
   created_at: string;
   updated_at: string;
 };

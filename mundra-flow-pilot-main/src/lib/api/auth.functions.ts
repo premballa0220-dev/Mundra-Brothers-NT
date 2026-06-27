@@ -99,9 +99,18 @@ export const getPendingUsers = createServerFn({ method: "GET" })
 
 export const approveUser = createServerFn({ method: "POST" })
   .middleware([requireAuth])
-  .validator(z.object({ userId: z.string().min(1) }))
+  .validator(z.object({ userId: z.string().min(1), roleType: z.string().optional(), organizationId: z.string().uuid().optional() }))
   .handler(async ({ data }) => {
     await approveUserById(data.userId);
+    
+    if (data.organizationId) {
+      const supabase = createSupabaseAdminClient();
+      await supabase.from("profiles").update({ organization_id: data.organizationId }).eq("id", data.userId);
+    }
+    
+    if (data.roleType) {
+      await changeUserRoleServer(data.userId, data.roleType as AppRole);
+    }
     return { success: true };
   });
 

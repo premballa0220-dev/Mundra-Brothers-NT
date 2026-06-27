@@ -89,15 +89,16 @@ export const getDashboardStats = createServerFn({ method: "GET" })
       const { data: profiles } = await supabase.from("client_commercial_profiles").select("credit_limit");
       const sanctionedCredit = (profiles || []).reduce((sum: number, profile: any) => sum + Number(profile.credit_limit || 0), 0);
 
-      const { data: invoices } = await supabase.from("invoices").select("amount, due_date").neq("status", "paid");
+      const { data: invoices } = await supabase.from("invoices").select("amount, due_date, organization_id").neq("status", "paid");
       const outstanding = (invoices || []).reduce((sum: number, invoice: any) => sum + Number(invoice.amount || 0), 0);
-      const overdue = (invoices || [])
-        .filter((invoice: any) => invoice.due_date && invoice.due_date < todayStr)
-        .reduce((sum: number, invoice: any) => sum + Number(invoice.amount || 0), 0);
+      const overdueInvoices = (invoices || []).filter((invoice: any) => invoice.due_date && invoice.due_date < todayStr);
+      const overdue = overdueInvoices.reduce((sum: number, invoice: any) => sum + Number(invoice.amount || 0), 0);
+      const overdueClients = new Set(overdueInvoices.map((inv: any) => inv.organization_id)).size;
 
       const { count: posPending } = await supabase.from("purchase_orders").select("*", { count: "exact", head: true }).eq("status", "pending_approval");
       const { count: posBlocked } = await supabase.from("purchase_orders").select("*", { count: "exact", head: true }).eq("status", "blocked");
       const { count: dispatchPending } = await supabase.from("dispatch_requests").select("*", { count: "exact", head: true }).eq("status", "submitted");
+      const { count: dispatchBlocked } = await supabase.from("dispatch_requests").select("*", { count: "exact", head: true }).eq("status", "blocked");
       const { count: paymentsUnderVerification } = await supabase.from("payments").select("*", { count: "exact", head: true }).eq("status", "submitted");
       const { count: refundLettersPending } = await supabase.from("refund_letters").select("*", { count: "exact", head: true }).eq("status", "draft");
       const { count: balanceConfPending } = await supabase.from("balance_confirmations").select("*", { count: "exact", head: true }).neq("status", "approved");
@@ -110,13 +111,14 @@ export const getDashboardStats = createServerFn({ method: "GET" })
           sanctionedCredit,
           recognizedExposure: outstanding,
           availableCredit: Math.max(0, sanctionedCredit - outstanding),
-          overdueClients: 0,
+          overdueClients,
           overdue90Plus: overdue,
         },
         queues: {
           posPending: posPending || 0,
           posBlocked: posBlocked || 0,
           dispatchPending: dispatchPending || 0,
+          dispatchBlocked: dispatchBlocked || 0,
           paymentsUnderVerification: paymentsUnderVerification || 0,
           refundLettersPending: refundLettersPending || 0,
           balanceConfPending: balanceConfPending || 0,
@@ -259,6 +261,8 @@ export const createClient = createServerFn({ method: "POST" })
         label: z.string().min(1),
         address: z.string().min(1),
         isDefault: z.boolean().default(false),
+        contactPerson: z.string().optional(),
+        contactPhone: z.string().optional(),
       })).optional(),
     }),
   )
@@ -269,7 +273,7 @@ export const createClient = createServerFn({ method: "POST" })
     }
 
     const supabase = createSupabaseAdminClient();
-    const orgId = randomUUID();
+    const orgId = crypto.randomUUID();
     const org = {
       id: orgId,
       legal_name: data.legalName,
@@ -289,7 +293,7 @@ export const createClient = createServerFn({ method: "POST" })
     const { error: orgError } = await supabase.from("organizations").insert(org);
     if (orgError) throw new Error("Failed to create organization: " + orgError.message);
 
-    const profileId = randomUUID();
+    const profileId = crypto.randomUUID();
     const profile = {
       id: profileId,
       organization_id: orgId,
@@ -300,6 +304,7 @@ export const createClient = createServerFn({ method: "POST" })
       include_dispatched_unbilled: data.includeDispatchedUnbilled,
       include_unpaid_invoices: data.includeUnpaidInvoices,
       restrictions: data.restrictions || null,
+      commission_percentage: null,
     };
     const { error: profileError } = await supabase.from("client_commercial_profiles").insert(profile);
     if (profileError) throw new Error("Failed to create commercial profile: " + profileError.message);
@@ -314,11 +319,13 @@ export const createClient = createServerFn({ method: "POST" })
 
     if (data.deliveryLocations && data.deliveryLocations.length > 0) {
       const locations = data.deliveryLocations.map(loc => ({
-        id: randomUUID(),
+        id: crypto.randomUUID(),
         organization_id: orgId,
         label: loc.label,
         address: loc.address,
         is_default: loc.isDefault,
+        contact_person: loc.contactPerson || null,
+        contact_phone: loc.contactPhone || null,
       }));
       await supabase.from("client_delivery_locations").insert(locations);
     }
@@ -346,6 +353,8 @@ export const updateClient = createServerFn({ method: "POST" })
         label: z.string().min(1),
         address: z.string().min(1),
         isDefault: z.boolean().default(false),
+        contactPerson: z.string().optional(),
+        contactPhone: z.string().optional(),
       })).optional(),
     }),
   )
@@ -373,11 +382,13 @@ export const updateClient = createServerFn({ method: "POST" })
         await supabase.from("client_delivery_locations").delete().eq("organization_id", data.organizationId);
         if (data.deliveryLocations.length > 0) {
           const locations = data.deliveryLocations.map(loc => ({
-            id: randomUUID(),
+            id: crypto.randomUUID(),
             organization_id: data.organizationId,
             label: loc.label,
             address: loc.address,
             is_default: loc.isDefault,
+            contact_person: loc.contactPerson || null,
+            contact_phone: loc.contactPhone || null,
           }));
           const { error: insertError } = await supabase.from("client_delivery_locations").insert(locations);
           if (insertError) throw new Error("Failed to insert locations: " + insertError.message);
@@ -392,7 +403,7 @@ export const updateClient = createServerFn({ method: "POST" })
       // Create notifications for all users of the client organization
       if (profiles && profiles.length > 0) {
         const notifications = profiles.map((p: any) => ({
-          id: randomUUID(),
+          id: crypto.randomUUID(),
           organization_id: data.organizationId,
           user_id: p.id,
           title: "Profile Updated",
@@ -434,6 +445,22 @@ export const updateClientStatus = createServerFn({ method: "POST" })
     if (error) throw new Error("Failed to update status: " + error.message);
     
     await createAuditLog(context.userId, "UPDATE_ORG_STATUS", "organizations", data.organizationId, null, data);
+
+    const { data: org } = await supabase.from("organizations").select("legal_name").eq("id", data.organizationId).single();
+    const clientName = org?.legal_name || "A client";
+
+    // Notify the client of their status change
+    const title = `Account ${data.status.charAt(0).toUpperCase() + data.status.slice(1)}`;
+    let message = `Your organization account status has been updated to ${data.status} by Mundra Administration.`;
+    if (data.reason) {
+      message += ` Reason: ${data.reason}`;
+    }
+    await broadcastNotification(supabase, title, message, "/client", data.organizationId);
+
+    // Notify the admin team
+    const adminMessage = `${clientName} account status has been updated to ${data.status}.` + (data.reason ? ` Reason: ${data.reason}` : "");
+    await broadcastNotification(supabase, title, adminMessage, "/admin/clients", context.organizationId);
+
     return { success: true };
   });
 
@@ -458,7 +485,7 @@ export const updateClientCommercials = createServerFn({ method: "POST" })
     const supabase = createSupabaseAdminClient();
     const { data: existing, error: fetchErr } = await supabase
       .from("client_commercial_profiles")
-      .select("credit_limit")
+      .select("credit_limit, commission_percentage")
       .eq("organization_id", data.organizationId)
       .single();
 
@@ -469,7 +496,7 @@ export const updateClientCommercials = createServerFn({ method: "POST" })
       const { error } = await supabase
         .from("client_commercial_profiles")
         .insert({
-          id: randomUUID(),
+          id: crypto.randomUUID(),
           organization_id: data.organizationId,
           credit_limit: data.creditLimit,
           payment_terms_days: data.paymentTermsDays,
@@ -478,6 +505,7 @@ export const updateClientCommercials = createServerFn({ method: "POST" })
           include_dispatched_unbilled: data.includeDispatchedUnbilled,
           include_unpaid_invoices: data.includeUnpaidInvoices,
           restrictions: data.restrictions || null,
+          commission_percentage: (existing as any)?.commission_percentage || null,
         });
       updateErr = error;
     } else {
@@ -543,7 +571,7 @@ export const createProduct = createServerFn({ method: "POST" })
     ensureMundraOrg(context.orgType);
 
     const supabase = createSupabaseAdminClient();
-    const productId = randomUUID();
+    const productId = crypto.randomUUID();
     const product = {
       id: productId,
       name: data.name,
@@ -560,7 +588,7 @@ export const createProduct = createServerFn({ method: "POST" })
 
     if (data.basePrice !== undefined) {
       await supabase.from("rates").insert({
-        id: randomUUID(),
+        id: crypto.randomUUID(),
         product_id: product.id,
         organization_id: null,
         amount: data.basePrice,
@@ -617,7 +645,7 @@ export const updateProduct = createServerFn({ method: "POST" })
           await supabase.from("rates").update({ status: "inactive", effective_to: new Date().toISOString().split("T")[0] }).eq("id", currentRate.id);
         }
         await supabase.from("rates").insert({
-          id: randomUUID(),
+          id: crypto.randomUUID(),
           product_id: data.id,
           organization_id: null,
           amount: data.basePrice,
@@ -673,6 +701,27 @@ export const getRates = createServerFn({ method: "GET" })
       product: productsMap.get(rate.product_id) ?? null,
       organization: rate.organization_id ? organizationsMap.get(rate.organization_id) ?? null : null,
     }));
+  });
+
+export const deleteRates = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      ids: z.array(z.string().min(1)),
+    }),
+  )
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    if (!isSuperAdmin(context.roles)) {
+      throw new Error("Unauthorized");
+    }
+
+    const supabase = createSupabaseAdminClient();
+    const { error } = await supabase.from("rates").delete().in("id", data.ids);
+    if (error) throw new Error("Failed to delete rates: " + error.message);
+    
+    await createAuditLog(context.userId, "DELETE_RATES", "rates", data.ids.join(","), null, null);
+    return { success: true };
   });
 
 async function runDispatchEligibilityCheck(dispatchRequestId: string, userId: string | null) {
@@ -790,7 +839,7 @@ async function runDispatchEligibilityCheck(dispatchRequestId: string, userId: st
   }
   if (totalExposure > creditLimit && !hasCreditOverride) {
     reasons.push(
-      `Credit limit exceeded (Exposure: ₹${totalExposure.toLocaleString()} vs Limit: ₹${creditLimit.toLocaleString()})`,
+      `Credit limit breached — current exposure of ₹${totalExposure.toLocaleString()} exceeds the approved limit of ₹${creditLimit.toLocaleString()}`,
     );
   }
   if (totalOverdue > 0 && !hasTermsOverride) {
@@ -919,7 +968,7 @@ export const proposeProductRate = createServerFn({ method: "POST" })
     if (!isSuperAdmin(context.roles)) throw new Error("Unauthorized");
 
     const supabase = createSupabaseAdminClient();
-    const rateId = randomUUID();
+    const rateId = crypto.randomUUID();
     const { error } = await supabase.from("rates").insert({
       id: rateId,
       product_id: data.productId,
@@ -1006,6 +1055,15 @@ export const approveProductRate = createServerFn({ method: "POST" })
     }
 
     await createAuditLog(context.userId, "APPROVE_RATE", "rates", data.rateId, null, { action: "approve" });
+
+    if (data.action === "approve") {
+      const { data: product } = await supabase.from("products").select("name").eq("id", proposedRate.product_id).single();
+      const productName = product?.name || "a product";
+      const title = "New Rate Approved";
+      const message = `A new ${proposedRate.organization_id ? "client-specific " : "global "}rate of ${proposedRate.amount} for ${productName} has been approved.`;
+      await broadcastNotification(supabase, title, message, "/client", proposedRate.organization_id);
+    }
+
     return { success: true };
   });
 
@@ -1046,7 +1104,7 @@ export const createPurchaseOrder = createServerFn({ method: "POST" })
       // We will rely on UI to show a badge for "Exception Rate" if locked_rate != applicable_rate.
     }
 
-    const poId = randomUUID();
+    const poId = crypto.randomUUID();
     const purchaseOrder = {
       id: poId,
       organization_id: context.organizationId,
@@ -1071,6 +1129,74 @@ export const createPurchaseOrder = createServerFn({ method: "POST" })
     return purchaseOrder;
   });
 
+export const createPurchaseOrderAdmin = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      organizationId: z.string().uuid(),
+      productId: z.string().uuid(),
+      originalQuantity: z.number().positive(),
+      lockedRate: z.number().positive().optional(),
+      isExceptionRate: z.boolean().default(false),
+      siteAddress: z.string().min(1),
+      deliveryContact: z.string().optional(),
+      documentMethod: z.enum(["upload", "generate"]),
+      attachmentUrl: z.string().optional(),
+      paymentTermsDays: z.number().nonnegative().optional(),
+      poNumber: z.string().min(1),
+    }),
+  )
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+    
+    let finalRate = data.lockedRate || 0;
+    if (!data.isExceptionRate && !data.lockedRate) {
+      const { data: clientRates } = await supabase.from("rates").select("*").eq("product_id", data.productId).eq("organization_id", data.organizationId).eq("status", "active").lte("effective_from", new Date().toISOString().split("T")[0]).order("effective_from", { ascending: false });
+      const { data: genRates } = await supabase.from("rates").select("*").eq("product_id", data.productId).is("organization_id", null).eq("status", "active").lte("effective_from", new Date().toISOString().split("T")[0]).order("effective_from", { ascending: false });
+      const applicable = clientRates?.find(r => !r.effective_to || r.effective_to >= new Date().toISOString().split("T")[0]) 
+                      || genRates?.find(r => !r.effective_to || r.effective_to >= new Date().toISOString().split("T")[0]);
+      if (!applicable) throw new Error("No active rate found for this product.");
+      finalRate = Number(applicable.amount);
+    }
+
+    const poId = crypto.randomUUID();
+    const purchaseOrder = {
+      id: poId,
+      organization_id: data.organizationId,
+      product_id: data.productId,
+      original_quantity: data.originalQuantity,
+      locked_rate: finalRate,
+      total_value: data.originalQuantity * finalRate,
+      status: "approved",
+      site_address: data.siteAddress,
+      delivery_contact: data.deliveryContact || null,
+      document_method: data.documentMethod,
+      document_url: data.attachmentUrl || null,
+      po_number: data.poNumber,
+      approved_by: context.userId,
+      created_by: context.userId,
+    };
+
+    const { error } = await supabase.from("purchase_orders").insert(purchaseOrder);
+    if (error) throw new Error("Failed to create purchase order: " + error.message);
+
+    await createAuditLog(context.userId, "CREATE_PO_ADMIN", "purchase_orders", purchaseOrder.id, null, purchaseOrder);
+    
+    // Broadcast notification to client
+    const title = "New Purchase Order Generated";
+    const message = `Purchase Order ${data.poNumber} has been generated and approved by Mundra on your behalf.`;
+    await broadcastNotification(supabase, title, message, "/client/purchase-orders", data.organizationId);
+
+    // Broadcast notification to admin team
+    const { data: org } = await supabase.from("organizations").select("legal_name").eq("id", data.organizationId).single();
+    const clientName = org?.legal_name || "a client";
+    const adminMessage = `Admin generated and approved Purchase Order ${data.poNumber} for ${clientName}.`;
+    await broadcastNotification(supabase, "Admin PO Generated", adminMessage, "/admin/po-queue", context.organizationId);
+
+    return purchaseOrder;
+  });
+
 export const updatePurchaseOrderStatus = createServerFn({ method: "POST" })
   .middleware([requireAuth])
   .validator(
@@ -1090,6 +1216,13 @@ export const updatePurchaseOrderStatus = createServerFn({ method: "POST" })
     const { data: updatedPO } = await supabase.from("purchase_orders").select("*").eq("id", data.id).single();
     
     await createAuditLog(context.userId, "UPDATE_PO_STATUS", "purchase_orders", data.id, prevPO, updatedPO);
+
+    if (updatedPO && (data.status === "approved" || data.status === "rejected")) {
+      const title = `Purchase Order ${updatedPO.po_number} ${data.status === "approved" ? "Approved" : "Rejected"}`;
+      const message = `Your purchase order has been marked as ${data.status.replace("_", " ")} by Mundra.`;
+      await broadcastNotification(supabase, title, message, "/client/purchase-orders", updatedPO.organization_id);
+    }
+
     return updatedPO;
   });
 
@@ -1135,7 +1268,7 @@ export const createDispatchRequest = createServerFn({ method: "POST" })
     ensureClientOrg(context.orgType);
 
     const supabase = createSupabaseAdminClient();
-    const drId = randomUUID();
+    const drId = crypto.randomUUID();
     const dispatchRequest = {
       id: drId,
       purchase_order_id: data.purchaseOrderId,
@@ -1225,10 +1358,11 @@ export const submitPayment = createServerFn({ method: "POST" })
     ensureClientOrg(context.orgType);
     const supabase = createSupabaseAdminClient();
 
-    const paymentId = randomUUID();
+    const paymentId = crypto.randomUUID();
     const payment = {
       id: paymentId,
       organization_id: context.organizationId,
+      purchase_order_id: null,
       amount: data.amount,
       payment_date: data.paymentDate,
       payment_mode: data.paymentMode,
@@ -1247,7 +1381,7 @@ export const submitPayment = createServerFn({ method: "POST" })
       const allocations = data.allocations
         .filter((allocation) => allocation.allocatedAmount > 0 || allocation.tdsAmount > 0)
         .map((allocation) => ({
-          id: randomUUID(),
+          id: crypto.randomUUID(),
           payment_id: payment.id,
           invoice_id: allocation.invoiceId,
           allocated_amount: allocation.allocatedAmount,
@@ -1265,6 +1399,48 @@ export const submitPayment = createServerFn({ method: "POST" })
     });
     return payment;
   });
+
+export const editPayment = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      id: z.string().uuid(),
+      amount: z.number().positive(),
+      paymentDate: z.string(),
+      paymentMode: z.string(),
+      referenceNumber: z.string(),
+      bankName: z.string().optional(),
+      proofUrl: z.string().optional(),
+    }),
+  )
+  .handler(async ({ data, context }) => {
+    const supabase = createSupabaseAdminClient();
+    
+    const { data: prevPayment } = await supabase.from("payments").select("*").eq("id", data.id).single();
+    if (!prevPayment) throw new Error("Payment not found");
+
+    if (context.orgType !== "mundra" && prevPayment.organization_id !== context.organizationId) {
+      throw new Error("Unauthorized to edit this payment");
+    }
+
+    const updated = {
+      amount: data.amount,
+      payment_date: data.paymentDate,
+      payment_mode: data.paymentMode,
+      reference_number: data.referenceNumber,
+      bank_name: data.bankName || null,
+      proof_url: data.proofUrl || null,
+    };
+
+    const { error } = await supabase.from("payments").update(updated).eq("id", data.id);
+    if (error) throw new Error("Failed to edit payment: " + error.message);
+
+    const { data: newPayment } = await supabase.from("payments").select("*").eq("id", data.id).single();
+    await createAuditLog(context.userId, "EDIT_PAYMENT", "payments", data.id, prevPayment, newPayment);
+
+    return newPayment;
+  });
+
 
 export const verifyPayment = createServerFn({ method: "POST" })
   .middleware([requireAuth])
@@ -1292,7 +1468,7 @@ export const verifyPayment = createServerFn({ method: "POST" })
 
     if (data.status === "approved" && payment) {
       await supabase.from("refund_letters").insert({
-        id: randomUUID(),
+        id: crypto.randomUUID(),
         payment_id: data.id,
         organization_id: payment.organization_id,
         status: "draft",
@@ -1339,18 +1515,30 @@ export const createBalanceConfirmationPeriod = createServerFn({ method: "POST" }
       dueDate: z.string(),
       blockDate: z.string(),
       sourcePdfUrl: z.string().optional(),
+      outstandingAmount: z.number().optional(),
+      periodFrom: z.string().optional(),
+      periodTo: z.string().optional(),
+      refNo: z.string().optional(),
+      clientName: z.string().optional(),
+      clientAddress: z.string().optional(),
     }),
   )
   .handler(async ({ data, context }) => {
     ensureMundraOrg(context.orgType);
     const supabase = createSupabaseAdminClient();
-    const id = randomUUID();
+    const id = crypto.randomUUID();
     const conf = {
       id,
       organization_id: data.organizationId,
       quarter_end_date: data.quarterEndDate,
       due_date: data.dueDate,
       block_date: data.blockDate,
+      outstanding_amount: data.outstandingAmount ?? null,
+      period_from: data.periodFrom ?? null,
+      period_to: data.periodTo ?? null,
+      ref_no: data.refNo ?? null,
+      client_name: data.clientName ?? null,
+      client_address: data.clientAddress ?? null,
       source_pdf_url: data.sourcePdfUrl || null,
       signed_pdf_url: null,
       status: "pending_upload",
@@ -1447,7 +1635,7 @@ export const createSpecialApproval = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     ensureMundraOrg(context.orgType);
     const supabase = createSupabaseAdminClient();
-    const id = randomUUID();
+    const id = crypto.randomUUID();
     const sa = {
       id,
       organization_id: data.organizationId,
@@ -1494,7 +1682,7 @@ export const createIssue = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const supabase = createSupabaseAdminClient();
-    const id = randomUUID();
+    const id = crypto.randomUUID();
     const issue = {
       id,
       organization_id: context.organizationId,
@@ -1571,5 +1759,308 @@ export const updateWorkflowSettings = createServerFn({ method: "POST" })
     }
 
     await createAuditLog(context.userId, "UPDATE_WORKFLOW_SETTINGS", "client_workflow_settings", context.organizationId, null, data);
+    return { success: true };
+  });
+
+
+export async function broadcastNotification(
+  supabase: any,
+  title: string,
+  message: string,
+  link: string | null = null,
+  targetOrganizationId: string | null = null
+) {
+  let query = supabase.from("profiles").select("id, organization_id").eq("is_active", true);
+  if (targetOrganizationId) {
+    query = query.eq("organization_id", targetOrganizationId);
+  }
+  const { data: profiles, error } = await query;
+  if (error || !profiles || profiles.length === 0) return;
+
+  const notifications = profiles.map((p: any) => ({
+    id: crypto.randomUUID(),
+    organization_id: p.organization_id,
+    user_id: p.id,
+    title,
+    message,
+    is_read: false,
+    link,
+  }));
+
+  const { error: notifError } = await supabase.from("notifications").insert(notifications);
+  if (notifError) console.error("Failed to insert notifications:", notifError);
+}
+
+export const getNotifications = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .handler(async ({ context }) => {
+    const supabase = createSupabaseAdminClient();
+    const fortyDaysAgo = new Date();
+    fortyDaysAgo.setDate(fortyDaysAgo.getDate() - 40);
+
+    // Asynchronously delete notifications older than 40 days to save DB space
+    supabase.from("notifications")
+      .delete()
+      .lt("created_at", fortyDaysAgo.toISOString())
+      .then(({ error }) => {
+        if (error) console.error("Failed to prune old notifications:", error);
+      });
+
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("*")
+      .eq("user_id", context.userId)
+      .gte("created_at", fortyDaysAgo.toISOString())
+      .order("created_at", { ascending: false });
+
+    if (error) throw new Error("Failed to fetch notifications: " + error.message);
+    return data || [];
+  });
+
+export const deleteNotification = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(z.object({ id: z.string().uuid() }))
+  .handler(async ({ data, context }) => {
+    const supabase = createSupabaseAdminClient();
+    const { error } = await supabase
+      .from("notifications")
+      .delete()
+      .eq("id", data.id)
+      .eq("user_id", context.userId);
+    
+    if (error) throw new Error("Failed to delete notification: " + error.message);
+    return { success: true };
+  });
+
+export const markNotificationRead = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(z.object({ id: z.string().uuid() }))
+  .handler(async ({ data, context }) => {
+    const supabase = createSupabaseAdminClient();
+    const { error } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("id", data.id)
+      .eq("user_id", context.userId);
+    
+    if (error) throw new Error("Failed to mark notification as read: " + error.message);
+    return { success: true };
+  });
+
+
+export const getClientDeliveryLocationsAdmin = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(z.object({ organizationId: z.string().uuid() }))
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+    const { data: locations } = await supabase.from("client_delivery_locations").select("*").eq("organization_id", data.organizationId);
+    return locations || [];
+  });
+
+export const createDispatchRequestAdmin = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      organizationId: z.string().uuid(),
+      purchaseOrderId: z.string().uuid(),
+      quantity: z.number().positive(),
+      requestedDate: z.string(),
+      siteAddress: z.string().min(1),
+      deliveryContact: z.string().optional(),
+    }),
+  )
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+    const drId = crypto.randomUUID();
+    const dispatchRequest = {
+      id: drId,
+      purchase_order_id: data.purchaseOrderId,
+      organization_id: data.organizationId,
+      quantity: data.quantity,
+      requested_date: data.requestedDate,
+      site_address: data.siteAddress,
+      delivery_contact: data.deliveryContact || null,
+      status: "submitted",
+      eligibility_result: null,
+      approved_by: null,
+    };
+    const { error } = await supabase.from("dispatch_requests").insert(dispatchRequest);
+    if (error) throw new Error("Failed to create dispatch request: " + error.message);
+    await createAuditLog(context.userId, "CREATE_DISPATCH_REQUEST_ADMIN", "dispatch_requests", dispatchRequest.id, null, dispatchRequest);
+    return dispatchRequest;
+  });
+
+export const editDispatchRequestAdmin = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      id: z.string().uuid(),
+      purchaseOrderId: z.string().uuid(),
+      quantity: z.number().positive(),
+      requestedDate: z.string(),
+      siteAddress: z.string().min(1),
+      deliveryContact: z.string().optional(),
+    }),
+  )
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+    const { data: prevDr } = await supabase.from("dispatch_requests").select("*").eq("id", data.id).single();
+    if (!prevDr) throw new Error("Dispatch request not found");
+
+    const updateData = {
+      purchase_order_id: data.purchaseOrderId,
+      quantity: data.quantity,
+      requested_date: data.requestedDate,
+      site_address: data.siteAddress,
+      delivery_contact: data.deliveryContact || null,
+    };
+
+    const { error } = await supabase.from("dispatch_requests").update(updateData).eq("id", data.id);
+    if (error) throw new Error("Failed to update dispatch request: " + error.message);
+
+    const { data: updatedDr } = await supabase.from("dispatch_requests").select("*").eq("id", data.id).single();
+    await createAuditLog(context.userId, "EDIT_DISPATCH_REQUEST_ADMIN", "dispatch_requests", data.id, prevDr, updatedDr);
+    return updatedDr;
+  });
+
+export const getAdminPaymentMonitoring = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .handler(async ({ context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+
+    // Fetch all POs with their client details
+    const { data: pos, error: posError } = await supabase
+      .from("purchase_orders")
+      .select("*, organizations(id, legal_name, client_commercial_profiles(*)), dispatch_requests(quantity, status), payments(id, amount, status, payment_date, payment_mode, reference_number)");
+
+    if (posError) {
+      console.error("POSTGREST ERROR:", posError);
+      throw new Error("Failed to fetch POs: " + posError.message);
+    }
+
+    // Aggregate data
+    const monitoringData = pos.map((po: any) => {
+      const dispatchedQuantity = po.dispatch_requests
+        ?.filter((dr: any) => dr.status === "approved" || dr.status === "dispatched" || dr.status === "delivered")
+        .reduce((sum: number, dr: any) => sum + (dr.quantity || 0), 0) || 0;
+
+      const amountPaid = po.payments
+        ?.filter((p: any) => p.status === "approved" || p.status === "verified")
+        .reduce((sum: number, p: any) => sum + (p.amount || 0), 0) || 0;
+
+      return {
+        id: po.id,
+        organization_id: po.organization_id,
+        po_number: po.po_number,
+        client_name: po.organizations?.legal_name || "Unknown Client",
+        total_value: po.total_value,
+        dispatched_quantity: dispatchedQuantity,
+        amount_paid: amountPaid,
+        remaining_balance: Math.max(0, po.total_value - amountPaid),
+        status: po.status,
+        credit_limit: po.organizations?.client_commercial_profiles?.credit_limit || 0,
+        wallet_balance: po.organizations?.client_commercial_profiles?.wallet_balance || 0,
+        payments_history: po.payments?.filter((p: any) => p.status === "approved" || p.status === "verified").sort((a: any, b: any) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()) || [],
+      };
+    });
+
+    return monitoringData;
+  });
+
+export const recordPaymentAdmin = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      organizationId: z.string().uuid(),
+      purchaseOrderId: z.string().uuid(),
+      amount: z.number().positive(),
+      paymentDate: z.string(),
+      paymentMode: z.string(),
+      referenceNumber: z.string(),
+    })
+  )
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+
+    // Fetch PO to calculate remaining balance
+    const { data: po } = await supabase
+      .from("purchase_orders")
+      .select("total_value, payments(amount, status)")
+      .eq("id", data.purchaseOrderId)
+      .single();
+
+    if (!po) throw new Error("Purchase Order not found");
+
+    const amountPaid = po.payments
+      ?.filter((p: any) => p.status === "approved" || p.status === "verified")
+      .reduce((sum: number, p: any) => sum + (p.amount || 0), 0) || 0;
+
+    const remainingBalance = Math.max(0, po.total_value - amountPaid);
+
+    const payment = {
+      id: crypto.randomUUID(),
+      organization_id: data.organizationId,
+      purchase_order_id: data.purchaseOrderId,
+      amount: data.amount,
+      payment_date: data.paymentDate,
+      payment_mode: data.paymentMode,
+      reference_number: data.referenceNumber,
+      bank_name: null,
+      proof_url: null,
+      status: "approved",
+      verified_by: context.userId,
+      verified_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase.from("payments").insert(payment);
+    if (error) throw new Error("Failed to record payment: " + error.message);
+
+    await createAuditLog(context.userId, "RECORD_PAYMENT_ADMIN", "payments", payment.id, null, payment);
+
+    // If overpayment, credit the wallet
+    if (data.amount > remainingBalance) {
+      const overpayment = data.amount - remainingBalance;
+      const { data: profile } = await supabase
+        .from("client_commercial_profiles")
+        .select("id, wallet_balance")
+        .eq("organization_id", data.organizationId)
+        .single();
+        
+      if (profile) {
+        const newWalletBalance = Number(profile.wallet_balance || 0) + overpayment;
+        await supabase
+          .from("client_commercial_profiles")
+          .update({ wallet_balance: newWalletBalance })
+          .eq("id", profile.id);
+          
+        await createAuditLog(context.userId, "WALLET_CREDIT", "client_commercial_profiles", profile.id, { wallet_balance: profile.wallet_balance }, { wallet_balance: newWalletBalance, reason: `Overpayment of ${overpayment} on PO ${data.purchaseOrderId}` });
+      }
+    }
+
+    return { success: true, payment };
+  });
+
+export const deletePurchaseOrdersAdmin = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(z.object({ ids: z.array(z.string().uuid()) }))
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+    
+    const { error } = await supabase
+      .from("purchase_orders")
+      .delete()
+      .in("id", data.ids);
+
+    if (error) {
+      throw new Error("Failed to delete Purchase Orders: " + error.message);
+    }
+
+    await createAuditLog(context.userId, "DELETE_PURCHASE_ORDERS_ADMIN", "purchase_orders", data.ids.join(",").substring(0, 50), null, { deleted_ids: data.ids });
     return { success: true };
   });

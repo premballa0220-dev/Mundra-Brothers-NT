@@ -22,8 +22,10 @@ import { Route as AuthenticatedClientPaymentsRouteImport } from './routes/_authe
 import { Route as AuthenticatedClientLedgersRouteImport } from './routes/_authenticated/client/ledgers'
 import { Route as AuthenticatedClientDocumentsRouteImport } from './routes/_authenticated/client/documents'
 import { Route as AuthenticatedClientDispatchesRouteImport } from './routes/_authenticated/client/dispatches'
+import { Route as AuthenticatedClientBalanceConfirmationsRouteImport } from './routes/_authenticated/client/balance-confirmations'
 import { Route as AuthenticatedAdminSettingsRouteImport } from './routes/_authenticated/admin/settings'
 import { Route as AuthenticatedAdminReportsRouteImport } from './routes/_authenticated/admin/reports'
+import { Route as AuthenticatedAdminRefundLettersRouteImport } from './routes/_authenticated/admin/refund-letters'
 import { Route as AuthenticatedAdminRatesRouteImport } from './routes/_authenticated/admin/rates'
 import { Route as AuthenticatedAdminProductsRouteImport } from './routes/_authenticated/admin/products'
 import { Route as AuthenticatedAdminPoQueueRouteImport } from './routes/_authenticated/admin/po-queue'
@@ -106,6 +108,12 @@ const AuthenticatedClientDispatchesRoute =
     path: '/dispatches',
     getParentRoute: () => AuthenticatedClientRouteRoute,
   } as any)
+const AuthenticatedClientBalanceConfirmationsRoute =
+  AuthenticatedClientBalanceConfirmationsRouteImport.update({
+    id: '/balance-confirmations',
+    path: '/balance-confirmations',
+    getParentRoute: () => AuthenticatedClientRouteRoute,
+  } as any)
 const AuthenticatedAdminSettingsRoute =
   AuthenticatedAdminSettingsRouteImport.update({
     id: '/settings',
@@ -116,6 +124,12 @@ const AuthenticatedAdminReportsRoute =
   AuthenticatedAdminReportsRouteImport.update({
     id: '/reports',
     path: '/reports',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminRefundLettersRoute =
+  AuthenticatedAdminRefundLettersRouteImport.update({
+    id: '/refund-letters',
+    path: '/refund-letters',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
 const AuthenticatedAdminRatesRoute = AuthenticatedAdminRatesRouteImport.update({
@@ -185,8 +199,10 @@ export interface FileRoutesByFullPath {
   '/admin/po-queue': typeof AuthenticatedAdminPoQueueRoute
   '/admin/products': typeof AuthenticatedAdminProductsRoute
   '/admin/rates': typeof AuthenticatedAdminRatesRoute
+  '/admin/refund-letters': typeof AuthenticatedAdminRefundLettersRoute
   '/admin/reports': typeof AuthenticatedAdminReportsRoute
   '/admin/settings': typeof AuthenticatedAdminSettingsRoute
+  '/client/balance-confirmations': typeof AuthenticatedClientBalanceConfirmationsRoute
   '/client/dispatches': typeof AuthenticatedClientDispatchesRoute
   '/client/documents': typeof AuthenticatedClientDocumentsRoute
   '/client/ledgers': typeof AuthenticatedClientLedgersRoute
@@ -208,8 +224,10 @@ export interface FileRoutesByTo {
   '/admin/po-queue': typeof AuthenticatedAdminPoQueueRoute
   '/admin/products': typeof AuthenticatedAdminProductsRoute
   '/admin/rates': typeof AuthenticatedAdminRatesRoute
+  '/admin/refund-letters': typeof AuthenticatedAdminRefundLettersRoute
   '/admin/reports': typeof AuthenticatedAdminReportsRoute
   '/admin/settings': typeof AuthenticatedAdminSettingsRoute
+  '/client/balance-confirmations': typeof AuthenticatedClientBalanceConfirmationsRoute
   '/client/dispatches': typeof AuthenticatedClientDispatchesRoute
   '/client/documents': typeof AuthenticatedClientDocumentsRoute
   '/client/ledgers': typeof AuthenticatedClientLedgersRoute
@@ -235,8 +253,10 @@ export interface FileRoutesById {
   '/_authenticated/admin/po-queue': typeof AuthenticatedAdminPoQueueRoute
   '/_authenticated/admin/products': typeof AuthenticatedAdminProductsRoute
   '/_authenticated/admin/rates': typeof AuthenticatedAdminRatesRoute
+  '/_authenticated/admin/refund-letters': typeof AuthenticatedAdminRefundLettersRoute
   '/_authenticated/admin/reports': typeof AuthenticatedAdminReportsRoute
   '/_authenticated/admin/settings': typeof AuthenticatedAdminSettingsRoute
+  '/_authenticated/client/balance-confirmations': typeof AuthenticatedClientBalanceConfirmationsRoute
   '/_authenticated/client/dispatches': typeof AuthenticatedClientDispatchesRoute
   '/_authenticated/client/documents': typeof AuthenticatedClientDocumentsRoute
   '/_authenticated/client/ledgers': typeof AuthenticatedClientLedgersRoute
@@ -262,8 +282,10 @@ export interface FileRouteTypes {
     | '/admin/po-queue'
     | '/admin/products'
     | '/admin/rates'
+    | '/admin/refund-letters'
     | '/admin/reports'
     | '/admin/settings'
+    | '/client/balance-confirmations'
     | '/client/dispatches'
     | '/client/documents'
     | '/client/ledgers'
@@ -285,8 +307,10 @@ export interface FileRouteTypes {
     | '/admin/po-queue'
     | '/admin/products'
     | '/admin/rates'
+    | '/admin/refund-letters'
     | '/admin/reports'
     | '/admin/settings'
+    | '/client/balance-confirmations'
     | '/client/dispatches'
     | '/client/documents'
     | '/client/ledgers'
@@ -311,8 +335,10 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/po-queue'
     | '/_authenticated/admin/products'
     | '/_authenticated/admin/rates'
+    | '/_authenticated/admin/refund-letters'
     | '/_authenticated/admin/reports'
     | '/_authenticated/admin/settings'
+    | '/_authenticated/client/balance-confirmations'
     | '/_authenticated/client/dispatches'
     | '/_authenticated/client/documents'
     | '/_authenticated/client/ledgers'
@@ -421,6 +447,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClientDispatchesRouteImport
       parentRoute: typeof AuthenticatedClientRouteRoute
     }
+    '/_authenticated/client/balance-confirmations': {
+      id: '/_authenticated/client/balance-confirmations'
+      path: '/balance-confirmations'
+      fullPath: '/client/balance-confirmations'
+      preLoaderRoute: typeof AuthenticatedClientBalanceConfirmationsRouteImport
+      parentRoute: typeof AuthenticatedClientRouteRoute
+    }
     '/_authenticated/admin/settings': {
       id: '/_authenticated/admin/settings'
       path: '/settings'
@@ -433,6 +466,13 @@ declare module '@tanstack/react-router' {
       path: '/reports'
       fullPath: '/admin/reports'
       preLoaderRoute: typeof AuthenticatedAdminReportsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/refund-letters': {
+      id: '/_authenticated/admin/refund-letters'
+      path: '/refund-letters'
+      fullPath: '/admin/refund-letters'
+      preLoaderRoute: typeof AuthenticatedAdminRefundLettersRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/rates': {
@@ -511,6 +551,7 @@ interface AuthenticatedAdminRouteRouteChildren {
   AuthenticatedAdminPoQueueRoute: typeof AuthenticatedAdminPoQueueRoute
   AuthenticatedAdminProductsRoute: typeof AuthenticatedAdminProductsRoute
   AuthenticatedAdminRatesRoute: typeof AuthenticatedAdminRatesRoute
+  AuthenticatedAdminRefundLettersRoute: typeof AuthenticatedAdminRefundLettersRoute
   AuthenticatedAdminReportsRoute: typeof AuthenticatedAdminReportsRoute
   AuthenticatedAdminSettingsRoute: typeof AuthenticatedAdminSettingsRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
@@ -528,6 +569,7 @@ const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren
     AuthenticatedAdminPoQueueRoute: AuthenticatedAdminPoQueueRoute,
     AuthenticatedAdminProductsRoute: AuthenticatedAdminProductsRoute,
     AuthenticatedAdminRatesRoute: AuthenticatedAdminRatesRoute,
+    AuthenticatedAdminRefundLettersRoute: AuthenticatedAdminRefundLettersRoute,
     AuthenticatedAdminReportsRoute: AuthenticatedAdminReportsRoute,
     AuthenticatedAdminSettingsRoute: AuthenticatedAdminSettingsRoute,
     AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
@@ -539,6 +581,7 @@ const AuthenticatedAdminRouteRouteWithChildren =
   )
 
 interface AuthenticatedClientRouteRouteChildren {
+  AuthenticatedClientBalanceConfirmationsRoute: typeof AuthenticatedClientBalanceConfirmationsRoute
   AuthenticatedClientDispatchesRoute: typeof AuthenticatedClientDispatchesRoute
   AuthenticatedClientDocumentsRoute: typeof AuthenticatedClientDocumentsRoute
   AuthenticatedClientLedgersRoute: typeof AuthenticatedClientLedgersRoute
@@ -550,6 +593,8 @@ interface AuthenticatedClientRouteRouteChildren {
 
 const AuthenticatedClientRouteRouteChildren: AuthenticatedClientRouteRouteChildren =
   {
+    AuthenticatedClientBalanceConfirmationsRoute:
+      AuthenticatedClientBalanceConfirmationsRoute,
     AuthenticatedClientDispatchesRoute: AuthenticatedClientDispatchesRoute,
     AuthenticatedClientDocumentsRoute: AuthenticatedClientDocumentsRoute,
     AuthenticatedClientLedgersRoute: AuthenticatedClientLedgersRoute,
