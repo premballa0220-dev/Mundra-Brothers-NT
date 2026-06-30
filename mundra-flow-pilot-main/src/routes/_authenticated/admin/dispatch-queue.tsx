@@ -396,7 +396,7 @@ function AdminDispatchQueuePage() {
                       )}
                     </div>
                     <div className="space-y-1">
-                      <Label htmlFor="date">Requested Date *</Label>
+                      <Label htmlFor="date">Requested Delivery Date *</Label>
                       <Input
                         id="date"
                         type="date"
@@ -655,7 +655,7 @@ function AdminDispatchQueuePage() {
                     )}
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="edit-date">Requested Date *</Label>
+                    <Label htmlFor="edit-date">Requested Delivery Date *</Label>
                     <Input
                       id="edit-date"
                       type="date"
@@ -725,7 +725,7 @@ function AdminDispatchQueuePage() {
                       </Badge>
                     </div>
                     <div>
-                      <span className="text-muted-foreground block text-xs">Requested Date</span>
+                      <span className="text-muted-foreground block text-xs">Requested Delivery Date</span>
                       <span>{new Date(selectedViewDr.requested_date).toLocaleDateString()}</span>
                     </div>
                     <div>

@@ -1,0 +1,1 @@
+ALTER TABLE public.dispatch_requests ADD COLUMN utcl_payment_id UUID REFERENCES public.payments(id) ON DELETE SET NULL;

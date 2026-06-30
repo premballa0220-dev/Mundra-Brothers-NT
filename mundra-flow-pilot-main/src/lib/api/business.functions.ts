@@ -1240,7 +1240,7 @@ export const getDispatchRequests = createServerFn({ method: "GET" })
     
     let purchaseOrders: any[] = [];
     if (purchaseOrderIds.length > 0) {
-      const { data } = await supabase.from("purchase_orders").select("*").in("id", purchaseOrderIds);
+      const { data } = await supabase.from("purchase_orders").select("*, payments(amount, status, is_utcl_payment)").in("id", purchaseOrderIds);
       purchaseOrders = data || [];
     }
     const purchaseOrderMap = new Map(purchaseOrders.map((po: any) => [po.id, po]));
@@ -1343,6 +1343,8 @@ export const submitPayment = createServerFn({ method: "POST" })
       referenceNumber: z.string().min(1),
       bankName: z.string().optional(),
       proofUrl: z.string().optional(),
+      isUtclPayment: z.boolean().optional(),
+      isAdvance: z.boolean().optional(),
       allocations: z
         .array(
           z.object({
@@ -1369,6 +1371,8 @@ export const submitPayment = createServerFn({ method: "POST" })
       reference_number: data.referenceNumber,
       bank_name: data.bankName || null,
       proof_url: data.proofUrl || null,
+      is_utcl_payment: data.isUtclPayment ?? false,
+      is_advance: data.isAdvance ?? false,
       status: "submitted",
       verified_by: null,
       verified_at: null,
@@ -1411,6 +1415,8 @@ export const editPayment = createServerFn({ method: "POST" })
       referenceNumber: z.string(),
       bankName: z.string().optional(),
       proofUrl: z.string().optional(),
+      isUtclPayment: z.boolean().optional(),
+      isAdvance: z.boolean().optional(),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -1430,6 +1436,8 @@ export const editPayment = createServerFn({ method: "POST" })
       reference_number: data.referenceNumber,
       bank_name: data.bankName || null,
       proof_url: data.proofUrl || null,
+      is_utcl_payment: data.isUtclPayment ?? prevPayment.is_utcl_payment,
+      is_advance: data.isAdvance ?? prevPayment.is_advance,
     };
 
     const { error } = await supabase.from("payments").update(updated).eq("id", data.id);
@@ -1580,12 +1588,37 @@ export const uploadBalanceConfirmation = createServerFn({ method: "POST" })
     return conf;
   });
 
+export const clientApproveBalanceConfirmation = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      id: z.string().uuid(),
+    }),
+  )
+  .handler(async ({ data, context }) => {
+    const supabase = createSupabaseAdminClient();
+    const { data: prevConf } = await supabase.from("balance_confirmations").select("*").eq("id", data.id).single();
+    if (!prevConf) throw new Error("Record not found");
+
+    if (context.orgType !== "mundra" && prevConf.organization_id !== context.organizationId) {
+      throw new Error("Unauthorized: Cross-tenant modification attempt blocked.");
+    }
+
+    await supabase.from("balance_confirmations").update({
+      status: "Approved"
+    }).eq("id", data.id);
+
+    const { data: conf } = await supabase.from("balance_confirmations").select("*").eq("id", data.id).single();
+    await createAuditLog(context.userId, "CLIENT_APPROVE_BALANCE_CONF", "balance_confirmations", data.id, prevConf, conf);
+    return conf;
+  });
+
 export const verifyBalanceConfirmation = createServerFn({ method: "POST" })
   .middleware([requireAuth])
   .validator(
     z.object({
       id: z.string().uuid(),
-      status: z.enum(["approved", "rejected"]),
+      status: z.enum(["Approved", "rejected"]),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -1935,7 +1968,7 @@ export const getAdminPaymentMonitoring = createServerFn({ method: "GET" })
     // Fetch all POs with their client details
     const { data: pos, error: posError } = await supabase
       .from("purchase_orders")
-      .select("*, organizations(id, legal_name, client_commercial_profiles(*)), dispatch_requests(quantity, status), payments(id, amount, status, payment_date, payment_mode, reference_number)");
+      .select("*, organizations(id, legal_name, client_commercial_profiles(*)), dispatch_requests(quantity, status), payments(id, amount, status, payment_date, payment_mode, reference_number, is_utcl_payment, is_advance)");
 
     if (posError) {
       console.error("POSTGREST ERROR:", posError);
@@ -1971,76 +2004,77 @@ export const getAdminPaymentMonitoring = createServerFn({ method: "GET" })
     return monitoringData;
   });
 
+export const getAdminUTCLPayments = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .handler(async ({ context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+    
+    const { data: payments, error } = await supabase
+      .from("payments")
+      .select(`
+        *,
+        dispatch_requests!utcl_payment_id (
+          id,
+          quantity,
+          site_address,
+          purchase_orders (
+            po_number,
+            organizations (
+              legal_name
+            )
+          )
+        )
+      `)
+      .eq("is_utcl_payment", true)
+      .order("payment_date", { ascending: false });
+      
+    if (error) {
+      console.error("Failed to fetch UTCL payments:", error);
+      throw new Error("Failed to fetch UTCL payments: " + error.message);
+    }
+    
+    return payments;
+  });
+
 export const recordPaymentAdmin = createServerFn({ method: "POST" })
   .middleware([requireAuth])
   .validator(
     z.object({
       organizationId: z.string().uuid(),
-      purchaseOrderId: z.string().uuid(),
+      purchaseOrderId: z.string().uuid().optional(),
+      dispatchRequestIds: z.array(z.string().uuid()).optional(),
       amount: z.number().positive(),
       paymentDate: z.string(),
       paymentMode: z.string(),
       referenceNumber: z.string(),
+      isUtclPayment: z.boolean().optional(),
+      isAdvance: z.boolean().optional(),
+      isClientToUtcl: z.boolean().optional(),
     })
   )
   .handler(async ({ data, context }) => {
     ensureMundraOrg(context.orgType);
     const supabase = createSupabaseAdminClient();
 
-    // Fetch PO to calculate remaining balance
-    const { data: po } = await supabase
-      .from("purchase_orders")
-      .select("total_value, payments(amount, status)")
-      .eq("id", data.purchaseOrderId)
-      .single();
+    const { data: paymentId, error } = await supabase.rpc("record_payment_admin", {
+      p_org_id: data.organizationId,
+      p_po_id: data.purchaseOrderId || null,
+      p_dispatch_ids: data.dispatchRequestIds || [],
+      p_amount: data.amount,
+      p_payment_date: data.paymentDate,
+      p_payment_mode: data.paymentMode,
+      p_ref_no: data.referenceNumber,
+      p_is_utcl: data.isUtclPayment ?? false,
+      p_is_client_to_utcl: data.isClientToUtcl ?? false,
+      p_is_advance: data.isAdvance ?? false,
+      p_user_id: context.userId,
+    });
 
-    if (!po) throw new Error("Purchase Order not found");
+    if (error) throw new Error("Failed to record payment via RPC: " + error.message);
 
-    const amountPaid = po.payments
-      ?.filter((p: any) => p.status === "approved" || p.status === "verified")
-      .reduce((sum: number, p: any) => sum + (p.amount || 0), 0) || 0;
-
-    const remainingBalance = Math.max(0, po.total_value - amountPaid);
-
-    const payment = {
-      id: crypto.randomUUID(),
-      organization_id: data.organizationId,
-      purchase_order_id: data.purchaseOrderId,
-      amount: data.amount,
-      payment_date: data.paymentDate,
-      payment_mode: data.paymentMode,
-      reference_number: data.referenceNumber,
-      bank_name: null,
-      proof_url: null,
-      status: "approved",
-      verified_by: context.userId,
-      verified_at: new Date().toISOString(),
-    };
-
-    const { error } = await supabase.from("payments").insert(payment);
-    if (error) throw new Error("Failed to record payment: " + error.message);
-
-    await createAuditLog(context.userId, "RECORD_PAYMENT_ADMIN", "payments", payment.id, null, payment);
-
-    // If overpayment, credit the wallet
-    if (data.amount > remainingBalance) {
-      const overpayment = data.amount - remainingBalance;
-      const { data: profile } = await supabase
-        .from("client_commercial_profiles")
-        .select("id, wallet_balance")
-        .eq("organization_id", data.organizationId)
-        .single();
-        
-      if (profile) {
-        const newWalletBalance = Number(profile.wallet_balance || 0) + overpayment;
-        await supabase
-          .from("client_commercial_profiles")
-          .update({ wallet_balance: newWalletBalance })
-          .eq("id", profile.id);
-          
-        await createAuditLog(context.userId, "WALLET_CREDIT", "client_commercial_profiles", profile.id, { wallet_balance: profile.wallet_balance }, { wallet_balance: newWalletBalance, reason: `Overpayment of ${overpayment} on PO ${data.purchaseOrderId}` });
-      }
-    }
+    // Fetch the inserted payment to return it to the client
+    const { data: payment } = await supabase.from("payments").select("*").eq("id", paymentId).single();
 
     return { success: true, payment };
   });
@@ -2062,5 +2096,59 @@ export const deletePurchaseOrdersAdmin = createServerFn({ method: "POST" })
     }
 
     await createAuditLog(context.userId, "DELETE_PURCHASE_ORDERS_ADMIN", "purchase_orders", data.ids.join(",").substring(0, 50), null, { deleted_ids: data.ids });
+    return { success: true };
+  });
+
+export const updatePaymentAdmin = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      id: z.string().uuid(),
+      amount: z.number().positive(),
+      paymentDate: z.string(),
+      paymentMode: z.string(),
+      referenceNumber: z.string(),
+    })
+  )
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+
+    const { data: oldPayment, error: fetchError } = await supabase.from("payments").select("*").eq("id", data.id).single();
+    if (fetchError || !oldPayment) throw new Error("Payment not found");
+
+    const { error } = await supabase
+      .from("payments")
+      .update({
+        amount: data.amount,
+        payment_date: data.paymentDate,
+        payment_mode: data.paymentMode,
+        reference_number: data.referenceNumber,
+      })
+      .eq("id", data.id);
+
+    if (error) throw new Error("Failed to update payment: " + error.message);
+
+    await createAuditLog(context.userId, "UPDATE_PAYMENT_ADMIN", "payments", data.id, oldPayment, data);
+    return { success: true };
+  });
+
+export const deletePaymentAdmin = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      id: z.string().uuid(),
+    })
+  )
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+
+    const { data: oldPayment } = await supabase.from("payments").select("*").eq("id", data.id).single();
+    
+    const { error } = await supabase.from("payments").delete().eq("id", data.id);
+    if (error) throw new Error("Failed to delete payment: " + error.message);
+
+    await createAuditLog(context.userId, "DELETE_PAYMENT_ADMIN", "payments", data.id, oldPayment, null);
     return { success: true };
   });

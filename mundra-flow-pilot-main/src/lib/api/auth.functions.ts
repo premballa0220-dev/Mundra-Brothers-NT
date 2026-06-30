@@ -14,6 +14,7 @@ import {
   deactivateUser as deactivateUserServer,
   listOrganizationUsers,
   createAdminUser,
+  createSupabaseAdminClient,
 } from "../auth.server";
 import { mapUserToSessionContext } from "../auth.server";
 import { requireAuth } from "@/integrations/auth/auth-middleware";

@@ -225,7 +225,7 @@ function ClientDispatchesPage() {
                       )}
                     </div>
                     <div className="space-y-1">
-                      <Label htmlFor="date">Requested Date *</Label>
+                      <Label htmlFor="date">Requested Delivery Date *</Label>
                       <Input
                         id="date"
                         type="date"
@@ -354,7 +354,7 @@ function ClientDispatchesPage() {
                       <TableHead>PO Reference</TableHead>
                       <TableHead>Product</TableHead>
                       <TableHead>Quantity</TableHead>
-                      <TableHead>Requested Date</TableHead>
+                      <TableHead>Requested Delivery Date</TableHead>
                       <TableHead>Site Address</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>

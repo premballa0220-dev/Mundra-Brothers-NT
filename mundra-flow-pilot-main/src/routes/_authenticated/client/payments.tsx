@@ -27,6 +27,7 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import { CreditCard, Plus, Loader2, Link as LinkIcon, AlertCircle, Edit } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export const Route = createFileRoute("/_authenticated/client/payments")({
   ssr: false,
@@ -46,6 +47,8 @@ function ClientPaymentsPage() {
   const [referenceNumber, setReferenceNumber] = useState("");
   const [bankName, setBankName] = useState("");
   const [proofUrl, setProofUrl] = useState("");
+  const [isUtclPayment, setIsUtclPayment] = useState(false);
+  const [isAdvance, setIsAdvance] = useState(false);
 
   // Track allocations: key = invoiceId, value = { allocatedAmount, tdsAmount }
   const [allocations, setAllocations] = useState<
@@ -99,6 +102,8 @@ function ClientPaymentsPage() {
     setReferenceNumber("");
     setBankName("");
     setProofUrl("");
+    setIsUtclPayment(false);
+    setIsAdvance(false);
     setAllocations({});
   }
 
@@ -139,6 +144,8 @@ function ClientPaymentsPage() {
       referenceNumber,
       bankName,
       proofUrl: proofUrl || "https://example.com/demo-receipt.pdf", // Mock link
+      isUtclPayment,
+      isAdvance,
       allocations: formattedAllocations,
     });
   }
@@ -263,6 +270,17 @@ function ClientPaymentsPage() {
                         onChange={(e) => setProofUrl(e.target.value)}
                         placeholder="Paste URL or link"
                       />
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center space-x-6">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox id="utcl" checked={isUtclPayment} onCheckedChange={(c: boolean) => setIsUtclPayment(c)} />
+                      <Label htmlFor="utcl" className="text-sm font-medium leading-none">Payment done to UTCL</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox id="advance" checked={isAdvance} onCheckedChange={(c: boolean) => setIsAdvance(c)} />
+                      <Label htmlFor="advance" className="text-sm font-medium leading-none">Advance Payment</Label>
                     </div>
                   </div>
 
@@ -463,18 +481,26 @@ function ClientPaymentsPage() {
                         <TableCell>{pm.bank_name ?? "—"}</TableCell>
                         <TableCell className="font-bold text-success">{formatCurrency(pm.amount)}</TableCell>
                         <TableCell>
-                          <Badge
-                            variant={
-                              pm.status === "approved"
-                                  ? "default"
-                                  : pm.status === "submitted" || pm.status === "under_verification"
-                                  ? "secondary"
-                                  : "destructive"
-                            }
-                            className="capitalize"
-                          >
-                            {pm.status}
-                          </Badge>
+                          <div className="flex flex-col gap-1 items-start">
+                            <Badge
+                              variant={
+                                pm.status === "approved"
+                                    ? "default"
+                                    : pm.status === "submitted" || pm.status === "under_verification"
+                                    ? "secondary"
+                                    : "destructive"
+                              }
+                              className="capitalize"
+                            >
+                              {pm.status}
+                            </Badge>
+                            {pm.is_utcl_payment && (
+                              <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200">UTCL Payment</Badge>
+                            )}
+                            {pm.is_advance && (
+                              <Badge variant="outline" className="text-[10px] bg-purple-50 text-purple-700 border-purple-200">Advance</Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           {pm.proof_url ? (

@@ -75,17 +75,17 @@ export type Database = {
       balance_confirmations: {
         Row: {
           block_date: string
+          client_address: string | null
+          client_name: string | null
           created_at: string
           due_date: string
           id: string
           organization_id: string
-          quarter_end_date: string
           outstanding_amount: number | null
           period_from: string | null
           period_to: string | null
+          quarter_end_date: string
           ref_no: string | null
-          client_name: string | null
-          client_address: string | null
           reviewed_at: string | null
           reviewed_by: string | null
           signed_pdf_url: string | null
@@ -95,17 +95,17 @@ export type Database = {
         }
         Insert: {
           block_date: string
+          client_address?: string | null
+          client_name?: string | null
           created_at?: string
           due_date: string
           id?: string
           organization_id: string
-          quarter_end_date: string
           outstanding_amount?: number | null
           period_from?: string | null
           period_to?: string | null
+          quarter_end_date: string
           ref_no?: string | null
-          client_name?: string | null
-          client_address?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           signed_pdf_url?: string | null
@@ -115,17 +115,17 @@ export type Database = {
         }
         Update: {
           block_date?: string
+          client_address?: string | null
+          client_name?: string | null
           created_at?: string
           due_date?: string
           id?: string
           organization_id?: string
-          quarter_end_date?: string
           outstanding_amount?: number | null
           period_from?: string | null
           period_to?: string | null
+          quarter_end_date?: string
           ref_no?: string | null
-          client_name?: string | null
-          client_address?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           signed_pdf_url?: string | null
@@ -178,6 +178,7 @@ export type Database = {
       }
       client_commercial_profiles: {
         Row: {
+          commission_percentage: number | null
           created_at: string
           credit_limit: number
           grace_period_days: number
@@ -192,6 +193,7 @@ export type Database = {
           wallet_balance: number
         }
         Insert: {
+          commission_percentage?: number | null
           created_at?: string
           credit_limit?: number
           grace_period_days?: number
@@ -206,6 +208,7 @@ export type Database = {
           wallet_balance?: number
         }
         Update: {
+          commission_percentage?: number | null
           created_at?: string
           credit_limit?: number
           grace_period_days?: number
@@ -267,6 +270,8 @@ export type Database = {
       client_delivery_locations: {
         Row: {
           address: string
+          contact_person: string | null
+          contact_phone: string | null
           created_at: string
           id: string
           is_default: boolean
@@ -276,6 +281,8 @@ export type Database = {
         }
         Insert: {
           address: string
+          contact_person?: string | null
+          contact_phone?: string | null
           created_at?: string
           id?: string
           is_default?: boolean
@@ -285,6 +292,8 @@ export type Database = {
         }
         Update: {
           address?: string
+          contact_person?: string | null
+          contact_phone?: string | null
           created_at?: string
           id?: string
           is_default?: boolean
@@ -352,6 +361,38 @@ export type Database = {
           },
         ]
       }
+      client_workflow_settings: {
+        Row: {
+          organization_id: string
+          payment_workflow: Database["public"]["Enums"]["workflow_type"]
+          po_workflow: Database["public"]["Enums"]["workflow_type"]
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          organization_id: string
+          payment_workflow?: Database["public"]["Enums"]["workflow_type"]
+          po_workflow?: Database["public"]["Enums"]["workflow_type"]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          organization_id?: string
+          payment_workflow?: Database["public"]["Enums"]["workflow_type"]
+          po_workflow?: Database["public"]["Enums"]["workflow_type"]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_workflow_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dispatch_requests: {
         Row: {
           approved_by: string | null
@@ -366,6 +407,7 @@ export type Database = {
           site_address: string
           status: string
           updated_at: string
+          utcl_payment_id: string | null
         }
         Insert: {
           approved_by?: string | null
@@ -380,6 +422,7 @@ export type Database = {
           site_address: string
           status?: string
           updated_at?: string
+          utcl_payment_id?: string | null
         }
         Update: {
           approved_by?: string | null
@@ -394,6 +437,7 @@ export type Database = {
           site_address?: string
           status?: string
           updated_at?: string
+          utcl_payment_id?: string | null
         }
         Relationships: [
           {
@@ -408,6 +452,13 @@ export type Database = {
             columns: ["purchase_order_id"]
             isOneToOne: false
             referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_requests_utcl_payment_id_fkey"
+            columns: ["utcl_payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
             referencedColumns: ["id"]
           },
         ]
@@ -665,11 +716,16 @@ export type Database = {
           amount: number
           bank_name: string | null
           created_at: string
+          dispatch_request_id: string | null
           id: string
+          is_advance: boolean
+          is_client_to_utcl: boolean
+          is_utcl_payment: boolean
           organization_id: string
           payment_date: string
           payment_mode: string
           proof_url: string | null
+          purchase_order_id: string | null
           reference_number: string
           status: string
           updated_at: string
@@ -680,11 +736,16 @@ export type Database = {
           amount: number
           bank_name?: string | null
           created_at?: string
+          dispatch_request_id?: string | null
           id?: string
+          is_advance?: boolean
+          is_client_to_utcl?: boolean
+          is_utcl_payment?: boolean
           organization_id: string
           payment_date: string
           payment_mode: string
           proof_url?: string | null
+          purchase_order_id?: string | null
           reference_number: string
           status?: string
           updated_at?: string
@@ -695,11 +756,16 @@ export type Database = {
           amount?: number
           bank_name?: string | null
           created_at?: string
+          dispatch_request_id?: string | null
           id?: string
+          is_advance?: boolean
+          is_client_to_utcl?: boolean
+          is_utcl_payment?: boolean
           organization_id?: string
           payment_date?: string
           payment_mode?: string
           proof_url?: string | null
+          purchase_order_id?: string | null
           reference_number?: string
           status?: string
           updated_at?: string
@@ -708,10 +774,24 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "payments_dispatch_request_id_fkey"
+            columns: ["dispatch_request_id"]
+            isOneToOne: false
+            referencedRelation: "dispatch_requests"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "payments_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_purchase_order_id_fkey"
+            columns: ["purchase_order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
             referencedColumns: ["id"]
           },
         ]
@@ -720,43 +800,44 @@ export type Database = {
         Row: {
           created_at: string
           grade: string | null
+          gst_rate: number | null
+          hsn_code: string | null
           id: string
           is_active: boolean
           name: string
           packaging: string | null
           unit: string
-          hsn_code: string | null
-          gst_rate: number | null
           updated_at: string
         }
         Insert: {
           created_at?: string
           grade?: string | null
+          gst_rate?: number | null
+          hsn_code?: string | null
           id?: string
           is_active?: boolean
           name: string
           packaging?: string | null
           unit?: string
-          hsn_code?: string | null
-          gst_rate?: number | null
           updated_at?: string
         }
         Update: {
           created_at?: string
           grade?: string | null
+          gst_rate?: number | null
+          hsn_code?: string | null
           id?: string
           is_active?: boolean
           name?: string
           packaging?: string | null
           unit?: string
-          hsn_code?: string | null
-          gst_rate?: number | null
           updated_at?: string
         }
         Relationships: []
       }
       profiles: {
         Row: {
+          approval_status: Database["public"]["Enums"]["user_approval_status"]
           created_at: string
           email: string
           full_name: string | null
@@ -764,9 +845,11 @@ export type Database = {
           is_active: boolean
           organization_id: string
           phone: string | null
+          status_reason: string | null
           updated_at: string
         }
         Insert: {
+          approval_status?: Database["public"]["Enums"]["user_approval_status"]
           created_at?: string
           email: string
           full_name?: string | null
@@ -774,9 +857,11 @@ export type Database = {
           is_active?: boolean
           organization_id: string
           phone?: string | null
+          status_reason?: string | null
           updated_at?: string
         }
         Update: {
+          approval_status?: Database["public"]["Enums"]["user_approval_status"]
           created_at?: string
           email?: string
           full_name?: string | null
@@ -784,6 +869,7 @@ export type Database = {
           is_active?: boolean
           organization_id?: string
           phone?: string | null
+          status_reason?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1075,6 +1161,36 @@ export type Database = {
         Returns: boolean
       }
       is_mundra_user: { Args: never; Returns: boolean }
+      record_payment_admin:
+        | {
+            Args: {
+              p_amount: number
+              p_is_client_to_utcl: boolean
+              p_is_utcl: boolean
+              p_org_id: string
+              p_payment_date: string
+              p_payment_mode: string
+              p_ref_no: string
+              p_user_id: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_amount: number
+              p_dispatch_ids: string[]
+              p_is_advance: boolean
+              p_is_client_to_utcl: boolean
+              p_is_utcl: boolean
+              p_org_id: string
+              p_payment_date: string
+              p_payment_mode: string
+              p_po_id: string
+              p_ref_no: string
+              p_user_id: string
+            }
+            Returns: string
+          }
     }
     Enums: {
       app_role:
@@ -1092,6 +1208,8 @@ export type Database = {
         | "client_readonly"
       org_status: "active" | "suspended" | "pending"
       org_type: "mundra" | "client"
+      user_approval_status: "pending" | "approved" | "rejected"
+      workflow_type: "maker_only" | "maker_approver"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1238,6 +1356,8 @@ export const Constants = {
       ],
       org_status: ["active", "suspended", "pending"],
       org_type: ["mundra", "client"],
+      user_approval_status: ["pending", "approved", "rejected"],
+      workflow_type: ["maker_only", "maker_approver"],
     },
   },
 } as const

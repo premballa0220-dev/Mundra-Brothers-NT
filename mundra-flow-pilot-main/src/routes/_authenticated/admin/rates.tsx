@@ -287,7 +287,7 @@ function AdminRatesPage() {
                         checked={rates && rates.length > 0 && selectedRates.length === rates.length}
                         onCheckedChange={(checked) => {
                           if (checked) {
-                            setSelectedRates(rates.map((r: any) => r.id));
+                            setSelectedRates(rates?.map((r: any) => r.id) || []);
                           } else {
                             setSelectedRates([]);
                           }
@@ -321,15 +321,15 @@ function AdminRatesPage() {
                           />
                         </TableCell>
                         <TableCell className="font-medium">
-                          {rate.products?.name} {rate.products?.grade ? `(${rate.products?.grade})` : ""}
+                          {rate.product?.name} {rate.product?.grade ? `(${rate.product?.grade})` : ""}
                         </TableCell>
                         <TableCell>
-                          {rate.organizations?.legal_name ?? (
+                          {rate.organization?.legal_name ?? (
                             <span className="text-muted-foreground italic">Generic (All Clients)</span>
                           )}
                         </TableCell>
                         <TableCell className="font-semibold text-primary">
-                          {formatCurrency(rate.amount)} / {rate.products?.unit ?? "MT"}
+                          {formatCurrency(rate.amount)} / {rate.product?.unit ?? "MT"}
                         </TableCell>
                         <TableCell>{new Date(rate.effective_from).toLocaleDateString()}</TableCell>
                         <TableCell>

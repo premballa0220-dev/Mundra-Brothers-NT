@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
-import { useQuery } from "@tanstack/react-query";
-import { getBalanceConfirmations } from "@/lib/api/business.functions";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { getBalanceConfirmations, clientApproveBalanceConfirmation } from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useState } from "react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/client/balance-confirmations")({
   ssr: false,
@@ -21,9 +22,21 @@ export const Route = createFileRoute("/_authenticated/client/balance-confirmatio
 });
 
 function ClientBalanceConfirmationsPage() {
+  const queryClient = useQueryClient();
   const { data: confirmations, isLoading } = useQuery({
     queryKey: ["client-balance-confirmations"],
     queryFn: () => getBalanceConfirmations(),
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: (id: string) => clientApproveBalanceConfirmation({ data: { id } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-balance-confirmations"] });
+      toast.success("Balance confirmation approved successfully");
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || "Failed to approve balance confirmation");
+    },
   });
 
   const [selectedLetter, setSelectedLetter] = useState<any>(null);
@@ -80,14 +93,26 @@ function ClientBalanceConfirmationsPage() {
                         <TableCell className="font-semibold">{conf.outstanding_amount != null ? formatCurrency(conf.outstanding_amount) : "—"}</TableCell>
                         <TableCell>{formatDate(conf.due_date)}</TableCell>
                         <TableCell>
-                          <Badge variant={conf.status === "approved" ? "default" : conf.status === "under_review" ? "secondary" : "outline"}>
+                          <Badge variant={conf.status === "Approved" ? "default" : conf.status === "under_review" ? "secondary" : "outline"}>
                             {conf.status.replace("_", " ")}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button variant="outline" size="sm" onClick={() => setSelectedLetter(conf)}>
-                            <FileText className="h-4 w-4 mr-2" /> View Letter
-                          </Button>
+                          <div className="flex items-center justify-end gap-2">
+                            <Button variant="outline" size="sm" onClick={() => setSelectedLetter(conf)}>
+                              <FileText className="h-4 w-4 mr-2" /> View Letter
+                            </Button>
+                            {conf.status !== "Approved" && (
+                              <Button
+                                size="sm"
+                                onClick={() => approveMutation.mutate(conf.id)}
+                                disabled={approveMutation.isPending}
+                              >
+                                {approveMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                                Approve
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
@@ -108,7 +133,7 @@ function ClientBalanceConfirmationsPage() {
           <DialogHeader className="print:hidden">
             <DialogTitle>Balance Confirmation Letter</DialogTitle>
           </DialogHeader>
-          
+
           {selectedLetter && (
             <div className="bg-white text-black font-serif text-base leading-relaxed p-8 mt-4 border">
               <div className="max-w-[700px] mx-auto space-y-6">

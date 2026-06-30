@@ -6,11 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Printer, Send, Loader2 } from "lucide-react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { getClients, createBalanceConfirmationPeriod } from "@/lib/api/business.functions";
+import { Printer, Send, Loader2, History, FileText } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { getClients, createBalanceConfirmationPeriod, getBalanceConfirmations } from "@/lib/api/business.functions";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 
 export const Route = createFileRoute("/_authenticated/admin/refund-letters")({
   ssr: false,
@@ -18,7 +21,12 @@ export const Route = createFileRoute("/_authenticated/admin/refund-letters")({
 });
 
 function BalanceConfirmationLetterPage() {
+  const queryClient = useQueryClient();
   const { data: clients } = useQuery({ queryKey: ["admin-clients"], queryFn: () => getClients() });
+  const { data: confirmations, isLoading: isConfirmationsLoading } = useQuery({
+    queryKey: ["admin-balance-confirmations"],
+    queryFn: () => getBalanceConfirmations(),
+  });
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [clientName, setClientName] = useState("");
@@ -35,6 +43,7 @@ function BalanceConfirmationLetterPage() {
   const sendMutation = useMutation({
     mutationFn: (data: any) => createBalanceConfirmationPeriod({ data }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-balance-confirmations"] });
       toast.success("Balance confirmation sent to client successfully");
     },
     onError: (err: any) => {
@@ -103,8 +112,15 @@ function BalanceConfirmationLetterPage() {
           </div>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Form Section */}
+        <Tabs defaultValue="generate" className="w-full">
+          <TabsList className="mb-4 print:hidden">
+            <TabsTrigger value="generate"><FileText className="w-4 h-4 mr-2"/> Generate Letter</TabsTrigger>
+            <TabsTrigger value="history"><History className="w-4 h-4 mr-2"/> Sent Confirmations</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="generate" className="m-0">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Form Section */}
           <div className="lg:col-span-4 space-y-6 print:hidden">
             <Card>
               <CardHeader>
@@ -280,6 +296,55 @@ function BalanceConfirmationLetterPage() {
             </Card>
           </div>
         </div>
+        </TabsContent>
+
+        <TabsContent value="history" className="m-0 print:hidden">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">Sent Balance Confirmations</CardTitle>
+              <CardDescription>Review the balance confirmation letters sent to clients.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Client Name</TableHead>
+                    <TableHead>Date Sent</TableHead>
+                    <TableHead>Ref No</TableHead>
+                    <TableHead>Outstanding Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isConfirmationsLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-10"><Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" /></TableCell>
+                    </TableRow>
+                  ) : confirmations && confirmations.length > 0 ? (
+                    confirmations.map((conf: any) => (
+                      <TableRow key={conf.id}>
+                        <TableCell className="font-medium">{conf.client_name || "—"}</TableCell>
+                        <TableCell>{formatDate(conf.created_at)}</TableCell>
+                        <TableCell>{conf.ref_no || "—"}</TableCell>
+                        <TableCell className="font-semibold">{conf.outstanding_amount != null ? formatCurrency(String(conf.outstanding_amount)) : "—"}</TableCell>
+                        <TableCell>
+                          <Badge variant={conf.status === "Approved" ? "default" : conf.status === "under_review" ? "secondary" : "outline"}>
+                            {conf.status.replace("_", " ")}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">No balance confirmations sent yet.</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
       </div>
     </AppShell>
   );

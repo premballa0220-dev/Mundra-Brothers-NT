@@ -119,6 +119,7 @@ export type DispatchRequestRow = {
   approved_by: string | null;
   created_at: string;
   updated_at: string;
+  utcl_payment_id?: string | null;
 };
 
 export type InvoiceRow = {
