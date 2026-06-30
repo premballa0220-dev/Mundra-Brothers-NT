@@ -2004,6 +2004,120 @@ export const getAdminPaymentMonitoring = createServerFn({ method: "GET" })
     return monitoringData;
   });
 
+export const getJournalEntries = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .handler(async ({ context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+    const organizationsMap = await loadOrganizationsMap();
+
+    // Fetch all POs (Mundra -> UTCL events)
+    const { data: pos } = await supabase
+      .from("purchase_orders")
+      .select("id, po_number, total_value, created_at, status, organization_id")
+      .order("created_at", { ascending: false });
+
+    // Fetch all dispatches with their PO number (UTCL -> Client events)
+    const { data: dispatches } = await supabase
+      .from("dispatch_requests")
+      .select("id, quantity, status, created_at, updated_at, site_address, organization_id, purchase_order_id, purchase_orders(po_number)")
+      .order("created_at", { ascending: false });
+
+    // Fetch all payments with their PO number
+    const { data: payments } = await supabase
+      .from("payments")
+      .select("id, amount, payment_date, payment_mode, reference_number, is_utcl_payment, is_client_to_utcl, is_advance, status, created_at, organization_id, purchase_order_id, purchase_orders(po_number)")
+      .order("payment_date", { ascending: false });
+
+    const entries: any[] = [];
+
+    // 1. PO creation = Mundra -> UTCL
+    for (const po of pos || []) {
+      const org = organizationsMap.get(po.organization_id);
+      entries.push({
+        id: `po_${po.id}`,
+        type: "mundra_to_utcl",
+        timestamp: po.created_at,
+        title: "PO Created — Mundra → UTCL",
+        meta: {
+          po_number: po.po_number,
+          total_value: po.total_value,
+          status: po.status,
+          client_name: (org as any)?.legal_name || null,
+        },
+      });
+    }
+
+    // 2. Approved dispatches = UTCL -> Client
+    for (const dr of (dispatches || []) as any[]) {
+      if (dr.status === "approved") {
+        const org = organizationsMap.get(dr.organization_id);
+        entries.push({
+          id: `dr_${dr.id}`,
+          type: "utcl_to_client",
+          timestamp: dr.updated_at || dr.created_at,
+          title: "Dispatch Approved — UTCL → Client",
+          meta: {
+            dispatch_id: dr.id,
+            po_number: dr.purchase_orders?.po_number || null,
+            quantity: dr.quantity,
+            site_address: dr.site_address,
+            client_name: (org as any)?.legal_name || null,
+          },
+        });
+      }
+    }
+
+    // 3. Client -> UTCL payments
+    for (const p of (payments || []) as any[]) {
+      if (p.is_client_to_utcl) {
+        const org = organizationsMap.get(p.organization_id);
+        entries.push({
+          id: `pay_ctu_${p.id}`,
+          type: "client_to_utcl",
+          timestamp: p.payment_date,
+          title: "Payment — Client → UTCL",
+          meta: {
+            amount: p.amount,
+            payment_mode: p.payment_mode,
+            reference_number: p.reference_number,
+            po_number: p.purchase_orders?.po_number || null,
+            client_name: (org as any)?.legal_name || null,
+            payment_id: p.id,
+            purchase_order_id: p.purchase_order_id,
+          },
+        });
+      }
+    }
+
+    // 4. Mundra payment to UTCL (non-client-to-utcl, is_utcl_payment) -> Refund potential
+    for (const p of (payments || []) as any[]) {
+      if (p.is_utcl_payment && !p.is_client_to_utcl) {
+        const org = organizationsMap.get(p.organization_id);
+        entries.push({
+          id: `pay_mtu_${p.id}`,
+          type: "utcl_to_mundra",
+          timestamp: p.payment_date,
+          title: "Refund Due — UTCL → Mundra",
+          meta: {
+            amount: p.amount,
+            payment_mode: p.payment_mode,
+            reference_number: p.reference_number,
+            po_number: p.purchase_orders?.po_number || null,
+            client_name: (org as any)?.legal_name || null,
+            payment_id: p.id,
+          },
+        });
+      }
+    }
+
+    // Sort by timestamp descending
+    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    return entries;
+  });
+
+
 export const getAdminUTCLPayments = createServerFn({ method: "GET" })
   .middleware([requireAuth])
   .handler(async ({ context }) => {
