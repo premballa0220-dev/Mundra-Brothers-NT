@@ -67,6 +67,7 @@ import {
   X,
   Trash2,
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/admin/po-queue")({
   ssr: false,
@@ -115,6 +116,7 @@ function AdminPOQueuePage() {
   const [documentMethod, setDocumentMethod] = useState<"upload" | "generate">("upload");
   const [documentUrl, setDocumentUrl] = useState("");
   const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const { data: clients } = useQuery({
     queryKey: ["admin-clients"],
@@ -241,19 +243,48 @@ function AdminPOQueuePage() {
     setDocumentFile(null);
   }
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
       setDocumentFile(file);
-      // In reality we upload to storage here. Using mock URL:
-      setDocumentUrl(`https://storage.example.com/pos/${file.name}`);
+      setDocumentUrl(URL.createObjectURL(file));
     }
   };
 
-  const handleCreatePOSubmit = (e: React.FormEvent) => {
+  const handleCreatePOSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClientId) return toast.error("Please select a client.");
-    if (documentMethod === "upload" && !documentUrl) return toast.error("Please upload a PO document.");
+    if (documentMethod === "upload" && !documentFile) return toast.error("Please upload a PO document.");
+    
+    let finalDocumentUrl = documentUrl;
+
+    if (documentMethod === "upload" && documentFile) {
+      setIsUploading(true);
+      try {
+        const fileExt = documentFile.name.split('.').pop();
+        const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+        const filePath = `${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('po_container')
+          .upload(filePath, documentFile);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('po_container')
+          .getPublicUrl(filePath);
+
+        finalDocumentUrl = publicUrl;
+      } catch (err: any) {
+        console.error("Upload error:", err);
+        toast.error(`Failed to upload document: ${err.message}`);
+        setIsUploading(false);
+        return;
+      }
+      setIsUploading(false);
+    }
+
     createPOMutation.mutate({
       organizationId: selectedClientId,
       poNumber,
@@ -264,7 +295,7 @@ function AdminPOQueuePage() {
       siteAddress,
       deliveryContact,
       documentMethod,
-      documentUrl,
+      documentUrl: finalDocumentUrl,
     });
   };
 
@@ -1018,9 +1049,9 @@ function AdminPOQueuePage() {
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setCreatePOOpen(false)}>Cancel</Button>
-                <Button type="submit" disabled={createPOMutation.isPending || !selectedClientId}>
-                  {createPOMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-                  Create & Approve PO
+                <Button type="submit" disabled={createPOMutation.isPending || isUploading || !selectedClientId}>
+                  {(createPOMutation.isPending || isUploading) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+                  {isUploading ? "Uploading PO..." : "Create & Approve PO"}
                 </Button>
               </DialogFooter>
             </form>

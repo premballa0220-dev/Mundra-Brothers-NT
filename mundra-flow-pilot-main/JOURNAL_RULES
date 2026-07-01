@@ -1,0 +1,286 @@
+JOURNAL RULES DOCUMENT
+Mundra Brothers Non-Trade Management Software
+Audit Trail — Journal Module: Business Rules, Transaction Classification and Display Logic
+Client: Mundra Brothers
+Document status: Working Draft
+Version: 1.0
+Date: 30 June 2026
+Language: English
+
+Document purpose: Define the business rules governing what constitutes a journal entry, how each transaction type is classified, what data is captured, how entries are displayed and filtered, and what actions are permitted from the journal view.
+
+ 
+Document Control
+Field           Details
+Product owner   Mundra Brothers management
+Primary users   Mundra Brothers admin and accounts team (admin-only view)
+Current status  Implemented — Phase 1
+Next review     When UTCL-to-Mundra refund flow is fully operational
+
+
+Contents
+  1. Purpose and Scope
+  2. Journal Overview
+  3. Transaction Types
+  4. Entry Classification Rules
+  5. Data Captured Per Entry Type
+  6. Display and UI Rules
+  7. Filtering Rules
+  8. Actions Permitted from the Journal
+  9. Access Control
+  10. Future Scope
+
+
+ 
+1. Purpose and Scope
+
+The Journal is the central chronological record of every significant financial and operational transaction that occurs in the Mundra Brothers platform. It acts as the system's single source of truth for the lifecycle of money and goods flowing between all four parties:
+
+  Party A — Mundra Brothers
+  Party B — UltraTech Cement Limited (UTCL)
+  Party C — Client Organizations (cement buyers)
+
+The journal does NOT replace the ledger. The ledger will track running balances per client. The journal tracks individual discrete events that move money or goods, providing a full audit trail without balance calculations.
+
+Scope:
+  In scope:  Purchase Order creation, Dispatch approval, Client-to-UTCL payments, Mundra-to-UTCL payments.
+  Out of scope: Internal audit logs (row-level system changes), password changes, user management events. These belong to the separate System Audit Log.
+
+
+ 
+2. Journal Overview
+
+The journal is a unified, immutable, append-only feed of events. Key principles:
+
+  (a) Entries are NEVER deleted from the journal view, even if the underlying record is deleted. If a payment is deleted, the entry remains but should be marked as voided (future scope).
+  (b) All entries are sorted chronologically in descending order (most recent first) by default.
+  (c) Entries are grouped by date for readability.
+  (d) The journal is filterable by transaction type and by client name.
+  (e) The journal is visible to Mundra admin users only. Clients do not have access to the journal.
+  (f) Each entry is read-only from the journal. Editing is performed on the source page (e.g., Payments, Dispatch Queue).
+
+
+ 
+3. Transaction Types
+
+The journal recognises exactly four transaction types. Each corresponds to a financial or operational event involving the movement of money or goods.
+
+  Type 1 — MUNDRA_TO_UTCL
+  Trigger:    A Purchase Order (PO) is created by Mundra Brothers on behalf of a client.
+  Direction:  Mundra Brothers commits funds / credit to UTCL on behalf of a client.
+  Meaning:    Mundra Brothers has placed an order with UTCL for a specific quantity of cement for a specific client at a locked rate.
+
+  Type 2 — UTCL_TO_CLIENT
+  Trigger:    A dispatch request is approved by a Mundra admin.
+  Direction:  UTCL delivers cement to the client's site.
+  Meaning:    Goods have physically (or are expected to) move from UTCL to the client. This is the primary eligibility-gated event.
+
+  Type 3 — CLIENT_TO_UTCL
+  Trigger:    A payment is recorded by Mundra admin with the flag is_client_to_utcl = true.
+  Direction:  The client pays money to UTCL directly (not through Mundra Brothers).
+  Meaning:    The client is settling their outstanding UTCL invoice. This payment may be On Account (no reference) or Against Reference (specific PO or dispatch).
+
+  Type 4 — UTCL_TO_MUNDRA
+  Trigger:    A Mundra-to-UTCL payment record exists with is_utcl_payment = true and is_client_to_utcl = false.
+  Direction:  UTCL is expected to refund or settle back to Mundra Brothers (e.g., commission, excess payment).
+  Meaning:    A refund or settlement from UTCL back to Mundra Brothers is pending. This flow is NOT yet fully implemented. The journal shows these entries with a "Send Refund Letter" action.
+
+NOTE: The four types are mutually exclusive. Every journal entry belongs to exactly one type.
+
+
+ 
+4. Entry Classification Rules
+
+Rule 4.1 — PO Creation (MUNDRA_TO_UTCL)
+  - Every row in the purchase_orders table generates exactly one MUNDRA_TO_UTCL journal entry.
+  - The journal timestamp is the created_at value of the PO.
+  - All POs are included regardless of status (submitted, approved, rejected, cancelled, completed).
+  - The client name shown is the legal_name of the organization associated with the PO.
+  - The PO value shown is total_value (quantity × locked rate at time of PO creation).
+
+Rule 4.2 — Dispatch Approval (UTCL_TO_CLIENT)
+  - Only dispatch_requests with status = 'approved' generate a UTCL_TO_CLIENT journal entry.
+  - Dispatches with any other status (submitted, blocked, rejected) do NOT appear in the journal.
+  - The journal timestamp is updated_at (which reflects the time of approval action).
+  - If approved_at is added to the dispatch_requests table in the future, that should be used instead.
+  - The quantity shown is in metric tonnes (MT).
+
+Rule 4.3 — Client-to-UTCL Payments (CLIENT_TO_UTCL)
+  - Every payment row where is_client_to_utcl = true generates a CLIENT_TO_UTCL journal entry.
+  - The journal timestamp is payment_date (the date the payment was made, as entered by admin).
+  - A payment may have a PO reference (purchase_order_id) or a dispatch reference (via utcl_payment_id on dispatch_requests) or neither (On Account).
+  - All three sub-types (On Account / Against PO / Against Dispatch) appear as CLIENT_TO_UTCL in the journal.
+  - The reference shown in the journal is the PO number if available, or a dispatch count badge.
+
+Rule 4.4 — UTCL-to-Mundra Refund Entries (UTCL_TO_MUNDRA)
+  - Every payment row where is_utcl_payment = true AND is_client_to_utcl = false generates a UTCL_TO_MUNDRA journal entry.
+  - The journal timestamp is payment_date.
+  - These entries are currently informational only. The full refund processing workflow is not yet implemented.
+  - A "Send Refund Letter" button is provided to navigate to the Refund Letters page.
+
+Rule 4.5 — Deleted Records
+  - If a payment or PO is deleted from the system, the journal entry currently disappears as it is derived live from the database.
+  - Future scope: deleted entries should remain in the journal marked as VOIDED with the original data preserved in audit_logs.
+
+
+ 
+5. Data Captured Per Entry Type
+
+Each journal entry captures the following fields. Fields marked * are mandatory.
+
+  Common to all entries:
+    id*           — unique entry identifier (prefixed: po_, dr_, pay_ctu_, pay_mtu_)
+    type*         — one of the four transaction types
+    timestamp*    — the effective date/time of the event
+    title*        — human-readable label for the entry
+    client_name   — legal name of the associated client organization (if any)
+
+  MUNDRA_TO_UTCL specific:
+    po_number*    — the PO reference number
+    total_value*  — total monetary value of the PO in INR
+    status*       — current PO status (submitted / approved / completed / cancelled)
+
+  UTCL_TO_CLIENT specific:
+    dispatch_id*  — internal dispatch request UUID
+    po_number     — parent PO number
+    quantity*     — quantity dispatched in MT
+    site_address* — delivery site address
+
+  CLIENT_TO_UTCL specific:
+    amount*           — payment amount in INR
+    payment_mode*     — RTGS / NEFT / IMPS / Other
+    reference_number* — bank UTR or transaction reference
+    po_number         — associated PO number (if against reference)
+    payment_id*       — internal payment UUID
+    purchase_order_id — associated PO ID (if against reference)
+
+  UTCL_TO_MUNDRA specific:
+    amount*           — payment/refund amount in INR
+    payment_mode*     — RTGS / NEFT / IMPS / Other
+    reference_number* — bank UTR or transaction reference
+    po_number         — associated PO number (if any)
+    payment_id*       — internal payment UUID
+
+
+ 
+6. Display and UI Rules
+
+Rule 6.1 — Timeline Layout
+  The journal uses a vertical timeline / feed layout. Each entry is a card connected by a vertical line. This is intentional for readability and must not be changed to a table without a product decision.
+
+Rule 6.2 — Color Coding
+  Each transaction type has a distinct color for its timeline dot, badge and card accent:
+    MUNDRA_TO_UTCL  → Blue    (#3b82f6)
+    UTCL_TO_CLIENT  → Emerald (#10b981)
+    CLIENT_TO_UTCL  → Violet  (#8b5cf6)
+    UTCL_TO_MUNDRA  → Amber   (#f59e0b)
+
+Rule 6.3 — Date Grouping
+  Entries are grouped by calendar date with a horizontal divider and date label between each group. The date label format is: [Weekday], [DD] [Month] [YYYY] (e.g., Monday, 30 June 2026).
+
+Rule 6.4 — Timestamp Display
+  Each entry shows both the date (DD Mon YYYY) and time (HH:MM AM/PM) in the top-right corner.
+
+Rule 6.5 — Currency Format
+  All monetary values are formatted in Indian Rupees with the ₹ symbol, using Indian number formatting (lakhs/crores grouping), with no decimal places (e.g., ₹12,50,000).
+
+Rule 6.6 — Quantity Format
+  All quantities are displayed in metric tonnes (MT) with up to 3 decimal places if needed.
+
+Rule 6.7 — Empty State
+  If no entries match the selected filter combination, a neutral empty state card is shown with the message: "No journal entries found for the selected filter."
+
+
+ 
+7. Filtering Rules
+
+Rule 7.1 — Transaction Type Filter
+  The journal provides five filter options via tabs:
+    All Events      — shows all four transaction types combined
+    Mundra → UTCL  — shows only MUNDRA_TO_UTCL entries
+    UTCL → Client  — shows only UTCL_TO_CLIENT entries
+    Client → UTCL  — shows only CLIENT_TO_UTCL entries
+    UTCL → Mundra  — shows only UTCL_TO_MUNDRA entries
+
+Rule 7.2 — Client Filter
+  A dropdown allows filtering by a specific client organization. The dropdown is populated dynamically from the client_name values present in the current journal entries. The default value is "All Clients".
+
+Rule 7.3 — Combined Filtering
+  Both filters (type + client) are applied simultaneously. For example, selecting "Client → UTCL" + "ABC Infra Pvt Ltd" will show only CLIENT_TO_UTCL payments made by ABC Infra.
+
+Rule 7.4 — No Date Range Filter (Phase 1)
+  A date range filter is not included in Phase 1. All historical records are always visible. A date range filter may be added in Phase 2 if the volume of entries makes scrolling impractical.
+
+Rule 7.5 — Filter State is Not Persisted
+  Filter selections are lost on page navigation. No filter state is saved to the URL or local storage in Phase 1.
+
+
+ 
+8. Actions Permitted from the Journal
+
+Rule 8.1 — Read-Only Entries
+  Journal entries are read-only. No inline editing is available from the journal view.
+
+Rule 8.2 — Send Refund Letter (UTCL_TO_MUNDRA only)
+  A "Send Refund Letter" button is displayed on UTCL_TO_MUNDRA entries. Clicking this button navigates the user to the Refund Letters page (/admin/refund-letters) where a refund letter can be prepared and sent.
+  This is the ONLY action available in Phase 1 journal entries.
+
+Rule 8.3 — Navigation to Source
+  Future scope: Each entry may include a "View Details" link that navigates to the source record (e.g., the PO detail page, the dispatch record, or the payment record). This is not implemented in Phase 1.
+
+
+ 
+9. Access Control
+
+Rule 9.1 — Admin Only
+  The journal page is accessible exclusively to users with the Mundra admin role (orgType = 'mundra'). This is enforced at both the route level and the server function level via the ensureMundraOrg() guard.
+
+Rule 9.2 — Client Users Have No Access
+  Client users cannot view the journal. There is no client-facing equivalent of this page.
+
+Rule 9.3 — No Role Differentiation Within Admin
+  In Phase 1, all Mundra admin users (super admin, accounts, operations) have the same read access to the journal. No write actions exist in the journal itself.
+
+
+ 
+10. Future Scope
+
+  (a) VOIDED entries: Deleted payments/POs should leave a voided ghost entry in the journal sourced from audit_logs, so the record is never silently lost.
+  (b) Date range filter: Restrict the journal to a selected date range for performance and usability.
+  (c) Entry permalinks: Each journal entry should have a stable URL so it can be bookmarked or shared internally.
+  (d) approved_at column: Add an approved_at timestamp to dispatch_requests so the UTCL_TO_CLIENT event reflects the exact approval time rather than updated_at.
+  (e) UTCL-to-Mundra full workflow: When the refund/settlement process is defined, entries of this type should be linked to actual refund letter records rather than simply navigating to the page.
+  (f) Pagination or virtual scrolling: When entry volume grows large (>500 entries), pagination or infinite scroll should be added.
+  (g) Export: Allow admin users to export the journal as a CSV or PDF for a selected date range and/or client.
+  (h) Journal entry for payment deletion: When a payment is deleted, a PAYMENT_VOIDED entry should be appended to the journal sourced from audit_logs.
+
+
+ 
+11. Ledger Management Rules & Standards
+
+The Ledger serves as the master book of final entry where all journal transactions are classified, summarized, and maintained account-wise. The ledger is the primary source for balance confirmation, statements, and audit verification.
+
+Rule 11.1 — Double-Entry Accounting Principle
+  - Every transaction must affect a minimum of two accounts (one Debited, one Credited).
+  - Total Debits must always equal Total Credits.
+  - The ledger balance is calculated dynamically: Balance = Total Debit - Total Credit (for assets/expenses) or Balance = Total Credit - Total Debit (for liabilities/equity/revenue).
+
+Rule 11.2 — Ledger Account Structure & Format
+  Based on business requirements, the ledger display format will retain the following simplified columns:
+    1. Document Date      — the date the transaction occurred (e.g., dispatch date or payment date).
+    2. Reference Number   — the unique document identifier (e.g., PO number, Dispatch ID, UTR number).
+    3. Quantity           — applicable for goods movement (e.g., MT of cement).
+    4. Rate               — applicable for goods pricing.
+    5. Debit Amount       — monetary value debited to the account.
+    6. Credit Amount      — monetary value credited to the account.
+
+Rule 11.3 — Ledger Posting Rules
+  - Every valid journal entry must be posted to its respective ledger account.
+  - Ledger entries cannot be directly edited after posting. Corrections must be made through adjustment or reversal journal entries.
+  - Posting must preserve the original journal reference number to maintain a complete audit trail.
+
+Rule 11.4 — Data Integrity & Audit Compliance Rules
+  - No modification or deletion of historical posted transactions.
+  - All ledger postings must be backed by a valid source journal transaction.
+  - Audit records for balance adjustments, reversals, or closing entries must never be deleted.
+  - The ledger is the single source of truth for all accounting records. Every financial statement and management report must derive its figures from the ledger balances.

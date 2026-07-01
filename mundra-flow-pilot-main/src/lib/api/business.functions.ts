@@ -1141,7 +1141,7 @@ export const createPurchaseOrderAdmin = createServerFn({ method: "POST" })
       siteAddress: z.string().min(1),
       deliveryContact: z.string().optional(),
       documentMethod: z.enum(["upload", "generate"]),
-      attachmentUrl: z.string().optional(),
+      documentUrl: z.string().optional(),
       paymentTermsDays: z.number().nonnegative().optional(),
       poNumber: z.string().min(1),
     }),
@@ -1172,7 +1172,7 @@ export const createPurchaseOrderAdmin = createServerFn({ method: "POST" })
       site_address: data.siteAddress,
       delivery_contact: data.deliveryContact || null,
       document_method: data.documentMethod,
-      document_url: data.attachmentUrl || null,
+      document_url: data.documentUrl || null,
       po_number: data.poNumber,
       approved_by: context.userId,
       created_by: context.userId,
@@ -2014,13 +2014,13 @@ export const getJournalEntries = createServerFn({ method: "GET" })
     // Fetch all POs (Mundra -> UTCL events)
     const { data: pos } = await supabase
       .from("purchase_orders")
-      .select("id, po_number, total_value, created_at, status, organization_id")
+      .select("id, po_number, total_value, locked_rate, original_quantity, created_at, status, organization_id")
       .order("created_at", { ascending: false });
 
     // Fetch all dispatches with their PO number (UTCL -> Client events)
     const { data: dispatches } = await supabase
       .from("dispatch_requests")
-      .select("id, quantity, status, created_at, updated_at, site_address, organization_id, purchase_order_id, purchase_orders(po_number)")
+      .select("id, quantity, status, created_at, updated_at, site_address, organization_id, purchase_order_id, purchase_orders(po_number, locked_rate)")
       .order("created_at", { ascending: false });
 
     // Fetch all payments with their PO number
@@ -2042,6 +2042,8 @@ export const getJournalEntries = createServerFn({ method: "GET" })
         meta: {
           po_number: po.po_number,
           total_value: po.total_value,
+          locked_rate: po.locked_rate,
+          quantity: po.original_quantity,
           status: po.status,
           client_name: (org as any)?.legal_name || null,
         },
@@ -2060,6 +2062,7 @@ export const getJournalEntries = createServerFn({ method: "GET" })
           meta: {
             dispatch_id: dr.id,
             po_number: dr.purchase_orders?.po_number || null,
+            locked_rate: dr.purchase_orders?.locked_rate || null,
             quantity: dr.quantity,
             site_address: dr.site_address,
             client_name: (org as any)?.legal_name || null,

@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { FileText, Plus, Loader2, IndianRupee, AlertCircle, UploadCloud, FileIcon, X } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/client/purchase-orders")({
   ssr: false,
@@ -35,6 +36,7 @@ function ClientPurchaseOrdersPage() {
   const [documentMethod, setDocumentMethod] = useState<"upload" | "generate">("upload");
   const [documentUrl, setDocumentUrl] = useState("");
   const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const { data: deliveryLocations } = useQuery({
     queryKey: ["client-delivery-locations"],
@@ -106,12 +108,44 @@ function ClientPurchaseOrdersPage() {
     setDocumentFile(null);
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (quantity <= 0) {
       toast.error("Quantity must be greater than 0");
       return;
     }
+
+    let finalDocumentUrl = documentUrl;
+
+    if (documentMethod === "upload" && documentFile) {
+      setIsUploading(true);
+      try {
+        const fileExt = documentFile.name.split('.').pop();
+        const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+        const filePath = `${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('po_container')
+          .upload(filePath, documentFile);
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('po_container')
+          .getPublicUrl(filePath);
+
+        finalDocumentUrl = publicUrl;
+      } catch (err: any) {
+        console.error("Upload error:", err);
+        toast.error(`Failed to upload document: ${err.message}`);
+        setIsUploading(false);
+        return;
+      }
+      setIsUploading(false);
+    }
+
     createMutation.mutate({
       poNumber,
       productId,
@@ -121,7 +155,7 @@ function ClientPurchaseOrdersPage() {
       siteAddress,
       deliveryContact,
       documentMethod,
-      documentUrl: documentUrl || "https://example.com/demo-po.pdf",
+      documentUrl: finalDocumentUrl || "https://example.com/demo-po.pdf",
     });
   }
 
@@ -306,8 +340,9 @@ function ClientPurchaseOrdersPage() {
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button type="submit" disabled={createMutation.isPending || (!lockedRate && quantity > 0)}>
-                    {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Submit PO
+                  <Button type="submit" disabled={createMutation.isPending || isUploading || (!lockedRate && quantity > 0)}>
+                    {(createMutation.isPending || isUploading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} 
+                    {isUploading ? "Uploading PO..." : "Submit PO"}
                   </Button>
                 </DialogFooter>
               </form>
