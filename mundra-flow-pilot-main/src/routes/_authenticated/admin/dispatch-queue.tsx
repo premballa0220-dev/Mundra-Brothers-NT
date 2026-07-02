@@ -207,6 +207,7 @@ function AdminDispatchQueuePage() {
     mutationFn: (data: { id: string; status: string }) => updateDispatchRequestStatus({ data }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["admin-dispatch-queue"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-journal-entries"] });
       toast.success(`Dispatch request ${variables.status} successfully.`);
       setConfirmAction(null);
       setConfirmDrId(null);
@@ -360,7 +361,7 @@ function AdminDispatchQueuePage() {
                       <SelectContent>
                         {clientApprovedPOs.map((p: any) => (
                           <SelectItem key={p.id} value={p.id}>
-                            {p.po_number} — {p.product?.name ?? "Product"} ({Number(p.original_quantity).toFixed(0)} MT)
+                            {p.po_number} — {p.product?.name ?? "Product"} ({Number(p.original_quantity).toFixed(0)} MT @ {formatCurrency(Number(p.locked_rate))}/MT)
                           </SelectItem>
                         ))}
                         {clientApprovedPOs.length === 0 && (
@@ -503,8 +504,10 @@ function AdminDispatchQueuePage() {
                     <TableHead>Request ID</TableHead>
                     <TableHead>Client</TableHead>
                     <TableHead>PO Ref</TableHead>
+                    <TableHead>Rate</TableHead>
                     <TableHead>Requested</TableHead>
                     <TableHead>Qty</TableHead>
+                    <TableHead>Amount</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -523,10 +526,16 @@ function AdminDispatchQueuePage() {
                           {dr.purchase_order?.po_number ?? "—"}
                         </TableCell>
                         <TableCell>
+                          {formatCurrency(Number(dr.purchase_order?.locked_rate || 0))}
+                        </TableCell>
+                        <TableCell>
                           {new Date(dr.requested_date).toLocaleDateString()}
                         </TableCell>
                         <TableCell>
                           {Number(dr.quantity).toFixed(2)} MT
+                        </TableCell>
+                        <TableCell>
+                          {formatCurrency(Number(dr.quantity) * Number(dr.purchase_order?.locked_rate || 0))}
                         </TableCell>
                         <TableCell>
                           <Badge

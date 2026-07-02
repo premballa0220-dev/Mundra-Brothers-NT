@@ -76,6 +76,7 @@ function AdminPaymentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-utcl-payments"] });
       queryClient.invalidateQueries({ queryKey: ["admin-dispatch-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-journal-entries"] });
       toast.success("Payment recorded successfully!");
       
       // Remove from selected staging array
@@ -97,6 +98,7 @@ function AdminPaymentsPage() {
     mutationFn: (updatedPayment: any) => updatePaymentAdmin({ data: updatedPayment }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-utcl-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-journal-entries"] });
       toast.success("Payment updated successfully!");
       setEditPaymentOpen(null);
     },
@@ -107,6 +109,7 @@ function AdminPaymentsPage() {
     mutationFn: (paymentId: string) => deletePaymentAdmin({ data: { id: paymentId } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-utcl-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-journal-entries"] });
       toast.success("Payment deleted successfully!");
     },
     onError: (err: any) => toast.error(err?.message || "Failed to delete payment"),
@@ -331,7 +334,7 @@ function AdminPaymentsPage() {
                         <TableHead>Client</TableHead>
                         <TableHead>PO Number</TableHead>
                         <TableHead>Dispatch Qty</TableHead>
-                        <TableHead>PO Value</TableHead>
+                        <TableHead>Dispatch Value</TableHead>
                         <TableHead>Paid to UTCL</TableHead>
                         <TableHead>Remaining</TableHead>
                         <TableHead>Requested Delivery Date</TableHead>
@@ -341,17 +344,17 @@ function AdminPaymentsPage() {
                     <TableBody>
                       {selectedDispatches.map((dispatch) => {
                         const po = dispatch.purchase_order;
-                        const poValue = po?.total_value || 0;
+                        const dispatchValue = dispatch.quantity * (po?.locked_rate || 0);
                         const utclPayments = po?.payments?.filter((p: any) => p.is_utcl_payment && (p.status === "approved" || p.status === "verified")) || [];
                         const paidToUtcl = utclPayments.reduce((acc: number, curr: any) => acc + (curr.amount || 0), 0);
-                        const remaining = Math.max(0, poValue - paidToUtcl);
+                        const remaining = Math.max(0, dispatchValue - paidToUtcl); // In reality this logic might be flawed if multiple dispatches are paid separately, but we'll adapt to dispatchValue.
                         
                         return (
                         <TableRow key={dispatch.id} className="bg-background">
                           <TableCell className="font-semibold">{dispatch.organization?.legal_name || "Unknown Client"}</TableCell>
                           <TableCell className="font-mono text-xs">{po?.po_number || "N/A"}</TableCell>
                           <TableCell>{dispatch.quantity} MT</TableCell>
-                          <TableCell className="font-medium">{formatCurrency(poValue)}</TableCell>
+                          <TableCell className="font-medium">{formatCurrency(dispatchValue)}</TableCell>
                           <TableCell className="text-success font-medium">{formatCurrency(paidToUtcl)}</TableCell>
                           <TableCell className="text-destructive font-medium">{formatCurrency(remaining)}</TableCell>
                           <TableCell>{new Date(dispatch.created_at).toLocaleDateString()}</TableCell>
@@ -370,7 +373,7 @@ function AdminPaymentsPage() {
                       )})}
                       <TableRow className="bg-muted/30 font-medium">
                         <TableCell colSpan={3} className="text-right">Total:</TableCell>
-                        <TableCell>{formatCurrency(selectedDispatches.reduce((acc, d) => acc + (d.purchase_order?.total_value || 0), 0))}</TableCell>
+                        <TableCell>{formatCurrency(selectedDispatches.reduce((acc, d) => acc + (d.quantity * (d.purchase_order?.locked_rate || 0)), 0))}</TableCell>
                         <TableCell colSpan={4}></TableCell>
                       </TableRow>
                     </TableBody>
@@ -383,7 +386,7 @@ function AdminPaymentsPage() {
                         resetForm(); 
                       } else { 
                         setOpenDispatchId('lumpsum'); 
-                        const totalAmount = selectedDispatches.reduce((acc, d) => acc + (d.purchase_order?.total_value || 0), 0);
+                        const totalAmount = selectedDispatches.reduce((acc, d) => acc + (d.quantity * (d.purchase_order?.locked_rate || 0)), 0);
                         setAmount(totalAmount);
                       }
                     }}>

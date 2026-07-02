@@ -89,8 +89,15 @@ export const getDashboardStats = createServerFn({ method: "GET" })
       const { data: profiles } = await supabase.from("client_commercial_profiles").select("credit_limit");
       const sanctionedCredit = (profiles || []).reduce((sum: number, profile: any) => sum + Number(profile.credit_limit || 0), 0);
 
+      const { data: dispatches } = await supabase.from("dispatch_requests").select("quantity, purchase_orders(locked_rate)").in("status", ["approved", "auto_approved", "pending_mundra", "submitted"]);
+      const totalDebits = (dispatches || []).reduce((sum: number, dr: any) => sum + Number(dr.quantity || 0) * Number(dr.purchase_orders?.locked_rate || 0), 0);
+      
+      const { data: payments } = await supabase.from("payments").select("amount").eq("is_client_to_utcl", true);
+      const totalCredits = (payments || []).reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+      
+      const outstanding = Math.max(0, totalDebits - totalCredits);
+
       const { data: invoices } = await supabase.from("invoices").select("amount, due_date, organization_id").neq("status", "paid");
-      const outstanding = (invoices || []).reduce((sum: number, invoice: any) => sum + Number(invoice.amount || 0), 0);
       const overdueInvoices = (invoices || []).filter((invoice: any) => invoice.due_date && invoice.due_date < todayStr);
       const overdue = overdueInvoices.reduce((sum: number, invoice: any) => sum + Number(invoice.amount || 0), 0);
       const overdueClients = new Set(overdueInvoices.map((inv: any) => inv.organization_id)).size;
@@ -136,7 +143,13 @@ export const getDashboardStats = createServerFn({ method: "GET" })
       .eq("organization_id", organizationId)
       .neq("status", "paid");
 
-    const outstanding = (invoices || []).reduce((sum: number, invoice: any) => sum + Number(invoice.amount || 0), 0);
+    const { data: dispatches } = await supabase.from("dispatch_requests").select("quantity, purchase_orders(locked_rate)").eq("organization_id", organizationId).in("status", ["approved", "auto_approved", "pending_mundra", "submitted"]);
+    const totalDebits = (dispatches || []).reduce((sum: number, dr: any) => sum + Number(dr.quantity || 0) * Number(dr.purchase_orders?.locked_rate || 0), 0);
+    
+    const { data: payments } = await supabase.from("payments").select("amount").eq("organization_id", organizationId).eq("is_client_to_utcl", true);
+    const totalCredits = (payments || []).reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+    
+    const outstanding = Math.max(0, totalDebits - totalCredits);
     const overdueInvoices = (invoices || []).filter((invoice: any) => invoice.due_date && invoice.due_date < todayStr);
     const overdue = overdueInvoices.reduce((sum: number, invoice: any) => sum + Number(invoice.amount || 0), 0);
     const oldestOverdueDays = overdueInvoices.length
@@ -823,6 +836,16 @@ async function runDispatchEligibilityCheck(dispatchRequestId: string, userId: st
     // If it's already in `allDispatches`, then `dispatchedQty` includes it. So `undispatchedValue` is reduced by `currentVal`.
     // Thus `totalExposure += currentVal + undispatchedValue` is perfectly correct!
   }
+
+  // Deduct Client payments from exposure
+  const { data: payments } = await supabase
+    .from("payments")
+    .select("amount")
+    .eq("organization_id", orgId)
+    .eq("is_client_to_utcl", true);
+  
+  const totalPayments = (payments || []).reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+  totalExposure = Math.max(0, totalExposure - totalPayments);
 
   const todayStr = new Date().toISOString().split("T")[0];
   const { data: overdueConfirmations } = await supabase
@@ -2209,6 +2232,9 @@ export const deletePurchaseOrdersAdmin = createServerFn({ method: "POST" })
       .in("id", data.ids);
 
     if (error) {
+      if (error.code === "23503") {
+        throw new Error("Cannot delete Purchase Order(s) that have associated dispatch requests or payments. Please 'Reject' them instead.");
+      }
       throw new Error("Failed to delete Purchase Orders: " + error.message);
     }
 

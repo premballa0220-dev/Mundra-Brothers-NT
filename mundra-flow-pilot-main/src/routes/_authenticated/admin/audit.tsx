@@ -29,28 +29,28 @@ const TYPE_CONFIG: Record<string, {
   badgeClass: string;
 }> = {
   mundra_to_utcl: {
-    label: "Mundra → UTCL",
+    label: "PO Created",
     icon: FileText,
     dotColor: "bg-blue-500",
     badgeVariant: "outline",
     badgeClass: "border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-950/30",
   },
   utcl_to_client: {
-    label: "UTCL → Client",
+    label: "Dispatch",
     icon: Truck,
     dotColor: "bg-emerald-500",
     badgeVariant: "outline",
     badgeClass: "border-emerald-500 text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30",
   },
   client_to_utcl: {
-    label: "Client → UTCL",
+    label: "Payment (Client)",
     icon: CreditCard,
     dotColor: "bg-violet-500",
     badgeVariant: "outline",
     badgeClass: "border-violet-500 text-violet-600 bg-violet-50 dark:bg-violet-950/30",
   },
   utcl_to_mundra: {
-    label: "UTCL → Mundra",
+    label: "Refund Due",
     icon: RotateCcw,
     dotColor: "bg-amber-500",
     badgeVariant: "outline",
@@ -72,14 +72,6 @@ function formatDate(ts: string) {
     day: "2-digit",
     month: "short",
     year: "numeric",
-  });
-}
-
-function formatTime(ts: string) {
-  return new Date(ts).toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
   });
 }
 
@@ -166,7 +158,6 @@ function JournalEntryCard({ entry, onSendRefund }: { entry: any; onSendRefund: (
             <div className="flex flex-col items-end gap-2 flex-shrink-0 min-w-[120px]">
               <div className="text-right">
                 <div className="text-xs font-semibold text-foreground">{formatDate(entry.timestamp)}</div>
-                <div className="text-xs text-muted-foreground">{formatTime(entry.timestamp)}</div>
               </div>
               {entry.type === "utcl_to_mundra" && (
                 <Button

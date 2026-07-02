@@ -103,6 +103,23 @@ function AdminPOQueuePage() {
   const [selectedPOIds, setSelectedPOIds] = useState<Set<string>>(new Set());
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
 
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // If clicking inside a dialog, the table container, or the bulk action bar, don't clear selection.
+      if (
+        target.closest(".table-container") ||
+        target.closest(".bulk-action-bar") ||
+        target.closest("[role='dialog']")
+      ) {
+        return;
+      }
+      setSelectedPOIds(new Set());
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   // Admin PO Creation Form States
   const [createPOOpen, setCreatePOOpen] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState("");
@@ -440,7 +457,7 @@ function AdminPOQueuePage() {
         </div>
 
         {selectedPOIds.size > 0 && (
-          <div className="bg-muted p-3 rounded-md flex items-center justify-between border">
+          <div className="bg-muted p-3 rounded-md flex items-center justify-between border bulk-action-bar">
             <span className="text-sm font-medium">{selectedPOIds.size} Purchase Order(s) selected</span>
             <Button variant="destructive" size="sm" onClick={() => setBulkDeleteConfirmOpen(true)}>
               <Trash2 className="h-4 w-4 mr-2" /> Delete Selected
@@ -454,7 +471,7 @@ function AdminPOQueuePage() {
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : (
-          <Card>
+          <Card className="table-container">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-semibold">
                 Purchase Orders ({filteredPOs.length})

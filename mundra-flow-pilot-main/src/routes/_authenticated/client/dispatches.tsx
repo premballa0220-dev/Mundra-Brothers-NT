@@ -193,7 +193,7 @@ function ClientDispatchesPage() {
                       <SelectContent>
                         {approvedPOs.map((p: any) => (
                           <SelectItem key={p.id} value={p.id}>
-                            {p.po_number} — {p.products?.name} ({Number(p.original_quantity).toFixed(0)} MT)
+                            {p.po_number} — {p.product?.name ?? "Product"} ({Number(p.original_quantity).toFixed(0)} MT @ {formatCurrency(Number(p.locked_rate))}/MT)
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -353,7 +353,9 @@ function ClientDispatchesPage() {
                       <TableHead>Request ID</TableHead>
                       <TableHead>PO Reference</TableHead>
                       <TableHead>Product</TableHead>
+                      <TableHead>Rate</TableHead>
                       <TableHead>Quantity</TableHead>
+                      <TableHead>Amount</TableHead>
                       <TableHead>Requested Delivery Date</TableHead>
                       <TableHead>Site Address</TableHead>
                       <TableHead>Status</TableHead>
@@ -367,13 +369,19 @@ function ClientDispatchesPage() {
                             #{dr.id.slice(0, 8)}
                           </TableCell>
                           <TableCell className="font-semibold">
-                            {dr.purchase_orders?.po_number ?? "—"}
+                            {dr.purchase_order?.po_number ?? "—"}
                           </TableCell>
                           <TableCell>
-                            {dr.purchase_orders?.products?.name ?? "—"}
+                            {dr.purchase_order?.product?.name ?? "—"}
+                          </TableCell>
+                          <TableCell>
+                            {formatCurrency(Number(dr.purchase_order?.locked_rate || 0))}
                           </TableCell>
                           <TableCell>
                             {Number(dr.quantity).toFixed(2)} MT
+                          </TableCell>
+                          <TableCell>
+                            {formatCurrency(Number(dr.quantity) * Number(dr.purchase_order?.locked_rate || dr.purchase_orders?.locked_rate || 0))}
                           </TableCell>
                           <TableCell>
                             {new Date(dr.requested_date).toLocaleDateString()}
