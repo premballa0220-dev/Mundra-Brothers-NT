@@ -3,284 +3,369 @@ Mundra Brothers Non-Trade Management Software
 Audit Trail — Journal Module: Business Rules, Transaction Classification and Display Logic
 Client: Mundra Brothers
 Document status: Working Draft
-Version: 1.0
-Date: 30 June 2026
+Version: 1.1
+Date: 03 July 2026
 Language: English
-
-Document purpose: Define the business rules governing what constitutes a journal entry, how each transaction type is classified, what data is captured, how entries are displayed and filtered, and what actions are permitted from the journal view.
-
- 
+Document purpose: Define the business rules governing what constitutes a journal entry, how each transaction type is classified, what data is captured, how entries are displayed and filtered, and what actions are permitted from the journal view. This version adds business rules for Credit Note and Debit Note transactions.
 Document Control
-Field           Details
-Product owner   Mundra Brothers management
-Primary users   Mundra Brothers admin and accounts team (admin-only view)
-Current status  Implemented — Phase 1
-Next review     When UTCL-to-Mundra refund flow is fully operational
-
-
+Field | Details
+Product owner | Mundra Brothers management
+Primary users | Mundra Brothers admin and accounts team (admin-only view)
+Current status | Implemented — Phase 1
+Next review | When UTCL-to-Mundra refund flow is fully operational
 Contents
-  1. Purpose and Scope
-  2. Journal Overview
-  3. Transaction Types
-  4. Entry Classification Rules
-  5. Data Captured Per Entry Type
-  6. Display and UI Rules
-  7. Filtering Rules
-  8. Actions Permitted from the Journal
-  9. Access Control
-  10. Future Scope
+
+Purpose and Scope
+Journal Overview
+Transaction Types
+Entry Classification Rules
+Data Captured Per Entry Type
+Display and UI Rules
+Filtering Rules
+Actions Permitted from the Journal
+Access Control
+Future Scope
+Ledger Management Rules & Standards
+Credit Note and Debit Note Rules
 
 
- 
 1. Purpose and Scope
-
 The Journal is the central chronological record of every significant financial and operational transaction that occurs in the Mundra Brothers platform. It acts as the system's single source of truth for the lifecycle of money and goods flowing between all four parties:
-
-  Party A — Mundra Brothers
-  Party B — UltraTech Cement Limited (UTCL)
-  Party C — Client Organizations (cement buyers)
-
+Party A — Mundra Brothers
+Party B — UltraTech Cement Limited (UTCL)
+Party C — Client Organizations (cement buyers)
 The journal does NOT replace the ledger. The ledger will track running balances per client. The journal tracks individual discrete events that move money or goods, providing a full audit trail without balance calculations.
-
 Scope:
-  In scope:  Purchase Order creation, Dispatch approval, Client-to-UTCL payments, Mundra-to-UTCL payments.
-  Out of scope: Internal audit logs (row-level system changes), password changes, user management events. These belong to the separate System Audit Log.
+In scope: Purchase Order creation, Dispatch approval, Client-to-UTCL payments, Mundra-to-UTCL payments, Credit Note issuance, Debit Note issuance.
+Out of scope: Internal audit logs (row-level system changes), password changes, user management events. These belong to the separate System Audit Log.
 
-
- 
 2. Journal Overview
-
 The journal is a unified, immutable, append-only feed of events. Key principles:
+(a) Entries are NEVER deleted from the journal view, even if the underlying record is deleted. If a payment is deleted, the entry remains but should be marked as voided (future scope).
+(b) All entries are sorted chronologically in descending order (most recent first) by default.
+(c) Entries are grouped by date for readability.
+(d) The journal is filterable by transaction type and by client name.
+(e) The journal is visible to Mundra admin users only. Clients do not have access to the journal.
+(f) Each entry is read-only from the journal. Editing is performed on the source page (e.g., Payments, Dispatch Queue, Credit/Debit Notes).
 
-  (a) Entries are NEVER deleted from the journal view, even if the underlying record is deleted. If a payment is deleted, the entry remains but should be marked as voided (future scope).
-  (b) All entries are sorted chronologically in descending order (most recent first) by default.
-  (c) Entries are grouped by date for readability.
-  (d) The journal is filterable by transaction type and by client name.
-  (e) The journal is visible to Mundra admin users only. Clients do not have access to the journal.
-  (f) Each entry is read-only from the journal. Editing is performed on the source page (e.g., Payments, Dispatch Queue).
-
-
- 
 3. Transaction Types
+The journal recognises six transaction types. Each corresponds to a financial or operational event involving the movement of money or goods.
+Type 1 — MUNDRA_TO_UTCL
+Trigger: A Purchase Order (PO) is created by Mundra Brothers on behalf of a client.
+Direction: Mundra Brothers commits funds / credit to UTCL on behalf of a client.
+Meaning: Mundra Brothers has placed an order with UTCL for a specific quantity of cement for a specific client at a locked rate.
+Type 2 — UTCL_TO_CLIENT
+Trigger: A dispatch request is approved by a Mundra admin.
+Direction: UTCL delivers cement to the client's site.
+Meaning: Goods have physically (or are expected to) move from UTCL to the client. This is the primary eligibility-gated event.
+Type 3 — CLIENT_TO_UTCL
+Trigger: A payment is recorded by Mundra admin with the flag is_client_to_utcl = true.
+Direction: The client pays money to UTCL directly (not through Mundra Brothers).
+Meaning: The client is settling their outstanding UTCL invoice. This payment may be On Account (no reference) or Against Reference (specific PO or dispatch).
+Type 4 — UTCL_TO_MUNDRA
+Trigger: A Mundra-to-UTCL payment record exists with is_utcl_payment = true and is_client_to_utcl = false.
+Direction: UTCL is expected to refund or settle back to Mundra Brothers (e.g., commission, excess payment).
+Meaning: A refund or settlement from UTCL back to Mundra Brothers is pending. This flow is NOT yet fully implemented. The journal shows these entries with a "Send Refund Letter" action.
+Type 5 — CREDIT_NOTE
+Trigger: A Credit Note is issued by Mundra Brothers admin against a client or against UTCL (record created with document_type = 'credit_note').
+Direction: Reduces the amount owed by the issuer to the recipient (or reduces the amount the recipient owes the issuer, depending on issuing party), reflecting a downward adjustment — e.g., rate correction, shortage, quality claim, discount, or return of goods.
+Meaning: A prior transaction's value is being reduced. The journal shows the credit note as an adjustment entry cross-referenced to the original PO, dispatch, or payment it corrects.
+Type 6 — DEBIT_NOTE
+Trigger: A Debit Note is issued by Mundra Brothers admin against a client or against UTCL (record created with document_type = 'debit_note').
+Direction: Increases the amount owed by the recipient to the issuer, reflecting an upward adjustment — e.g., rate escalation, excess dispatch, interest/penalty, or under-billing correction.
+Meaning: A prior transaction's value is being increased. The journal shows the debit note as an adjustment entry cross-referenced to the original PO, dispatch, or payment it corrects.
+NOTE: The six types are mutually exclusive. Every journal entry belongs to exactly one type. Credit Note and Debit Note entries are adjustment events — they do not replace or edit the original entry they relate to; the original entry remains unchanged and the note appears as a separate, linked entry.
 
-The journal recognises exactly four transaction types. Each corresponds to a financial or operational event involving the movement of money or goods.
-
-  Type 1 — MUNDRA_TO_UTCL
-  Trigger:    A Purchase Order (PO) is created by Mundra Brothers on behalf of a client.
-  Direction:  Mundra Brothers commits funds / credit to UTCL on behalf of a client.
-  Meaning:    Mundra Brothers has placed an order with UTCL for a specific quantity of cement for a specific client at a locked rate.
-
-  Type 2 — UTCL_TO_CLIENT
-  Trigger:    A dispatch request is approved by a Mundra admin.
-  Direction:  UTCL delivers cement to the client's site.
-  Meaning:    Goods have physically (or are expected to) move from UTCL to the client. This is the primary eligibility-gated event.
-
-  Type 3 — CLIENT_TO_UTCL
-  Trigger:    A payment is recorded by Mundra admin with the flag is_client_to_utcl = true.
-  Direction:  The client pays money to UTCL directly (not through Mundra Brothers).
-  Meaning:    The client is settling their outstanding UTCL invoice. This payment may be On Account (no reference) or Against Reference (specific PO or dispatch).
-
-  Type 4 — UTCL_TO_MUNDRA
-  Trigger:    A Mundra-to-UTCL payment record exists with is_utcl_payment = true and is_client_to_utcl = false.
-  Direction:  UTCL is expected to refund or settle back to Mundra Brothers (e.g., commission, excess payment).
-  Meaning:    A refund or settlement from UTCL back to Mundra Brothers is pending. This flow is NOT yet fully implemented. The journal shows these entries with a "Send Refund Letter" action.
-
-NOTE: The four types are mutually exclusive. Every journal entry belongs to exactly one type.
-
-
- 
 4. Entry Classification Rules
-
 Rule 4.1 — PO Creation (MUNDRA_TO_UTCL)
-  - Every row in the purchase_orders table generates exactly one MUNDRA_TO_UTCL journal entry.
-  - The journal timestamp is the created_at value of the PO.
-  - All POs are included regardless of status (submitted, approved, rejected, cancelled, completed).
-  - The client name shown is the legal_name of the organization associated with the PO.
-  - The PO value shown is total_value (quantity × locked rate at time of PO creation).
+
+Every row in the purchase_orders table generates exactly one MUNDRA_TO_UTCL journal entry.
+The journal timestamp is the created_at value of the PO.
+All POs are included regardless of status (submitted, approved, rejected, cancelled, completed).
+The client name shown is the legal_name of the organization associated with the PO.
+The PO value shown is total_value (quantity × locked rate at time of PO creation).
 
 Rule 4.2 — Dispatch Approval (UTCL_TO_CLIENT)
-  - Only dispatch_requests with status = 'approved' generate a UTCL_TO_CLIENT journal entry.
-  - Dispatches with any other status (submitted, blocked, rejected) do NOT appear in the journal.
-  - The journal timestamp is updated_at (which reflects the time of approval action).
-  - If approved_at is added to the dispatch_requests table in the future, that should be used instead.
-  - The quantity shown is in metric tonnes (MT).
+
+Only dispatch_requests with status = 'approved' generate a UTCL_TO_CLIENT journal entry.
+Dispatches with any other status (submitted, blocked, rejected) do NOT appear in the journal.
+The journal timestamp is updated_at (which reflects the time of approval action).
+If approved_at is added to the dispatch_requests table in the future, that should be used instead.
+The quantity shown is in metric tonnes (MT).
 
 Rule 4.3 — Client-to-UTCL Payments (CLIENT_TO_UTCL)
-  - Every payment row where is_client_to_utcl = true generates a CLIENT_TO_UTCL journal entry.
-  - The journal timestamp is payment_date (the date the payment was made, as entered by admin).
-  - A payment may have a PO reference (purchase_order_id) or a dispatch reference (via utcl_payment_id on dispatch_requests) or neither (On Account).
-  - All three sub-types (On Account / Against PO / Against Dispatch) appear as CLIENT_TO_UTCL in the journal.
-  - The reference shown in the journal is the PO number if available, or a dispatch count badge.
+
+Every payment row where is_client_to_utcl = true generates a CLIENT_TO_UTCL journal entry.
+The journal timestamp is payment_date (the date the payment was made, as entered by admin).
+A payment may have a PO reference (purchase_order_id) or a dispatch reference (via utcl_payment_id on dispatch_requests) or neither (On Account).
+All three sub-types (On Account / Against PO / Against Dispatch) appear as CLIENT_TO_UTCL in the journal.
+The reference shown in the journal is the PO number if available, or a dispatch count badge.
 
 Rule 4.4 — UTCL-to-Mundra Refund Entries (UTCL_TO_MUNDRA)
-  - Every payment row where is_utcl_payment = true AND is_client_to_utcl = false generates a UTCL_TO_MUNDRA journal entry.
-  - The journal timestamp is payment_date.
-  - These entries are currently informational only. The full refund processing workflow is not yet implemented.
-  - A "Send Refund Letter" button is provided to navigate to the Refund Letters page.
 
-Rule 4.5 — Deleted Records
-  - If a payment or PO is deleted from the system, the journal entry currently disappears as it is derived live from the database.
-  - Future scope: deleted entries should remain in the journal marked as VOIDED with the original data preserved in audit_logs.
+Every payment row where is_utcl_payment = true AND is_client_to_utcl = false generates a UTCL_TO_MUNDRA journal entry.
+The journal timestamp is payment_date.
+These entries are currently informational only. The full refund processing workflow is not yet implemented.
+A "Send Refund Letter" button is provided to navigate to the Refund Letters page.
+
+Rule 4.5 — Credit Note Entries (CREDIT_NOTE)
+
+Every row in the credit_notes table generates exactly one CREDIT_NOTE journal entry.
+The journal timestamp is the issue_date of the credit note (not created_at, unless the two are the same).
+A credit note must reference exactly one prior journal entry as its origin: a PO (purchase_order_id), a dispatch (dispatch_id), or a payment (payment_id). A credit note with no origin reference is not permitted.
+The issuing party (issued_by) and the recipient party (issued_to) are captured explicitly — either Mundra Brothers or UTCL as issuer, and the Client Organization or UTCL as recipient.
+Credit notes are included in the journal regardless of status (draft, issued, applied, cancelled), with the status shown as a badge on the entry.
+Cancelled credit notes remain visible in the journal (per the immutability principle in Rule 2(a)) but are shown with a struck-through amount and a "Cancelled" badge.
+
+Rule 4.6 — Debit Note Entries (DEBIT_NOTE)
+
+Every row in the debit_notes table generates exactly one DEBIT_NOTE journal entry.
+The journal timestamp is the issue_date of the debit note.
+A debit note must reference exactly one prior journal entry as its origin: a PO (purchase_order_id), a dispatch (dispatch_id), or a payment (payment_id). A debit note with no origin reference is not permitted.
+The issuing party (issued_by) and the recipient party (issued_to) are captured explicitly, on the same basis as Rule 4.5.
+Debit notes are included in the journal regardless of status (draft, issued, applied, cancelled), with the status shown as a badge on the entry.
+Cancelled debit notes remain visible in the journal but are shown with a struck-through amount and a "Cancelled" badge.
+
+Rule 4.7 — Deleted Records
+
+If a payment, PO, credit note, or debit note is deleted from the system, the journal entry currently disappears as it is derived live from the database.
+Future scope: deleted entries should remain in the journal marked as VOIDED with the original data preserved in audit_logs.
 
 
- 
 5. Data Captured Per Entry Type
-
 Each journal entry captures the following fields. Fields marked * are mandatory.
+Common to all entries:
 
-  Common to all entries:
-    id*           — unique entry identifier (prefixed: po_, dr_, pay_ctu_, pay_mtu_)
-    type*         — one of the four transaction types
-    timestamp*    — the effective date/time of the event
-    title*        — human-readable label for the entry
-    client_name   — legal name of the associated client organization (if any)
+id* — unique entry identifier (prefixed: po_, dr_, pay_ctu_, pay_mtu_, cn_, dn_)
+type* — one of the six transaction types
+timestamp* — the effective date/time of the event
+title* — human-readable label for the entry
+client_name — legal name of the associated client organization (if any)
 
-  MUNDRA_TO_UTCL specific:
-    po_number*    — the PO reference number
-    total_value*  — total monetary value of the PO in INR
-    status*       — current PO status (submitted / approved / completed / cancelled)
+MUNDRA_TO_UTCL specific:
 
-  UTCL_TO_CLIENT specific:
-    dispatch_id*  — internal dispatch request UUID
-    po_number     — parent PO number
-    quantity*     — quantity dispatched in MT
-    site_address* — delivery site address
+po_number* — the PO reference number
+total_value* — total monetary value of the PO in INR
+status* — current PO status (submitted / approved / completed / cancelled)
 
-  CLIENT_TO_UTCL specific:
-    amount*           — payment amount in INR
-    payment_mode*     — RTGS / NEFT / IMPS / Other
-    reference_number* — bank UTR or transaction reference
-    po_number         — associated PO number (if against reference)
-    payment_id*       — internal payment UUID
-    purchase_order_id — associated PO ID (if against reference)
+UTCL_TO_CLIENT specific:
 
-  UTCL_TO_MUNDRA specific:
-    amount*           — payment/refund amount in INR
-    payment_mode*     — RTGS / NEFT / IMPS / Other
-    reference_number* — bank UTR or transaction reference
-    po_number         — associated PO number (if any)
-    payment_id*       — internal payment UUID
+dispatch_id* — internal dispatch request UUID
+po_number — parent PO number
+quantity* — quantity dispatched in MT
+site_address* — delivery site address
+
+CLIENT_TO_UTCL specific:
+
+amount* — payment amount in INR
+payment_mode* — RTGS / NEFT / IMPS / Other
+reference_number* — bank UTR or transaction reference
+po_number — associated PO number (if against reference)
+payment_id* — internal payment UUID
+purchase_order_id — associated PO ID (if against reference)
+
+UTCL_TO_MUNDRA specific:
+
+amount* — payment/refund amount in INR
+payment_mode* — RTGS / NEFT / IMPS / Other
+reference_number* — bank UTR or transaction reference
+po_number — associated PO number (if any)
+payment_id* — internal payment UUID
+
+CREDIT_NOTE specific:
+
+credit_note_number* — the credit note reference number
+amount* — credit note value in INR
+reason* — reason code/description (rate correction / shortage / quality claim / discount / return / other)
+issued_by* — issuing party (Mundra Brothers or UTCL)
+issued_to* — recipient party (Client Organization or UTCL)
+origin_type* — the entry type the note is linked to (PO / dispatch / payment)
+origin_reference* — the PO number, dispatch ID, or payment ID being adjusted
+status* — draft / issued / applied / cancelled
+
+DEBIT_NOTE specific:
+
+debit_note_number* — the debit note reference number
+amount* — debit note value in INR
+reason* — reason code/description (rate escalation / excess dispatch / interest-penalty / under-billing correction / other)
+issued_by* — issuing party (Mundra Brothers or UTCL)
+issued_to* — recipient party (Client Organization or UTCL)
+origin_type* — the entry type the note is linked to (PO / dispatch / payment)
+origin_reference* — the PO number, dispatch ID, or payment ID being adjusted
+status* — draft / issued / applied / cancelled
 
 
- 
 6. Display and UI Rules
-
 Rule 6.1 — Timeline Layout
-  The journal uses a vertical timeline / feed layout. Each entry is a card connected by a vertical line. This is intentional for readability and must not be changed to a table without a product decision.
-
+The journal uses a vertical timeline / feed layout. Each entry is a card connected by a vertical line. This is intentional for readability and must not be changed to a table without a product decision.
 Rule 6.2 — Color Coding
-  Each transaction type has a distinct color for its timeline dot, badge and card accent:
-    MUNDRA_TO_UTCL  → Blue    (#3b82f6)
-    UTCL_TO_CLIENT  → Emerald (#10b981)
-    CLIENT_TO_UTCL  → Violet  (#8b5cf6)
-    UTCL_TO_MUNDRA  → Amber   (#f59e0b)
+
+MUNDRA_TO_UTCL → Blue (#3b82f6)
+UTCL_TO_CLIENT → Emerald (#10b981)
+CLIENT_TO_UTCL → Violet (#8b5cf6)
+UTCL_TO_MUNDRA → Amber (#f59e0b)
+CREDIT_NOTE → Teal (#14b8a6)
+DEBIT_NOTE → Rose (#f43f5e)
 
 Rule 6.3 — Date Grouping
-  Entries are grouped by calendar date with a horizontal divider and date label between each group. The date label format is: [Weekday], [DD] [Month] [YYYY] (e.g., Monday, 30 June 2026).
-
+Entries are grouped by calendar date with a horizontal divider and date label between each group. The date label format is: [Weekday], [DD] [Month] [YYYY] (e.g., Monday, 30 June 2026).
 Rule 6.4 — Timestamp Display
-  Each entry shows both the date (DD Mon YYYY) and time (HH:MM AM/PM) in the top-right corner.
-
+Each entry shows both the date (DD Mon YYYY) and time (HH:MM AM/PM) in the top-right corner.
 Rule 6.5 — Currency Format
-  All monetary values are formatted in Indian Rupees with the ₹ symbol, using Indian number formatting (lakhs/crores grouping), with no decimal places (e.g., ₹12,50,000).
-
+All monetary values are formatted in Indian Rupees with the ₹ symbol, using Indian number formatting (lakhs/crores grouping), with no decimal places (e.g., ₹12,50,000).
 Rule 6.6 — Quantity Format
-  All quantities are displayed in metric tonnes (MT) with up to 3 decimal places if needed.
-
+All quantities are displayed in metric tonnes (MT) with up to 3 decimal places if needed.
 Rule 6.7 — Empty State
-  If no entries match the selected filter combination, a neutral empty state card is shown with the message: "No journal entries found for the selected filter."
+If no entries match the selected filter combination, a neutral empty state card is shown with the message: "No journal entries found for the selected filter."
+Rule 6.8 — Credit Note / Debit Note Card Content
+
+Each Credit Note and Debit Note card displays: note number, amount, reason, issuing party, recipient party, status badge, and a linked reference to the origin entry (e.g., "Adjustment to PO #1234").
+The linked origin reference is rendered as inline text (not yet a clickable link — see Rule 8.3 future scope) so admins can identify which transaction the note corrects without leaving the journal.
+Credit note amounts are prefixed with a minus sign or shown in a distinct (teal) tone to visually indicate a reduction; debit note amounts are shown in a distinct (rose) tone to indicate an increase. Neither type alters the displayed value of the original entry it references.
 
 
- 
 7. Filtering Rules
-
 Rule 7.1 — Transaction Type Filter
-  The journal provides five filter options via tabs:
-    All Events      — shows all four transaction types combined
-    Mundra → UTCL  — shows only MUNDRA_TO_UTCL entries
-    UTCL → Client  — shows only UTCL_TO_CLIENT entries
-    Client → UTCL  — shows only CLIENT_TO_UTCL entries
-    UTCL → Mundra  — shows only UTCL_TO_MUNDRA entries
+
+All Events — shows all six transaction types combined
+Mundra → UTCL — shows only MUNDRA_TO_UTCL entries
+UTCL → Client — shows only UTCL_TO_CLIENT entries
+Client → UTCL — shows only CLIENT_TO_UTCL entries
+UTCL → Mundra — shows only UTCL_TO_MUNDRA entries
+Credit Notes — shows only CREDIT_NOTE entries
+Debit Notes — shows only DEBIT_NOTE entries
 
 Rule 7.2 — Client Filter
-  A dropdown allows filtering by a specific client organization. The dropdown is populated dynamically from the client_name values present in the current journal entries. The default value is "All Clients".
-
+A dropdown allows filtering by a specific client organization. The dropdown is populated dynamically from the client_name values present in the current journal entries, including clients that only appear via a credit note or debit note. The default value is "All Clients".
 Rule 7.3 — Combined Filtering
-  Both filters (type + client) are applied simultaneously. For example, selecting "Client → UTCL" + "ABC Infra Pvt Ltd" will show only CLIENT_TO_UTCL payments made by ABC Infra.
-
+Both filters (type + client) are applied simultaneously. For example, selecting "Credit Notes" + "ABC Infra Pvt Ltd" will show only CREDIT_NOTE entries issued to or by ABC Infra.
 Rule 7.4 — No Date Range Filter (Phase 1)
-  A date range filter is not included in Phase 1. All historical records are always visible. A date range filter may be added in Phase 2 if the volume of entries makes scrolling impractical.
-
+A date range filter is not included in Phase 1. All historical records are always visible. A date range filter may be added in Phase 2 if the volume of entries makes scrolling impractical.
 Rule 7.5 — Filter State is Not Persisted
-  Filter selections are lost on page navigation. No filter state is saved to the URL or local storage in Phase 1.
+Filter selections are lost on page navigation. No filter state is saved to the URL or local storage in Phase 1.
 
-
- 
 8. Actions Permitted from the Journal
-
 Rule 8.1 — Read-Only Entries
-  Journal entries are read-only. No inline editing is available from the journal view.
-
+Journal entries are read-only. No inline editing is available from the journal view.
 Rule 8.2 — Send Refund Letter (UTCL_TO_MUNDRA only)
-  A "Send Refund Letter" button is displayed on UTCL_TO_MUNDRA entries. Clicking this button navigates the user to the Refund Letters page (/admin/refund-letters) where a refund letter can be prepared and sent.
-  This is the ONLY action available in Phase 1 journal entries.
-
+A "Send Refund Letter" button is displayed on UTCL_TO_MUNDRA entries. Clicking this button navigates the user to the Refund Letters page (/admin/refund-letters) where a refund letter can be prepared and sent.
 Rule 8.3 — Navigation to Source
-  Future scope: Each entry may include a "View Details" link that navigates to the source record (e.g., the PO detail page, the dispatch record, or the payment record). This is not implemented in Phase 1.
+Future scope: Each entry may include a "View Details" link that navigates to the source record (e.g., the PO detail page, the dispatch record, the payment record, or the credit/debit note record). This is not implemented in Phase 1.
+Rule 8.4 — View/Download Note (CREDIT_NOTE and DEBIT_NOTE only)
+
+A "View Note" button is displayed on CREDIT_NOTE and DEBIT_NOTE entries. Clicking this button navigates the user to the Credit/Debit Notes page (/admin/credit-debit-notes) where the note document can be viewed or downloaded as a PDF.
+This is, together with Rule 8.2, the only additional action available on journal entries in this version.
 
 
- 
 9. Access Control
-
 Rule 9.1 — Admin Only
-  The journal page is accessible exclusively to users with the Mundra admin role (orgType = 'mundra'). This is enforced at both the route level and the server function level via the ensureMundraOrg() guard.
-
+The journal page is accessible exclusively to users with the Mundra admin role (orgType = 'mundra'). This is enforced at both the route level and the server function level via the ensureMundraOrg() guard.
 Rule 9.2 — Client Users Have No Access
-  Client users cannot view the journal. There is no client-facing equivalent of this page.
-
+Client users cannot view the journal. There is no client-facing equivalent of this page.
 Rule 9.3 — No Role Differentiation Within Admin
-  In Phase 1, all Mundra admin users (super admin, accounts, operations) have the same read access to the journal. No write actions exist in the journal itself.
+In Phase 1, all Mundra admin users (super admin, accounts, operations) have the same read access to the journal. No write actions exist in the journal itself.
+Rule 9.4 — Credit/Debit Note Issuance Rights
+Only Mundra admin users may create, edit, or cancel credit notes and debit notes. There is no client-facing or UTCL-facing ability to raise a note directly; requests for adjustments are routed through Mundra admin.
 
-
- 
 10. Future Scope
+(a) VOIDED entries: Deleted payments/POs/credit notes/debit notes should leave a voided ghost entry in the journal sourced from audit_logs, so the record is never silently lost.
+(b) Date range filter: Restrict the journal to a selected date range for performance and usability.
+(c) Entry permalinks: Each journal entry should have a stable URL so it can be bookmarked or shared internally.
+(d) approved_at column: Add an approved_at timestamp to dispatch_requests so the UTCL_TO_CLIENT event reflects the exact approval time rather than updated_at.
+(e) UTCL-to-Mundra full workflow: When the refund/settlement process is defined, entries of this type should be linked to actual refund letter records rather than simply navigating to the page.
+(f) Pagination or virtual scrolling: When entry volume grows large (>500 entries), pagination or infinite scroll should be added.
+(g) Export: Allow admin users to export the journal as a CSV or PDF for a selected date range and/or client.
+(h) Journal entry for payment deletion: When a payment is deleted, a PAYMENT_VOIDED entry should be appended to the journal sourced from audit_logs.
+(i) Credit/debit note approval workflow: Introduce a maker-checker approval step before a credit note or debit note moves from draft to issued status.
+(j) Automatic origin suggestion: When creating a credit note or debit note, suggest likely origin entries (PO/dispatch/payment) based on client and recent activity, to reduce manual reference lookup.
+(k) Net-effect indicator: Show a running net adjustment total (credit notes minus debit notes) per client, once ledger balances (Section 11) are fully wired to journal-derived figures.
 
-  (a) VOIDED entries: Deleted payments/POs should leave a voided ghost entry in the journal sourced from audit_logs, so the record is never silently lost.
-  (b) Date range filter: Restrict the journal to a selected date range for performance and usability.
-  (c) Entry permalinks: Each journal entry should have a stable URL so it can be bookmarked or shared internally.
-  (d) approved_at column: Add an approved_at timestamp to dispatch_requests so the UTCL_TO_CLIENT event reflects the exact approval time rather than updated_at.
-  (e) UTCL-to-Mundra full workflow: When the refund/settlement process is defined, entries of this type should be linked to actual refund letter records rather than simply navigating to the page.
-  (f) Pagination or virtual scrolling: When entry volume grows large (>500 entries), pagination or infinite scroll should be added.
-  (g) Export: Allow admin users to export the journal as a CSV or PDF for a selected date range and/or client.
-  (h) Journal entry for payment deletion: When a payment is deleted, a PAYMENT_VOIDED entry should be appended to the journal sourced from audit_logs.
-
-
- 
 11. Ledger Management Rules & Standards
-
 The Ledger serves as the master book of final entry where all journal transactions are classified, summarized, and maintained account-wise. The ledger is the primary source for balance confirmation, statements, and audit verification.
-
 Rule 11.1 — Double-Entry Accounting Principle
-  - Every transaction must affect a minimum of two accounts (one Debited, one Credited).
-  - Total Debits must always equal Total Credits.
-  - The ledger balance is calculated dynamically: Balance = Total Debit - Total Credit (for assets/expenses) or Balance = Total Credit - Total Debit (for liabilities/equity/revenue).
+
+Every transaction must affect a minimum of two accounts (one Debited, one Credited).
+Total Debits must always equal Total Credits.
+The ledger balance is calculated dynamically: Balance = Total Debit − Total Credit (for assets/expenses) or Balance = Total Credit − Total Debit (for liabilities/equity/revenue).
 
 Rule 11.2 — Ledger Account Structure & Format
-  Based on business requirements, the ledger display format will retain the following simplified columns:
-    1. Document Date      — the date the transaction occurred (e.g., dispatch date or payment date).
-    2. Reference Number   — the unique document identifier (e.g., PO number, Dispatch ID, UTR number).
-    3. Quantity           — applicable for goods movement (e.g., MT of cement).
-    4. Rate               — applicable for goods pricing.
-    5. Debit Amount       — monetary value debited to the account.
-    6. Credit Amount      — monetary value credited to the account.
+
+Document Date — the date the transaction occurred (e.g., dispatch date, payment date, or note issue date).
+Reference Number — the unique document identifier (e.g., PO number, Dispatch ID, UTR number, Credit Note number, Debit Note number).
+Quantity — applicable for goods movement (e.g., MT of cement).
+Rate — applicable for goods pricing.
+Debit Amount — monetary value debited to the account.
+Credit Amount — monetary value credited to the account.
 
 Rule 11.3 — Ledger Posting Rules
-  - Every valid journal entry must be posted to its respective ledger account.
-  - Ledger entries cannot be directly edited after posting. Corrections must be made through adjustment or reversal journal entries.
-  - Posting must preserve the original journal reference number to maintain a complete audit trail.
+
+Every valid journal entry must be posted to its respective ledger account.
+Ledger entries cannot be directly edited after posting. Corrections must be made through adjustment or reversal journal entries — in practice, this correction is what a Credit Note or Debit Note represents (see Section 12).
+Posting must preserve the original journal reference number to maintain a complete audit trail.
 
 Rule 11.4 — Data Integrity & Audit Compliance Rules
-  - No modification or deletion of historical posted transactions.
-  - All ledger postings must be backed by a valid source journal transaction.
-  - Audit records for balance adjustments, reversals, or closing entries must never be deleted.
-  - The ledger is the single source of truth for all accounting records. Every financial statement and management report must derive its figures from the ledger balances.
+
+No modification or deletion of historical posted transactions.
+All ledger postings must be backed by a valid source journal transaction.
+Audit records for balance adjustments, reversals, or closing entries must never be deleted.
+The ledger is the single source of truth for all accounting records. Every financial statement and management report must derive its figures from the ledger balances.
+
+
+12. Credit Note and Debit Note Rules
+Credit notes and debit notes are adjustment documents used to correct the value of a prior transaction after it has already been journaled — without editing or deleting the original entry. This preserves the immutable, append-only nature of the journal (Rule 2(a)) while still allowing legitimate corrections such as rate revisions, shortages, quality claims, discounts, returns, excess dispatch, or interest/penalty charges.
+12.1 Definitions
+
+Credit Note — a document that reduces the amount the recipient owes the issuer (or, viewed from the other side, reduces the value previously recorded against the recipient). Issued when a prior transaction overstated the amount payable, or when goods/value must be returned or discounted.
+Debit Note — a document that increases the amount the recipient owes the issuer. Issued when a prior transaction understated the amount payable, or when an additional charge (e.g., rate escalation, excess quantity, penalty/interest) must be recorded.
+
+12.2 Who Can Issue, and To Whom
+
+Credit notes and debit notes may be issued by Mundra Brothers to a Client Organization, by Mundra Brothers to UTCL, by UTCL to Mundra Brothers, or by a Client Organization's transaction being adjusted by Mundra Brothers on UTCL's behalf — in all cases, the note is created and recorded in the system by a Mundra admin user (Rule 9.4).
+Every note must capture both issued_by and issued_to as one of: Mundra Brothers, UTCL, or the specific Client Organization.
+A note cannot be issued by and to the same party.
+
+12.3 Mandatory Linkage to an Origin Entry
+
+Every credit note and debit note must reference exactly one origin entry: a Purchase Order, a Dispatch, or a Payment (Client-to-UTCL or UTCL-to-Mundra). Free-standing notes with no origin reference are not permitted — this differs from CLIENT_TO_UTCL payments, which may be On Account (Rule 4.3).
+The origin_type and origin_reference fields (Section 5) must together resolve to a single, existing journal entry.
+If the origin entry is itself later voided (Rule 4.7 / future scope), the linked credit or debit note remains in the journal but should be flagged for review rather than auto-cancelled.
+
+12.4 Reason Codes
+A reason must be selected at the time of creation, from a controlled list, to keep reporting consistent:
+
+Credit Note reasons: Rate Correction, Shortage, Quality Claim, Discount, Goods Return, Other.
+Debit Note reasons: Rate Escalation, Excess Dispatch, Interest/Penalty, Under-billing Correction, Other.
+If "Other" is selected, a free-text remark of at least 10 characters is mandatory.
+
+12.5 Status Lifecycle
+
+Draft — the note has been created but not yet finalised. Draft notes appear in the journal but are visually muted and carry a "Draft" badge; they do not affect ledger balances.
+Issued — the note has been finalised and shared with the counterparty. Issued notes are fully visible in the journal with their type color (Rule 6.2) and do not yet affect ledger balances until applied.
+Applied — the note has been posted to the ledger (Section 11) against the relevant account. Once Applied, a note cannot revert to Draft or Issued.
+Cancelled — the note has been withdrawn before being applied, or reversed after being applied via a further adjustment. Cancelled notes remain visible per Rule 4.5/4.6 with a struck-through amount.
+A note can only move forward through Draft → Issued → Applied, or sideways to Cancelled from Draft or Issued. An Applied note can only be reversed by issuing a new, opposite-type note referencing it — never by deleting or backdating the original.
+
+12.6 Journal Entry Generation
+
+Every row in the credit_notes table generates exactly one CREDIT_NOTE journal entry; every row in the debit_notes table generates exactly one DEBIT_NOTE journal entry (Rules 4.5 and 4.6).
+The journal timestamp for both is the note's issue_date.
+The client_name shown is the Client Organization involved, if either issued_by or issued_to is a client; if the note is strictly between Mundra Brothers and UTCL, client_name is left blank and the entry is excluded from client-name filtering (Rule 7.2).
+
+12.7 Ledger Treatment
+
+Once a note reaches Applied status, it must be posted to the ledger following the double-entry principle (Rule 11.1): a Credit Note posts a credit to the issuer's account and a debit to the recipient's account (net reduction in what the recipient owes); a Debit Note posts a debit to the recipient's account and a credit to the issuer's account (net increase in what the recipient owes).
+The ledger posting must carry the credit_note_number or debit_note_number as its Reference Number (Rule 11.2), not the origin PO/dispatch/payment reference, so the adjustment itself is independently traceable — while the origin_reference is retained as supplementary metadata linking back to the corrected transaction.
+Ledger postings for notes are subject to the same Rule 11.3 and 11.4 constraints as any other posting: no direct edits after posting; corrections require a further note, never a modification of the original.
+
+12.8 Display and Filtering
+
+Display: see Rule 6.2 (color coding — Teal for Credit Note, Rose for Debit Note) and Rule 6.8 (card content).
+Filtering: see Rule 7.1 (dedicated "Credit Notes" and "Debit Notes" tabs) and Rule 7.2 (client dropdown includes clients referenced only via a note).
+Actions: see Rule 8.4 ("View Note" action to view/download the note as a PDF).
+
+12.9 Validation Rules
+
+amount must be greater than zero; a credit note or debit note for ₹0 is not permitted.
+The note amount is not automatically capped at the origin entry's value — a credit note may, for example, exceed a single dispatch's value if it aggregates a broader claim — but the UI should display a non-blocking warning when a note amount exceeds the origin entry's recorded value.
+A given origin entry (PO, dispatch, or payment) may have multiple credit notes and/or debit notes issued against it over time; there is no one-to-one restriction.
+credit_note_number and debit_note_number must each be unique across the system.

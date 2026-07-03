@@ -142,9 +142,9 @@ function AdminClientsPage() {
   const [primaryContactEmail, setPrimaryContactEmail] = useState("");
   const [primaryContactPhone, setPrimaryContactPhone] = useState("");
   
-  const [creditLimit, setCreditLimit] = useState(0);
-  const [paymentTermsDays, setPaymentTermsDays] = useState(30);
-  const [gracePeriodDays, setGracePeriodDays] = useState(0);
+  const [creditLimit, setCreditLimit] = useState<number | "">("");
+  const [paymentTermsDays, setPaymentTermsDays] = useState<number | "">("");
+  const [gracePeriodDays, setGracePeriodDays] = useState<number | "">("");
   const [includeUndispatched, setIncludeUndispatched] = useState(false);
   const [includeDispatched, setIncludeDispatched] = useState(true);
   const [includeInvoices, setIncludeInvoices] = useState(true);
@@ -234,7 +234,7 @@ function AdminClientsPage() {
     createMutation.mutate({
       legalName, shortName, tradeName, gstNumber, panNumber, 
       billingAddress, primaryContactName, primaryContactEmail, primaryContactPhone,
-      creditLimit, paymentTermsDays, gracePeriodDays,
+      creditLimit: creditLimit === "" ? 0 : creditLimit, paymentTermsDays: paymentTermsDays === "" ? 30 : paymentTermsDays, gracePeriodDays: gracePeriodDays === "" ? 0 : gracePeriodDays,
       includeUndispatchedPos: includeUndispatched,
       includeDispatchedUnbilled: includeDispatched,
       includeUnpaidInvoices: includeInvoices,
@@ -359,15 +359,15 @@ function AdminClientsPage() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="space-y-2">
                         <Label>Credit Limit *</Label>
-                        <Input type="number" value={creditLimit} onChange={(e) => setCreditLimit(Number(e.target.value))} required />
+                        <Input type="number" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value === "" ? "" : Number(e.target.value))} required />
                       </div>
                       <div className="space-y-2">
                         <Label>Terms (Days) *</Label>
-                        <Input type="number" value={paymentTermsDays} onChange={(e) => setPaymentTermsDays(Number(e.target.value))} required />
+                        <Input type="number" value={paymentTermsDays} onChange={(e) => setPaymentTermsDays(e.target.value === "" ? "" : Number(e.target.value))} required />
                       </div>
                       <div className="space-y-2">
                         <Label>Grace (Days)</Label>
-                        <Input type="number" value={gracePeriodDays} onChange={(e) => setGracePeriodDays(Number(e.target.value))} />
+                        <Input type="number" value={gracePeriodDays} onChange={(e) => setGracePeriodDays(e.target.value === "" ? "" : Number(e.target.value))} />
                       </div>
                       <div className="space-y-2">
                         <Label>Commission (%)</Label>
@@ -563,9 +563,9 @@ function AdminClientsPage() {
 function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { client: any, onClose: () => void, mutation: any, masterMutation: any }) {
   const comm = client.client_commercial_profile || {};
   
-  const [cl, setCl] = useState(comm.credit_limit || 0);
-  const [pt, setPt] = useState(comm.payment_terms_days || 30);
-  const [gp, setGp] = useState(comm.grace_period_days || 0);
+  const [cl, setCl] = useState<number | "">(comm.credit_limit || "");
+  const [pt, setPt] = useState<number | "">(comm.payment_terms_days || "");
+  const [gp, setGp] = useState<number | "">(comm.grace_period_days || "");
   const [undispatched, setUndispatched] = useState(comm.include_undispatched_pos || false);
   const [dispatched, setDispatched] = useState(comm.include_dispatched_unbilled !== false);
   const [unpaid, setUnpaid] = useState(comm.include_unpaid_invoices !== false);
@@ -602,9 +602,9 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
   const handleSave = () => {
     mutation.mutate({
       organizationId: client.id,
-      creditLimit: cl,
-      paymentTermsDays: pt,
-      gracePeriodDays: gp,
+      creditLimit: cl === "" ? 0 : cl,
+      paymentTermsDays: pt === "" ? 30 : pt,
+      gracePeriodDays: gp === "" ? 0 : gp,
       includeUndispatchedPos: undispatched,
       includeDispatchedUnbilled: dispatched,
       includeUnpaidInvoices: unpaid,
@@ -768,15 +768,15 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label>Credit Limit (₹)</Label>
-              <Input type="number" value={cl} onChange={(e) => setCl(Number(e.target.value))} />
+              <Input type="number" value={cl} onChange={(e) => setCl(e.target.value === "" ? "" : Number(e.target.value))} />
             </div>
             <div className="space-y-2">
               <Label>Terms (Days)</Label>
-              <Input type="number" value={pt} onChange={(e) => setPt(Number(e.target.value))} />
+              <Input type="number" value={pt} onChange={(e) => setPt(e.target.value === "" ? "" : Number(e.target.value))} />
             </div>
             <div className="space-y-2">
               <Label>Grace (Days)</Label>
-              <Input type="number" value={gp} onChange={(e) => setGp(Number(e.target.value))} />
+              <Input type="number" value={gp} onChange={(e) => setGp(e.target.value === "" ? "" : Number(e.target.value))} />
             </div>
             <div className="space-y-2">
               <Label>Commission (%)</Label>

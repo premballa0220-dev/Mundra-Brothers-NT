@@ -13,13 +13,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { CreditDebitNoteDialog } from "@/components/credit-debit-note-dialog";
 
 export const Route = createFileRoute("/_authenticated/admin/audit")({
   ssr: false,
   component: AuditJournalPage,
 });
 
-type JournalType = "all" | "mundra_to_utcl" | "utcl_to_client" | "client_to_utcl" | "utcl_to_mundra";
+type JournalType = "all" | "mundra_to_utcl" | "utcl_to_client" | "client_to_utcl" | "utcl_to_mundra" | "credit_note" | "debit_note";
 
 const TYPE_CONFIG: Record<string, {
   label: string;
@@ -55,6 +56,20 @@ const TYPE_CONFIG: Record<string, {
     dotColor: "bg-amber-500",
     badgeVariant: "outline",
     badgeClass: "border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-950/30",
+  },
+  credit_note: {
+    label: "Credit Note",
+    icon: FileText,
+    dotColor: "bg-teal-500",
+    badgeVariant: "outline",
+    badgeClass: "border-teal-500 text-teal-600 bg-teal-50 dark:bg-teal-950/30",
+  },
+  debit_note: {
+    label: "Debit Note",
+    icon: AlertCircle,
+    dotColor: "bg-rose-500",
+    badgeVariant: "outline",
+    badgeClass: "border-rose-500 text-rose-600 bg-rose-50 dark:bg-rose-950/30",
   },
 };
 
@@ -146,6 +161,18 @@ function JournalEntryCard({ entry, onSendRefund }: { entry: any; onSendRefund: (
                     <span className="truncate max-w-[180px]">{m.site_address}</span>
                   </span>
                 )}
+                {m.reason && (
+                  <span className="flex items-center gap-1">
+                    <span className="font-medium text-foreground/70">Reason:</span>
+                    <span className="capitalize">{m.reason}</span>
+                  </span>
+                )}
+                {m.origin_reference && (
+                  <span className="flex items-center gap-1">
+                    <span className="font-medium text-foreground/70">Adjusts:</span>
+                    <span>{m.origin_type} - {m.origin_reference}</span>
+                  </span>
+                )}
                 {m.status && (
                   <span className="flex items-center gap-1">
                     <span className="font-medium text-foreground/70">Status:</span>
@@ -184,6 +211,7 @@ function AuditJournalPage() {
   const [filter, setFilter] = useState<JournalType>("all");
   const [clientFilter, setClientFilter] = useState<string>("all");
   const [showNonPosting, setShowNonPosting] = useState(false);
+  const [isNoteDialogOpen, setIsNoteDialogOpen] = useState(false);
 
   const { data: entries, isLoading } = useQuery({
     queryKey: ["admin-journal-entries"],
@@ -245,6 +273,10 @@ function AuditJournalPage() {
         debit = (e.meta.quantity || 0) * (e.meta.locked_rate || 0);
       } else if (e.type === "client_to_utcl") {
         credit = e.meta.amount || 0;
+      } else if (e.type === "credit_note" && (e.meta.status === "issued" || e.meta.status === "applied")) {
+        credit = e.meta.amount || 0;
+      } else if (e.type === "debit_note" && (e.meta.status === "issued" || e.meta.status === "applied")) {
+        debit = e.meta.amount || 0;
       }
 
       acct.debits += debit;
@@ -275,6 +307,12 @@ function AuditJournalPage() {
         isPosting = true;
       } else if (e.type === "client_to_utcl") {
         credit = e.meta.amount || 0;
+        isPosting = true;
+      } else if (e.type === "credit_note" && (e.meta.status === "issued" || e.meta.status === "applied")) {
+        credit = e.meta.amount || 0;
+        isPosting = true;
+      } else if (e.type === "debit_note" && (e.meta.status === "issued" || e.meta.status === "applied")) {
+        debit = e.meta.amount || 0;
         isPosting = true;
       }
 
@@ -329,6 +367,10 @@ function AuditJournalPage() {
             </TabsList>
           </Tabs>
 
+          <Button onClick={() => setIsNoteDialogOpen(true)} className="ml-auto">
+            Issue Adjustment Note
+          </Button>
+
           <div className="flex items-center gap-2 flex-shrink-0">
             <Users className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">Client Account:</span>
@@ -361,6 +403,8 @@ function AuditJournalPage() {
                     <TabsTrigger value="utcl_to_client" className="text-xs">UTCL → Client</TabsTrigger>
                     <TabsTrigger value="client_to_utcl" className="text-xs">Client → UTCL</TabsTrigger>
                     <TabsTrigger value="utcl_to_mundra" className="text-xs">UTCL → Mundra</TabsTrigger>
+                    <TabsTrigger value="credit_note" className="text-xs">Credit Notes</TabsTrigger>
+                    <TabsTrigger value="debit_note" className="text-xs">Debit Notes</TabsTrigger>
                   </TabsList>
                 </Tabs>
 
@@ -515,8 +559,8 @@ function AuditJournalPage() {
                             <TableHead>Reference</TableHead>
                             <TableHead className="text-right">Qty</TableHead>
                             <TableHead className="text-right">Rate</TableHead>
-                            <TableHead className="text-right text-destructive">Debit</TableHead>
-                            <TableHead className="text-right text-emerald-600">Credit</TableHead>
+                            <TableHead className="text-right text-destructive">Debit (Bills & Debit Notes)</TableHead>
+                            <TableHead className="text-right text-emerald-600">Credit (Payments & Credit Notes)</TableHead>
                             <TableHead className="text-right font-bold pr-4">Balance</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -583,6 +627,7 @@ function AuditJournalPage() {
           </>
         )}
       </div>
+      <CreditDebitNoteDialog open={isNoteDialogOpen} onOpenChange={setIsNoteDialogOpen} />
     </AppShell>
   );
 }

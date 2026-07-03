@@ -1783,6 +1783,19 @@ export const createIssue = createServerFn({ method: "POST" })
     return issue;
   });
 
+export const getAllOrganizations = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .handler(async () => {
+    const supabase = createSupabaseAdminClient();
+    const { data: organizations, error } = await supabase
+      .from("organizations")
+      .select("id, legal_name, org_type")
+      .order("legal_name", { ascending: true });
+    
+    if (error) throw new Error("Failed to fetch organizations: " + error.message);
+    return organizations || [];
+  });
+
 export const getAuditLogs = createServerFn({ method: "GET" })
   .middleware([requireAuth])
   .handler(async ({ context }) => {
@@ -1911,7 +1924,96 @@ export const deleteNotification = createServerFn({ method: "POST" })
       .eq("user_id", context.userId);
     
     if (error) throw new Error("Failed to delete notification: " + error.message);
+    
     return { success: true };
+  });
+
+export const createCreditNote = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      creditNoteNumber: z.string().min(1),
+      issueDate: z.string(),
+      amount: z.number().positive(),
+      reason: z.string(),
+      remarks: z.string().optional(),
+      issuedByOrgId: z.string().uuid(),
+      issuedToOrgId: z.string().uuid(),
+      originType: z.enum(['PO', 'Dispatch', 'Payment']),
+      originReference: z.string().min(1),
+      status: z.enum(['draft', 'issued', 'applied', 'cancelled']).default('draft'),
+    })
+  )
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+
+    const { data: note, error } = await supabase
+      .from("credit_notes")
+      .insert({
+        credit_note_number: data.creditNoteNumber,
+        issue_date: data.issueDate,
+        amount: data.amount,
+        reason: data.reason,
+        remarks: data.remarks || null,
+        issued_by_org_id: data.issuedByOrgId,
+        issued_to_org_id: data.issuedToOrgId,
+        origin_type: data.originType,
+        origin_reference: data.originReference,
+        status: data.status,
+        created_by: context.userId,
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error("Failed to create credit note: " + error.message);
+
+    await createAuditLog(context.userId, "CREATE_CREDIT_NOTE", "credit_notes", note.id, null, note);
+    return { success: true, note };
+  });
+
+export const createDebitNote = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      debitNoteNumber: z.string().min(1),
+      issueDate: z.string(),
+      amount: z.number().positive(),
+      reason: z.string(),
+      remarks: z.string().optional(),
+      issuedByOrgId: z.string().uuid(),
+      issuedToOrgId: z.string().uuid(),
+      originType: z.enum(['PO', 'Dispatch', 'Payment']),
+      originReference: z.string().min(1),
+      status: z.enum(['draft', 'issued', 'applied', 'cancelled']).default('draft'),
+    })
+  )
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+
+    const { data: note, error } = await supabase
+      .from("debit_notes")
+      .insert({
+        debit_note_number: data.debitNoteNumber,
+        issue_date: data.issueDate,
+        amount: data.amount,
+        reason: data.reason,
+        remarks: data.remarks || null,
+        issued_by_org_id: data.issuedByOrgId,
+        issued_to_org_id: data.issuedToOrgId,
+        origin_type: data.originType,
+        origin_reference: data.originReference,
+        status: data.status,
+        created_by: context.userId,
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error("Failed to create debit note: " + error.message);
+
+    await createAuditLog(context.userId, "CREATE_DEBIT_NOTE", "debit_notes", note.id, null, note);
+    return { success: true, note };
   });
 
 export const markNotificationRead = createServerFn({ method: "POST" })
@@ -2078,6 +2180,18 @@ export const getJournalEntries = createServerFn({ method: "GET" })
       .select("id, amount, payment_date, payment_mode, reference_number, is_utcl_payment, is_client_to_utcl, is_advance, status, created_at, organization_id, purchase_order_id, purchase_orders(po_number)")
       .order("payment_date", { ascending: false });
 
+    // Fetch Credit Notes
+    const { data: creditNotes } = await supabase
+      .from("credit_notes")
+      .select("*")
+      .order("issue_date", { ascending: false });
+
+    // Fetch Debit Notes
+    const { data: debitNotes } = await supabase
+      .from("debit_notes")
+      .select("*")
+      .order("issue_date", { ascending: false });
+
     const entries: any[] = [];
 
     // 1. PO creation = Mundra -> UTCL
@@ -2161,6 +2275,60 @@ export const getJournalEntries = createServerFn({ method: "GET" })
           },
         });
       }
+    }
+
+    // 5. Credit Notes
+    for (const cn of (creditNotes || [])) {
+      const orgTo = organizationsMap.get(cn.issued_to_org_id);
+      const orgBy = organizationsMap.get(cn.issued_by_org_id);
+      const clientName = orgTo?.org_type === 'client' ? orgTo.legal_name : (orgBy?.org_type === 'client' ? orgBy.legal_name : null);
+      
+      entries.push({
+        id: `cn_${cn.id}`,
+        type: "credit_note",
+        timestamp: cn.issue_date,
+        title: `Credit Note — ${cn.credit_note_number}`,
+        meta: {
+          credit_note_number: cn.credit_note_number,
+          amount: cn.amount,
+          reason: cn.reason,
+          issued_by: orgBy?.legal_name || "Unknown",
+          issued_to: orgTo?.legal_name || "Unknown",
+          issued_by_org_id: cn.issued_by_org_id,
+          issued_to_org_id: cn.issued_to_org_id,
+          origin_type: cn.origin_type,
+          origin_reference: cn.origin_reference,
+          status: cn.status,
+          client_name: clientName,
+        },
+      });
+    }
+
+    // 6. Debit Notes
+    for (const dn of (debitNotes || [])) {
+      const orgTo = organizationsMap.get(dn.issued_to_org_id);
+      const orgBy = organizationsMap.get(dn.issued_by_org_id);
+      const clientName = orgTo?.org_type === 'client' ? orgTo.legal_name : (orgBy?.org_type === 'client' ? orgBy.legal_name : null);
+      
+      entries.push({
+        id: `dn_${dn.id}`,
+        type: "debit_note",
+        timestamp: dn.issue_date,
+        title: `Debit Note — ${dn.debit_note_number}`,
+        meta: {
+          debit_note_number: dn.debit_note_number,
+          amount: dn.amount,
+          reason: dn.reason,
+          issued_by: orgBy?.legal_name || "Unknown",
+          issued_to: orgTo?.legal_name || "Unknown",
+          issued_by_org_id: dn.issued_by_org_id,
+          issued_to_org_id: dn.issued_to_org_id,
+          origin_type: dn.origin_type,
+          origin_reference: dn.origin_reference,
+          status: dn.status,
+          client_name: clientName,
+        },
+      });
     }
 
     // Sort by timestamp descending
