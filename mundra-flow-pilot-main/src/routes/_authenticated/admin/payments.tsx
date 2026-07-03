@@ -26,6 +26,7 @@ function AdminPaymentsPage() {
   const [dispatchModalOpen, setDispatchModalOpen] = useState(false);
   const [selectedDispatches, setSelectedDispatches] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isFifo, setIsFifo] = useState(false);
   
   // Payment Form State
   const [openDispatchId, setOpenDispatchId] = useState<string | null>(null);
@@ -191,7 +192,7 @@ function AdminPaymentsPage() {
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(val);
 
-  const filteredDispatches = dispatches?.filter((d: any) => {
+  let filteredDispatches = dispatches?.filter((d: any) => {
     if (d.utcl_payment_id) return false; // Already paid
 
     const search = searchQuery.toLowerCase();
@@ -201,6 +202,12 @@ function AdminPaymentsPage() {
       d.id.toLowerCase().includes(search)
     );
   }) || [];
+
+  filteredDispatches.sort((a: any, b: any) => {
+    const timeA = new Date(a.created_at).getTime();
+    const timeB = new Date(b.created_at).getTime();
+    return isFifo ? timeA - timeB : timeB - timeA;
+  });
 
   const toggleDispatchSelection = (dispatch: any) => {
     const exists = selectedDispatches.find(d => d.id === dispatch.id);
@@ -250,15 +257,24 @@ function AdminPaymentsPage() {
                   </DialogDescription>
                 </DialogHeader>
                 <div className="flex-1 overflow-auto py-4">
-                  <div className="relative mb-4">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      type="search"
-                      placeholder="Search client or PO number..."
-                      className="pl-8"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        type="search"
+                        placeholder="Search client or PO number..."
+                        className="pl-8"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                      />
+                    </div>
+                    <Button 
+                      variant={isFifo ? "default" : "outline"}
+                      onClick={() => setIsFifo(!isFifo)}
+                      type="button"
+                    >
+                      FIFO Policy
+                    </Button>
                   </div>
                   
                   {dispatchesLoading ? (
@@ -714,7 +730,8 @@ function AdminPaymentsPage() {
                         ) || [];
 
                         let openClientDispatches = dispatches?.filter((d: any) => 
-                          d.organization_id === clientSelectedOrgId && !d.utcl_payment_id
+                          d.organization_id === clientSelectedOrgId && 
+                          ['approved', 'auto_approved', 'pending_mundra', 'submitted'].includes(d.status)
                         ) || [];
                         
                         return (

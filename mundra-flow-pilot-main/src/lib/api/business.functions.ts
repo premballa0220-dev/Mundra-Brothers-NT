@@ -215,29 +215,55 @@ export const getClients = createServerFn({ method: "GET" })
     let locations: any[] = [];
     let products: any[] = [];
     let creditHistory: any[] = [];
+    let allDispatches: any[] = [];
+    let allPayments: any[] = [];
     
     if (orgIds.length > 0) {
-      const [{ data: p }, { data: l }, { data: pr }, { data: c }] = await Promise.all([
+      const [{ data: p }, { data: l }, { data: pr }, { data: c }, { data: dr }, { data: pay }] = await Promise.all([
         supabase.from("client_commercial_profiles").select("*").in("organization_id", orgIds),
         supabase.from("client_delivery_locations").select("*").in("organization_id", orgIds),
         supabase.from("client_approved_products").select("*").in("organization_id", orgIds),
         supabase.from("client_credit_history").select("*").in("organization_id", orgIds).order("created_at", { ascending: false }),
+        supabase.from("dispatch_requests").select("organization_id, quantity, purchase_orders(locked_rate)").in("organization_id", orgIds).in("status", ["approved", "auto_approved", "pending_mundra", "submitted"]),
+        supabase.from("payments").select("organization_id, amount").in("organization_id", orgIds).eq("is_client_to_utcl", true),
       ]);
       profiles = p || [];
       locations = l || [];
       products = pr || [];
       creditHistory = c || [];
+      allDispatches = dr || [];
+      allPayments = pay || [];
     }
     
     const profilesByOrg = new Map(profiles.map((profile: any) => [profile.organization_id, profile]));
 
-    return (organizations || []).map((org: any) => ({
-      ...org,
-      client_commercial_profile: profilesByOrg.get(org.id) ?? null,
-      delivery_locations: locations.filter((loc) => loc.organization_id === org.id),
-      approved_products: products.filter((prod) => prod.organization_id === org.id),
-      credit_history: creditHistory.filter((hist) => hist.organization_id === org.id),
-    }));
+    // Compute exposure per org
+    const debitsByOrg = new Map<string, number>();
+    for (const dr of allDispatches) {
+      const val = Number(dr.quantity || 0) * Number((dr.purchase_orders as any)?.locked_rate || 0);
+      debitsByOrg.set(dr.organization_id, (debitsByOrg.get(dr.organization_id) || 0) + val);
+    }
+    const creditsByOrg = new Map<string, number>();
+    for (const pay of allPayments) {
+      creditsByOrg.set(pay.organization_id, (creditsByOrg.get(pay.organization_id) || 0) + Number(pay.amount || 0));
+    }
+
+    return (organizations || []).map((org: any) => {
+      const profile = profilesByOrg.get(org.id) ?? null;
+      const totalDebits = debitsByOrg.get(org.id) || 0;
+      const totalCredits = creditsByOrg.get(org.id) || 0;
+      const exposure = Math.max(0, totalDebits - totalCredits);
+      const creditLimit = profile ? Number(profile.credit_limit || 0) : 0;
+      const availableCredit = Math.max(0, creditLimit - exposure);
+
+      return {
+        ...org,
+        client_commercial_profile: profile ? { ...profile, available_credit: availableCredit, current_exposure: exposure } : null,
+        delivery_locations: locations.filter((loc) => loc.organization_id === org.id),
+        approved_products: products.filter((prod) => prod.organization_id === org.id),
+        credit_history: creditHistory.filter((hist) => hist.organization_id === org.id),
+      };
+    });
   });
 
 export const getClientDeliveryLocations = createServerFn({ method: "GET" })

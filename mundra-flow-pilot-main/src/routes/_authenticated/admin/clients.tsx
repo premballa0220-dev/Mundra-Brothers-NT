@@ -418,8 +418,9 @@ function AdminClientsPage() {
                     <TableHead>Client Legal Name</TableHead>
                     <TableHead>Trade / Short Name</TableHead>
                     <TableHead>GST Number</TableHead>
-                    <TableHead>Credit Limit</TableHead>
-                    <TableHead>Wallet (Extra)</TableHead>
+                    <TableHead>Sanctioned Limit</TableHead>
+                    <TableHead>Available Credit</TableHead>
+                    <TableHead>Exposure</TableHead>
                     <TableHead>Payment Terms</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="w-[100px]"></TableHead>
@@ -445,7 +446,10 @@ function AdminClientsPage() {
                             {formatCurrency(comm.credit_limit ?? 0)}
                           </TableCell>
                           <TableCell className="font-semibold text-success">
-                            {formatCurrency(comm.wallet_balance ?? 0)}
+                            {formatCurrency(comm.available_credit ?? comm.credit_limit ?? 0)}
+                          </TableCell>
+                          <TableCell className="font-semibold text-destructive">
+                            {formatCurrency(comm.current_exposure ?? 0)}
                           </TableCell>
                           <TableCell>{comm.payment_terms_days ?? 30} Days</TableCell>
                           <TableCell>

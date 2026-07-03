@@ -238,7 +238,17 @@ function ClientDispatchesPage() {
                   <div className="space-y-1">
                     <Label htmlFor="address">Site Address *</Label>
                     {deliveryLocations && deliveryLocations.length > 0 ? (
-                      <Select value={siteAddress} onValueChange={setSiteAddress} required>
+                      <Select value={siteAddress} onValueChange={(val) => {
+                        setSiteAddress(val);
+                        const matchedLoc = deliveryLocations.find((l: any) => l.address === val);
+                        if (matchedLoc) {
+                          setDeliveryContact(
+                            matchedLoc.contact_person
+                              ? `${matchedLoc.contact_person}${matchedLoc.contact_phone ? ` (${matchedLoc.contact_phone})` : ""}`
+                              : ""
+                          );
+                        }
+                      }} required>
                         <SelectTrigger>
                           <SelectValue placeholder="Select Delivery Address" />
                         </SelectTrigger>
