@@ -271,7 +271,6 @@ function AdminPOQueuePage() {
   const handleCreatePOSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClientId) return toast.error("Please select a client.");
-    if (documentMethod === "upload" && !documentFile) return toast.error("Please upload a PO document.");
     
     let finalDocumentUrl = documentUrl;
 
