@@ -155,6 +155,12 @@ function JournalEntryCard({ entry, onSendRefund }: { entry: any; onSendRefund: (
                     <span className="font-mono">{m.reference_number}</span>
                   </span>
                 )}
+                {m.requested_date && (
+                  <span className="flex items-center gap-1">
+                    <span className="font-medium text-foreground/70">Delivery Date:</span>
+                    <span>{formatDate(m.requested_date)}</span>
+                  </span>
+                )}
                 {m.site_address && (
                   <span className="flex items-center gap-1">
                     <span className="font-medium text-foreground/70">Site:</span>
@@ -291,12 +297,14 @@ function AuditJournalPage() {
     if (!entries) return [];
     
     const sortedAsc = [...entries].sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    let currentBalance = 0;
+    const balancesByClient = new Map<string, number>();
     const rows = [];
 
     for (const e of sortedAsc) {
       if (clientFilter !== "all" && e.meta?.client_name !== clientFilter) continue;
       if (e.type === "utcl_to_mundra") continue;
+
+      const clientName = e.meta?.client_name || "Unknown";
 
       let debit = 0;
       let credit = 0;
@@ -316,7 +324,10 @@ function AuditJournalPage() {
         isPosting = true;
       }
 
-      currentBalance = currentBalance + debit - credit;
+      if (isPosting) {
+        const currentBal = balancesByClient.get(clientName) || 0;
+        balancesByClient.set(clientName, currentBal + debit - credit);
+      }
 
       if (!isPosting && !showNonPosting) continue;
 
@@ -324,7 +335,7 @@ function AuditJournalPage() {
         ...e,
         debit,
         credit,
-        runningBalance: currentBalance,
+        runningBalance: balancesByClient.get(clientName) || 0,
         isPosting
       });
     }

@@ -1954,7 +1954,7 @@ export const createCreditNote = createServerFn({ method: "POST" })
         credit_note_number: data.creditNoteNumber,
         issue_date: data.issueDate,
         amount: data.amount,
-        reason: data.reason,
+        reason: data.reason as any,
         remarks: data.remarks || null,
         issued_by_org_id: data.issuedByOrgId,
         issued_to_org_id: data.issuedToOrgId,
@@ -1998,7 +1998,7 @@ export const createDebitNote = createServerFn({ method: "POST" })
         debit_note_number: data.debitNoteNumber,
         issue_date: data.issueDate,
         amount: data.amount,
-        reason: data.reason,
+        reason: data.reason as any,
         remarks: data.remarks || null,
         issued_by_org_id: data.issuedByOrgId,
         issued_to_org_id: data.issuedToOrgId,
@@ -2171,7 +2171,7 @@ export const getJournalEntries = createServerFn({ method: "GET" })
     // Fetch all dispatches with their PO number (UTCL -> Client events)
     const { data: dispatches } = await supabase
       .from("dispatch_requests")
-      .select("id, quantity, status, created_at, updated_at, site_address, organization_id, purchase_order_id, purchase_orders(po_number, locked_rate)")
+      .select("id, quantity, status, created_at, updated_at, requested_date, site_address, organization_id, purchase_order_id, purchase_orders(po_number, locked_rate)")
       .order("created_at", { ascending: false });
 
     // Fetch all payments with their PO number
@@ -2215,7 +2215,7 @@ export const getJournalEntries = createServerFn({ method: "GET" })
 
     // 2. Approved dispatches = UTCL -> Client
     for (const dr of (dispatches || []) as any[]) {
-      if (dr.status === "approved") {
+      if (dr.status === "approved" || dr.status === "auto_approved") {
         const org = organizationsMap.get(dr.organization_id);
         entries.push({
           id: `dr_${dr.id}`,
@@ -2227,6 +2227,7 @@ export const getJournalEntries = createServerFn({ method: "GET" })
             po_number: dr.purchase_orders?.po_number || null,
             locked_rate: dr.purchase_orders?.locked_rate || null,
             quantity: dr.quantity,
+            requested_date: dr.requested_date || null,
             site_address: dr.site_address,
             client_name: (org as any)?.legal_name || null,
           },

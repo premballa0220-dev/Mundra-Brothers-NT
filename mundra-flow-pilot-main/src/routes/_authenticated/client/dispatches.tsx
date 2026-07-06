@@ -58,7 +58,7 @@ function ClientDispatchesPage() {
   // Form states
   const [purchaseOrderId, setPurchaseOrderId] = useState("");
   const [quantity, setQuantity] = useState<number>(0);
-  const [requestedDate, setRequestedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [requestedDate, setRequestedDate] = useState(new Date().toISOString().split("T")[0]);   //Requested date is different than what was entered in Dispatch
   const [siteAddress, setSiteAddress] = useState("");
   const [deliveryContact, setDeliveryContact] = useState("");
 
@@ -137,7 +137,7 @@ function ClientDispatchesPage() {
       requestedDate,
       siteAddress,
       deliveryContact,
-    });
+    });          //po
   }
 
   const formatCurrency = (amount: number) => {

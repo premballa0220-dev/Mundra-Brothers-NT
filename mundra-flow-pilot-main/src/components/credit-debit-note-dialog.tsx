@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { createCreditNote, createDebitNote, getAllOrganizations } from "@/lib/api/business.functions";
 import { Loader2 } from "lucide-react";
 import { Textarea } from "./ui/textarea";
+import { toast } from "sonner";
 
 const CREDIT_REASONS = [
   "Rate Correction",
@@ -67,7 +68,7 @@ export function CreditDebitNoteDialog({ open, onOpenChange }: { open: boolean; o
         issuedToOrgId,
         originType,
         originReference,
-        status: "draft" as const,
+        status: "issued" as const,
       };
 
       if (type === "credit") {
@@ -87,11 +88,12 @@ export function CreditDebitNoteDialog({ open, onOpenChange }: { open: boolean; o
       }
 
       await queryClient.invalidateQueries({ queryKey: ["admin-journal-entries"] });
+      toast.success(`${type === "credit" ? "Credit" : "Debit"} Note issued successfully and posted to ledger.`);
       onOpenChange(false);
       resetForm();
     } catch (err) {
       console.error(err);
-      alert("Failed to issue note. Check console for details.");
+      toast.error("Failed to issue note. Check console for details.");
     } finally {
       setIsSubmitting(false);
     }
@@ -116,7 +118,7 @@ export function CreditDebitNoteDialog({ open, onOpenChange }: { open: boolean; o
         <DialogHeader>
           <DialogTitle>Issue Adjustment Note</DialogTitle>
           <DialogDescription>
-            Create a Credit Note or Debit Note to adjust accounting ledgers. Notes will be created as "Draft".
+            Create a Credit Note or Debit Note to adjust accounting ledgers. Notes are issued immediately and posted to the ledger.
           </DialogDescription>
         </DialogHeader>
 

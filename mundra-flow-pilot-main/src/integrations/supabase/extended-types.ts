@@ -238,6 +238,47 @@ export type AuditLogRow = {
   created_at: string;
 };
 
+export type CreditNoteStatus = "draft" | "issued" | "applied" | "cancelled";
+export type CreditNoteReason = "Rate Correction" | "Shortage" | "Quality Claim" | "Discount" | "Goods Return" | "Other";
+export type NoteOriginType = "PO" | "Dispatch" | "Payment";
+
+export type CreditNoteRow = {
+  id: string;
+  credit_note_number: string;
+  issue_date: string;
+  amount: number;
+  reason: CreditNoteReason;
+  remarks: string | null;
+  issued_by_org_id: string;
+  issued_to_org_id: string;
+  origin_type: NoteOriginType;
+  origin_reference: string;
+  status: CreditNoteStatus;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DebitNoteStatus = "draft" | "issued" | "applied" | "cancelled";
+export type DebitNoteReason = "Rate Escalation" | "Excess Dispatch" | "Interest-Penalty" | "Under-billing Correction" | "Other";
+
+export type DebitNoteRow = {
+  id: string;
+  debit_note_number: string;
+  issue_date: string;
+  amount: number;
+  reason: DebitNoteReason;
+  remarks: string | null;
+  issued_by_org_id: string;
+  issued_to_org_id: string;
+  origin_type: NoteOriginType;
+  origin_reference: string;
+  status: DebitNoteStatus;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ClientDeliveryLocationRow = {
   id: string;
   organization_id: string;
@@ -489,6 +530,26 @@ export interface Database extends Omit<GeneratedDatabase, "public"> {
           created_at?: string;
         };
         Update: Partial<AuditLogRow>;
+        Relationships: [];
+      };
+      credit_notes: {
+        Row: CreditNoteRow;
+        Insert: Omit<CreditNoteRow, "id" | "created_at" | "updated_at"> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<CreditNoteRow>;
+        Relationships: [];
+      };
+      debit_notes: {
+        Row: DebitNoteRow;
+        Insert: Omit<DebitNoteRow, "id" | "created_at" | "updated_at"> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<DebitNoteRow>;
         Relationships: [];
       };
     };

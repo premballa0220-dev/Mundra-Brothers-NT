@@ -373,7 +373,7 @@ function AdminPaymentsPage() {
                           <TableCell className="font-medium">{formatCurrency(dispatchValue)}</TableCell>
                           <TableCell className="text-success font-medium">{formatCurrency(paidToUtcl)}</TableCell>
                           <TableCell className="text-destructive font-medium">{formatCurrency(remaining)}</TableCell>
-                          <TableCell>{new Date(dispatch.created_at).toLocaleDateString()}</TableCell>
+                          <TableCell>{new Date(dispatch.requested_date).toLocaleDateString()}</TableCell>
                           <TableCell className="text-right">
                             <Button 
                               variant="outline" 
