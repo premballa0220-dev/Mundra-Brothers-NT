@@ -89,16 +89,21 @@ export const getDashboardStats = createServerFn({ method: "GET" })
       const { data: profiles } = await supabase.from("client_commercial_profiles").select("credit_limit");
       const sanctionedCredit = (profiles || []).reduce((sum: number, profile: any) => sum + Number(profile.credit_limit || 0), 0);
 
+      const { data: allInvoices } = await supabase.from("invoices").select("amount, due_date, organization_id, status");
+      const invoiceDebits = (allInvoices || []).reduce((sum: number, invoice: any) => sum + Number(invoice.amount || 0), 0);
+
       const { data: dispatches } = await supabase.from("dispatch_requests").select("quantity, purchase_orders(locked_rate)").in("status", ["approved", "auto_approved", "pending_mundra", "submitted"]);
-      const totalDebits = (dispatches || []).reduce((sum: number, dr: any) => sum + Number(dr.quantity || 0) * Number(dr.purchase_orders?.locked_rate || 0), 0);
+      const dispatchDebits = (dispatches || []).reduce((sum: number, dr: any) => sum + Number(dr.quantity || 0) * Number(dr.purchase_orders?.locked_rate || 0), 0);
+      const totalDebits = dispatchDebits + invoiceDebits;
       
-      const { data: payments } = await supabase.from("payments").select("amount").eq("is_client_to_utcl", true);
-      const totalCredits = (payments || []).reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+      const { data: payments } = await supabase.from("payments").select("amount, is_client_to_utcl, is_utcl_payment, status");
+      const validClientPayments = (payments || []).filter((p: any) => p.is_client_to_utcl || !p.is_utcl_payment);
+      const totalCredits = validClientPayments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
       
       const outstanding = Math.max(0, totalDebits - totalCredits);
 
-      const { data: invoices } = await supabase.from("invoices").select("amount, due_date, organization_id").neq("status", "paid");
-      const overdueInvoices = (invoices || []).filter((invoice: any) => invoice.due_date && invoice.due_date < todayStr);
+      const unpaidInvoices = (allInvoices || []).filter((invoice: any) => invoice.status !== "paid");
+      const overdueInvoices = unpaidInvoices.filter((invoice: any) => invoice.due_date && invoice.due_date < todayStr);
       const overdue = overdueInvoices.reduce((sum: number, invoice: any) => sum + Number(invoice.amount || 0), 0);
       const overdueClients = new Set(overdueInvoices.map((inv: any) => inv.organization_id)).size;
 
@@ -137,20 +142,24 @@ export const getDashboardStats = createServerFn({ method: "GET" })
     const { data: commProfile } = await supabase.from("client_commercial_profiles").select("credit_limit").eq("organization_id", organizationId).single();
     const creditLimit = commProfile ? Number(commProfile.credit_limit || 0) : 0;
 
-    const { data: invoices } = await supabase
+    const { data: allInvoices } = await supabase
       .from("invoices")
-      .select("amount, due_date")
-      .eq("organization_id", organizationId)
-      .neq("status", "paid");
+      .select("amount, due_date, status")
+      .eq("organization_id", organizationId);
+    const invoiceDebits = (allInvoices || []).reduce((sum: number, invoice: any) => sum + Number(invoice.amount || 0), 0);
 
     const { data: dispatches } = await supabase.from("dispatch_requests").select("quantity, purchase_orders(locked_rate)").eq("organization_id", organizationId).in("status", ["approved", "auto_approved", "pending_mundra", "submitted"]);
-    const totalDebits = (dispatches || []).reduce((sum: number, dr: any) => sum + Number(dr.quantity || 0) * Number(dr.purchase_orders?.locked_rate || 0), 0);
+    const dispatchDebits = (dispatches || []).reduce((sum: number, dr: any) => sum + Number(dr.quantity || 0) * Number(dr.purchase_orders?.locked_rate || 0), 0);
+    const totalDebits = dispatchDebits + invoiceDebits;
     
-    const { data: payments } = await supabase.from("payments").select("amount").eq("organization_id", organizationId).eq("is_client_to_utcl", true);
-    const totalCredits = (payments || []).reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+    const { data: payments } = await supabase.from("payments").select("amount, is_client_to_utcl, is_utcl_payment, status").eq("organization_id", organizationId);
+    const validClientPayments = (payments || []).filter((p: any) => p.is_client_to_utcl || !p.is_utcl_payment);
+    const totalCredits = validClientPayments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
     
     const outstanding = Math.max(0, totalDebits - totalCredits);
-    const overdueInvoices = (invoices || []).filter((invoice: any) => invoice.due_date && invoice.due_date < todayStr);
+    
+    const unpaidInvoices = (allInvoices || []).filter((invoice: any) => invoice.status !== "paid");
+    const overdueInvoices = unpaidInvoices.filter((invoice: any) => invoice.due_date && invoice.due_date < todayStr);
     const overdue = overdueInvoices.reduce((sum: number, invoice: any) => sum + Number(invoice.amount || 0), 0);
     const oldestOverdueDays = overdueInvoices.length
       ? Math.round((today.getTime() - new Date(overdueInvoices[0].due_date).getTime()) / (1000 * 60 * 60 * 24))
@@ -2489,4 +2498,80 @@ export const deletePaymentAdmin = createServerFn({ method: "POST" })
 
     await createAuditLog(context.userId, "DELETE_PAYMENT_ADMIN", "payments", data.id, oldPayment, null);
     return { success: true };
+  });
+
+// =========================================================
+// TALLY EXPORT
+// =========================================================
+export const getTallyExportData = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      fromDate: z.string().optional(),
+      toDate: z.string().optional(),
+    })
+  )
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+
+    const fromDate = data?.fromDate;
+    const toDate = data?.toDate;
+
+    // 1. Client Ledger Masters
+    const { data: clients } = await supabase
+      .from("organizations")
+      .select("id, name, trade_name, billing_address, gstin, pan")
+      .eq("org_type", "client")
+      .eq("status", "active");
+
+    // 2. Invoices (Sales Vouchers)
+    let invoiceQuery = supabase
+      .from("invoices")
+      .select("*, organizations(name, trade_name)")
+      .order("invoice_date", { ascending: true });
+    if (fromDate) invoiceQuery = invoiceQuery.gte("invoice_date", fromDate);
+    if (toDate) invoiceQuery = invoiceQuery.lte("invoice_date", toDate);
+    const { data: invoices } = await invoiceQuery;
+
+    // 3. Payments (Receipt Vouchers)
+    let paymentQuery = supabase
+      .from("payments")
+      .select("*, organizations(name, trade_name)")
+      .eq("status", "verified")
+      .order("payment_date", { ascending: true });
+    if (fromDate) paymentQuery = paymentQuery.gte("payment_date", fromDate);
+    if (toDate) paymentQuery = paymentQuery.lte("payment_date", toDate);
+    const { data: payments } = await paymentQuery;
+
+    // 4. Credit Notes
+    let cnQuery = supabase
+      .from("credit_notes")
+      .select("*, issued_to:organizations!credit_notes_issued_to_org_id_fkey(name, trade_name)")
+      .neq("status", "cancelled")
+      .order("issue_date", { ascending: true });
+    if (fromDate) cnQuery = cnQuery.gte("issue_date", fromDate);
+    if (toDate) cnQuery = cnQuery.lte("issue_date", toDate);
+    const { data: creditNotes } = await cnQuery;
+
+    // 5. Debit Notes
+    let dnQuery = supabase
+      .from("debit_notes")
+      .select("*, issued_to:organizations!debit_notes_issued_to_org_id_fkey(name, trade_name)")
+      .neq("status", "cancelled")
+      .order("issue_date", { ascending: true });
+    if (fromDate) dnQuery = dnQuery.gte("issue_date", fromDate);
+    if (toDate) dnQuery = dnQuery.lte("issue_date", toDate);
+    const { data: debitNotes } = await dnQuery;
+
+    return {
+      clients: clients || [],
+      invoices: invoices || [],
+      payments: payments || [],
+      creditNotes: creditNotes || [],
+      debitNotes: debitNotes || [],
+      exportedAt: new Date().toISOString(),
+      fromDate: fromDate || null,
+      toDate: toDate || null,
+    };
   });
