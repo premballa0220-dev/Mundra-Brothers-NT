@@ -1,16 +1,47 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getAdminUTCLPayments, getDispatchRequests, getPurchaseOrders, recordPaymentAdmin, updatePaymentAdmin, deletePaymentAdmin, getClients } from "@/lib/api/business.functions";
+import {
+  getAdminUTCLPayments,
+  getDispatchRequests,
+  getPurchaseOrders,
+  recordPaymentAdmin,
+  updatePaymentAdmin,
+  deletePaymentAdmin,
+  getClients,
+} from "@/lib/api/business.functions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SelectGroup,
+  SelectLabel,
+} from "@/components/ui/select";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Plus, Search, CheckCircle2, Trash2, Pencil } from "lucide-react";
@@ -27,7 +58,7 @@ function AdminPaymentsPage() {
   const [selectedDispatches, setSelectedDispatches] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isFifo, setIsFifo] = useState(false);
-  
+
   // Payment Form State
   const [openDispatchId, setOpenDispatchId] = useState<string | null>(null);
   const [amount, setAmount] = useState<number>(0);
@@ -46,8 +77,12 @@ function AdminPaymentsPage() {
   const [clientUtclModalOpen, setClientUtclModalOpen] = useState(false);
   const [clientSelectedOrgId, setClientSelectedOrgId] = useState("");
   const [clientAmount, setClientAmount] = useState<number>(0);
-  const [clientPaymentType, setClientPaymentType] = useState<"on_account" | "against_reference">("against_reference");
-  const [clientPaymentDate, setClientPaymentDate] = useState(new Date().toISOString().split("T")[0]);
+  const [clientPaymentType, setClientPaymentType] = useState<"on_account" | "against_reference">(
+    "against_reference",
+  );
+  const [clientPaymentDate, setClientPaymentDate] = useState(
+    new Date().toISOString().split("T")[0],
+  );
   const [clientPaymentMode, setClientPaymentMode] = useState("RTGS");
   const [clientReferenceNumber, setClientReferenceNumber] = useState("");
   const [clientSelectedReference, setClientSelectedReference] = useState<string>("none");
@@ -79,14 +114,14 @@ function AdminPaymentsPage() {
       queryClient.invalidateQueries({ queryKey: ["admin-dispatch-requests"] });
       queryClient.invalidateQueries({ queryKey: ["admin-journal-entries"] });
       toast.success("Payment recorded successfully!");
-      
+
       // Remove from selected staging array
-      if (openDispatchId === 'lumpsum') {
+      if (openDispatchId === "lumpsum") {
         setSelectedDispatches([]);
       } else {
-        setSelectedDispatches(prev => prev.filter(d => d.id !== openDispatchId));
+        setSelectedDispatches((prev) => prev.filter((d) => d.id !== openDispatchId));
       }
-      
+
       setOpenDispatchId(null);
       resetForm();
     },
@@ -133,10 +168,10 @@ function AdminPaymentsPage() {
   function handleRecordLumpsumPayment(e: React.FormEvent) {
     e.preventDefault();
     if (selectedDispatches.length === 0) return;
-    
+
     recordMutation.mutate({
       organizationId: selectedDispatches[0].organization_id, // Primary org for reference
-      dispatchRequestIds: selectedDispatches.map(d => d.id),
+      dispatchRequestIds: selectedDispatches.map((d) => d.id),
       amount,
       paymentDate,
       paymentMode,
@@ -152,12 +187,12 @@ function AdminPaymentsPage() {
       toast.error("Please select a client");
       return;
     }
-    
+
     if (clientPaymentType === "against_reference" && clientSelectedReference === "none") {
       toast.error("Please select a Dispatch or PO reference");
       return;
     }
-    
+
     let dispatchRequestIds: string[] | undefined = undefined;
     let purchaseOrderId: string | undefined = undefined;
 
@@ -190,18 +225,23 @@ function AdminPaymentsPage() {
   }
 
   const formatCurrency = (val: number) =>
-    new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(val);
+    new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 0,
+    }).format(val);
 
-  let filteredDispatches = dispatches?.filter((d: any) => {
-    if (d.utcl_payment_id) return false; // Already paid
+  let filteredDispatches =
+    dispatches?.filter((d: any) => {
+      if (d.utcl_payment_id) return false; // Already paid
 
-    const search = searchQuery.toLowerCase();
-    return (
-      d.organization?.legal_name?.toLowerCase().includes(search) ||
-      d.purchase_order?.po_number?.toLowerCase().includes(search) ||
-      d.id.toLowerCase().includes(search)
-    );
-  }) || [];
+      const search = searchQuery.toLowerCase();
+      return (
+        d.organization?.legal_name?.toLowerCase().includes(search) ||
+        d.purchase_order?.po_number?.toLowerCase().includes(search) ||
+        d.id.toLowerCase().includes(search)
+      );
+    }) || [];
 
   filteredDispatches.sort((a: any, b: any) => {
     const timeA = new Date(a.created_at).getTime();
@@ -210,13 +250,13 @@ function AdminPaymentsPage() {
   });
 
   const toggleDispatchSelection = (dispatch: any) => {
-    const exists = selectedDispatches.find(d => d.id === dispatch.id);
+    const exists = selectedDispatches.find((d) => d.id === dispatch.id);
     if (exists) {
-      setSelectedDispatches(prev => prev.filter(d => d.id !== dispatch.id));
+      setSelectedDispatches((prev) => prev.filter((d) => d.id !== dispatch.id));
     } else {
-      setSelectedDispatches(prev => [...prev, dispatch]);
+      setSelectedDispatches((prev) => [...prev, dispatch]);
     }
-    toast.success(`Dispatch ${exists ? 'removed from' : 'added to'} staging`);
+    toast.success(`Dispatch ${exists ? "removed from" : "added to"} staging`);
   };
 
   const mundraUtclPayments = pastPayments?.filter((p: any) => !p.is_client_to_utcl) || [];
@@ -239,7 +279,7 @@ function AdminPaymentsPage() {
             <TabsTrigger value="mundra-utcl">Mundra to UTCL</TabsTrigger>
             <TabsTrigger value="client-utcl">Client to UTCL</TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="mundra-utcl" className="space-y-6">
             <div className="flex justify-end">
               <Button onClick={() => setDispatchModalOpen(true)}>
@@ -268,7 +308,7 @@ function AdminPaymentsPage() {
                         onChange={(e) => setSearchQuery(e.target.value)}
                       />
                     </div>
-                    <Button 
+                    <Button
                       variant={isFifo ? "default" : "outline"}
                       onClick={() => setIsFifo(!isFifo)}
                       type="button"
@@ -276,9 +316,11 @@ function AdminPaymentsPage() {
                       FIFO Policy
                     </Button>
                   </div>
-                  
+
                   {dispatchesLoading ? (
-                    <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+                    <div className="flex justify-center p-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    </div>
                   ) : (
                     <Table>
                       <TableHeader>
@@ -294,35 +336,49 @@ function AdminPaymentsPage() {
                       <TableBody>
                         {filteredDispatches.length > 0 ? (
                           filteredDispatches.map((d: any) => {
-                            const isSelected = selectedDispatches.some(sd => sd.id === d.id);
+                            const isSelected = selectedDispatches.some((sd) => sd.id === d.id);
                             return (
                               <TableRow key={d.id} className={isSelected ? "bg-primary/5" : ""}>
                                 <TableCell>{new Date(d.created_at).toLocaleDateString()}</TableCell>
-                                <TableCell className="font-semibold">{d.organization?.legal_name || "Unknown Client"}</TableCell>
-                                <TableCell className="font-mono text-xs">{d.purchase_order?.po_number || "N/A"}</TableCell>
+                                <TableCell className="font-semibold">
+                                  {d.organization?.legal_name || "Unknown Client"}
+                                </TableCell>
+                                <TableCell className="font-mono text-xs">
+                                  {d.purchase_order?.po_number || "N/A"}
+                                </TableCell>
                                 <TableCell>{d.quantity} MT</TableCell>
                                 <TableCell>
-                                  <Badge variant="outline">{d.status ? d.status.charAt(0).toUpperCase() + d.status.slice(1).replace('_', ' ') : ""}</Badge>
+                                  <Badge variant="outline">
+                                    {d.status
+                                      ? d.status.charAt(0).toUpperCase() +
+                                        d.status.slice(1).replace("_", " ")
+                                      : ""}
+                                  </Badge>
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  <Button 
-                                    variant={isSelected ? "secondary" : "outline"} 
+                                  <Button
+                                    variant={isSelected ? "secondary" : "outline"}
                                     size="sm"
                                     onClick={() => toggleDispatchSelection(d)}
                                   >
                                     {isSelected ? (
-                                      <><CheckCircle2 className="h-3 w-3 mr-1" /> Selected</>
+                                      <>
+                                        <CheckCircle2 className="h-3 w-3 mr-1" /> Selected
+                                      </>
                                     ) : (
                                       "Select"
                                     )}
                                   </Button>
                                 </TableCell>
                               </TableRow>
-                            )
+                            );
                           })
                         ) : (
                           <TableRow>
-                            <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
+                            <TableCell
+                              colSpan={6}
+                              className="text-center py-6 text-muted-foreground"
+                            >
                               No dispatches found.
                             </TableCell>
                           </TableRow>
@@ -341,7 +397,9 @@ function AdminPaymentsPage() {
             {selectedDispatches.length > 0 && (
               <Card className="border-primary/20 bg-primary/5">
                 <CardHeader className="pb-3 border-b border-primary/10">
-                  <CardTitle className="text-base font-semibold text-primary">Pending UTCL Payments (Staging)</CardTitle>
+                  <CardTitle className="text-base font-semibold text-primary">
+                    Pending UTCL Payments (Staging)
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
                   <Table>
@@ -361,62 +419,97 @@ function AdminPaymentsPage() {
                       {selectedDispatches.map((dispatch) => {
                         const po = dispatch.purchase_order;
                         const dispatchValue = dispatch.quantity * (po?.locked_rate || 0);
-                        const utclPayments = po?.payments?.filter((p: any) => p.is_utcl_payment && (p.status === "approved" || p.status === "verified")) || [];
-                        const paidToUtcl = utclPayments.reduce((acc: number, curr: any) => acc + (curr.amount || 0), 0);
+                        const utclPayments =
+                          po?.payments?.filter(
+                            (p: any) =>
+                              p.is_utcl_payment &&
+                              (p.status === "approved" || p.status === "verified"),
+                          ) || [];
+                        const paidToUtcl = utclPayments.reduce(
+                          (acc: number, curr: any) => acc + (curr.amount || 0),
+                          0,
+                        );
                         const remaining = Math.max(0, dispatchValue - paidToUtcl); // In reality this logic might be flawed if multiple dispatches are paid separately, but we'll adapt to dispatchValue.
-                        
+
                         return (
-                        <TableRow key={dispatch.id} className="bg-background">
-                          <TableCell className="font-semibold">{dispatch.organization?.legal_name || "Unknown Client"}</TableCell>
-                          <TableCell className="font-mono text-xs">{po?.po_number || "N/A"}</TableCell>
-                          <TableCell>{dispatch.quantity} MT</TableCell>
-                          <TableCell className="font-medium">{formatCurrency(dispatchValue)}</TableCell>
-                          <TableCell className="text-success font-medium">{formatCurrency(paidToUtcl)}</TableCell>
-                          <TableCell className="text-destructive font-medium">{formatCurrency(remaining)}</TableCell>
-                          <TableCell>{new Date(dispatch.requested_date).toLocaleDateString()}</TableCell>
-                          <TableCell className="text-right">
-                            <Button 
-                              variant="outline" 
-                              size="icon"
-                              className="h-9 w-9 text-destructive hover:bg-destructive/10"
-                              onClick={() => toggleDispatchSelection(dispatch)}
-                              title="Remove from Staging"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      )})}
+                          <TableRow key={dispatch.id} className="bg-background">
+                            <TableCell className="font-semibold">
+                              {dispatch.organization?.legal_name || "Unknown Client"}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">
+                              {po?.po_number || "N/A"}
+                            </TableCell>
+                            <TableCell>{dispatch.quantity} MT</TableCell>
+                            <TableCell className="font-medium">
+                              {formatCurrency(dispatchValue)}
+                            </TableCell>
+                            <TableCell className="text-success font-medium">
+                              {formatCurrency(paidToUtcl)}
+                            </TableCell>
+                            <TableCell className="text-destructive font-medium">
+                              {formatCurrency(remaining)}
+                            </TableCell>
+                            <TableCell>
+                              {new Date(dispatch.requested_date).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-9 w-9 text-destructive hover:bg-destructive/10"
+                                onClick={() => toggleDispatchSelection(dispatch)}
+                                title="Remove from Staging"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                       <TableRow className="bg-muted/30 font-medium">
-                        <TableCell colSpan={3} className="text-right">Total:</TableCell>
-                        <TableCell>{formatCurrency(selectedDispatches.reduce((acc, d) => acc + (d.quantity * (d.purchase_order?.locked_rate || 0)), 0))}</TableCell>
+                        <TableCell colSpan={3} className="text-right">
+                          Total:
+                        </TableCell>
+                        <TableCell>
+                          {formatCurrency(
+                            selectedDispatches.reduce(
+                              (acc, d) => acc + d.quantity * (d.purchase_order?.locked_rate || 0),
+                              0,
+                            ),
+                          )}
+                        </TableCell>
                         <TableCell colSpan={4}></TableCell>
                       </TableRow>
                     </TableBody>
                   </Table>
-                  
+
                   <div className="p-4 flex justify-end border-t border-primary/10">
-                    <Dialog open={openDispatchId === 'lumpsum'} onOpenChange={(isOpen) => {
-                      if (!isOpen) { 
-                        setOpenDispatchId(null); 
-                        resetForm(); 
-                      } else { 
-                        setOpenDispatchId('lumpsum'); 
-                        const totalAmount = selectedDispatches.reduce((acc, d) => acc + (d.quantity * (d.purchase_order?.locked_rate || 0)), 0);
-                        setAmount(totalAmount);
-                      }
-                    }}>
+                    <Dialog
+                      open={openDispatchId === "lumpsum"}
+                      onOpenChange={(isOpen) => {
+                        if (!isOpen) {
+                          setOpenDispatchId(null);
+                          resetForm();
+                        } else {
+                          setOpenDispatchId("lumpsum");
+                          const totalAmount = selectedDispatches.reduce(
+                            (acc, d) => acc + d.quantity * (d.purchase_order?.locked_rate || 0),
+                            0,
+                          );
+                          setAmount(totalAmount);
+                        }
+                      }}
+                    >
                       <DialogTrigger asChild>
-                        <Button>
-                          Record Lumpsum Payment
-                        </Button>
+                        <Button>Record Lumpsum Payment</Button>
                       </DialogTrigger>
                       <DialogContent>
                         <form onSubmit={handleRecordLumpsumPayment}>
                           <DialogHeader>
                             <DialogTitle>Record UTCL Lumpsum Payment</DialogTitle>
                             <DialogDescription>
-                              Record a single payment sent to UTCL covering {selectedDispatches.length} dispatch(es).
+                              Record a single payment sent to UTCL covering{" "}
+                              {selectedDispatches.length} dispatch(es).
                             </DialogDescription>
                           </DialogHeader>
                           <div className="grid gap-4 py-4">
@@ -467,7 +560,9 @@ function AdminPaymentsPage() {
                           </div>
                           <DialogFooter>
                             <Button type="submit" disabled={recordMutation.isPending}>
-                              {recordMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                              {recordMutation.isPending && (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              )}
                               Confirm Payment
                             </Button>
                           </DialogFooter>
@@ -506,27 +601,37 @@ function AdminPaymentsPage() {
                       {mundraUtclPayments.length > 0 ? (
                         mundraUtclPayments.map((p: any) => {
                           const dispatches = p.dispatch_requests || [];
-                          
+
                           let clientName = "Unknown Client";
                           let poNumber = "N/A";
                           let dispatchQtyText = "N/A";
-                          
+
                           if (dispatches.length === 1) {
                             const d = dispatches[0];
-                            clientName = d.purchase_orders?.organizations?.legal_name || "Unknown Client";
+                            clientName =
+                              d.purchase_orders?.organizations?.legal_name || "Unknown Client";
                             poNumber = d.purchase_orders?.po_number || "N/A";
                             dispatchQtyText = d.quantity ? `${d.quantity} MT` : "N/A";
                           } else if (dispatches.length > 1) {
                             clientName = "Multiple Clients";
-                            
+
                             // Check if all dispatches belong to the same client
-                            const clientNames = Array.from(new Set(dispatches.map((d: any) => d.purchase_orders?.organizations?.legal_name).filter(Boolean)));
+                            const clientNames = Array.from(
+                              new Set(
+                                dispatches
+                                  .map((d: any) => d.purchase_orders?.organizations?.legal_name)
+                                  .filter(Boolean),
+                              ),
+                            );
                             if (clientNames.length === 1) {
                               clientName = clientNames[0] as string;
                             }
-                            
+
                             poNumber = "Multiple";
-                            const totalQty = dispatches.reduce((acc: number, curr: any) => acc + (curr.quantity || 0), 0);
+                            const totalQty = dispatches.reduce(
+                              (acc: number, curr: any) => acc + (curr.quantity || 0),
+                              0,
+                            );
                             dispatchQtyText = `${totalQty} MT (Total)`;
                           }
 
@@ -540,21 +645,34 @@ function AdminPaymentsPage() {
                                 {poNumber === "Multiple" ? (
                                   <Dialog>
                                     <DialogTrigger asChild>
-                                      <Button variant="link" className="h-auto p-0 font-mono text-xs">Multiple (View Details)</Button>
+                                      <Button
+                                        variant="link"
+                                        className="h-auto p-0 font-mono text-xs"
+                                      >
+                                        Multiple (View Details)
+                                      </Button>
                                     </DialogTrigger>
                                     <DialogContent className="max-w-md">
                                       <DialogHeader>
                                         <DialogTitle>Dispatches in this Payment</DialogTitle>
                                         <DialogDescription>
-                                          Details of all {dispatches.length} dispatch(es) covered by this payment.
+                                          Details of all {dispatches.length} dispatch(es) covered by
+                                          this payment.
                                         </DialogDescription>
                                       </DialogHeader>
                                       <div className="py-4 space-y-3">
                                         {dispatches.map((d: any) => (
-                                          <div key={d.id} className="flex justify-between items-center text-sm border-b pb-2 last:border-0">
+                                          <div
+                                            key={d.id}
+                                            className="flex justify-between items-center text-sm border-b pb-2 last:border-0"
+                                          >
                                             <div>
-                                              <div className="font-medium">{d.purchase_orders?.po_number || "N/A"}</div>
-                                              <div className="text-muted-foreground text-xs">{d.purchase_orders?.organizations?.legal_name}</div>
+                                              <div className="font-medium">
+                                                {d.purchase_orders?.po_number || "N/A"}
+                                              </div>
+                                              <div className="text-muted-foreground text-xs">
+                                                {d.purchase_orders?.organizations?.legal_name}
+                                              </div>
                                             </div>
                                             <div className="font-mono">{d.quantity} MT</div>
                                           </div>
@@ -562,58 +680,89 @@ function AdminPaymentsPage() {
                                       </div>
                                     </DialogContent>
                                   </Dialog>
-                                ) : poNumber}
+                                ) : (
+                                  poNumber
+                                )}
                               </TableCell>
                               <TableCell>{dispatchQtyText}</TableCell>
-                              <TableCell className="text-success font-bold">{formatCurrency(p.amount)}</TableCell>
+                              <TableCell className="text-success font-bold">
+                                {formatCurrency(p.amount)}
+                              </TableCell>
                               <TableCell>
                                 <div className="text-sm">{p.payment_mode}</div>
-                                <div className="text-xs text-muted-foreground">{p.reference_number}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {p.reference_number}
+                                </div>
                               </TableCell>
                               <TableCell className="text-right space-x-2">
-                                <Dialog open={editPaymentOpen === p.id} onOpenChange={(isOpen) => {
-                                  if (!isOpen) setEditPaymentOpen(null);
-                                  else {
-                                    setEditAmount(p.amount);
-                                    setEditPaymentDate(p.payment_date);
-                                    setEditPaymentMode(p.payment_mode);
-                                    setEditReferenceNumber(p.reference_number);
-                                    setEditPaymentOpen(p.id);
-                                  }
-                                }}>
+                                <Dialog
+                                  open={editPaymentOpen === p.id}
+                                  onOpenChange={(isOpen) => {
+                                    if (!isOpen) setEditPaymentOpen(null);
+                                    else {
+                                      setEditAmount(p.amount);
+                                      setEditPaymentDate(p.payment_date);
+                                      setEditPaymentMode(p.payment_mode);
+                                      setEditReferenceNumber(p.reference_number);
+                                      setEditPaymentOpen(p.id);
+                                    }
+                                  }}
+                                >
                                   <DialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-primary">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 text-primary"
+                                    >
                                       <Pencil className="h-4 w-4" />
                                     </Button>
                                   </DialogTrigger>
                                   <DialogContent>
-                                    <form onSubmit={(e) => {
-                                      e.preventDefault();
-                                      updateMutation.mutate({
-                                        id: p.id,
-                                        amount: editAmount,
-                                        paymentDate: editPaymentDate,
-                                        paymentMode: editPaymentMode,
-                                        referenceNumber: editReferenceNumber,
-                                      });
-                                    }}>
+                                    <form
+                                      onSubmit={(e) => {
+                                        e.preventDefault();
+                                        updateMutation.mutate({
+                                          id: p.id,
+                                          amount: editAmount,
+                                          paymentDate: editPaymentDate,
+                                          paymentMode: editPaymentMode,
+                                          referenceNumber: editReferenceNumber,
+                                        });
+                                      }}
+                                    >
                                       <DialogHeader>
                                         <DialogTitle>Edit Payment</DialogTitle>
                                       </DialogHeader>
                                       <div className="grid gap-4 py-4">
                                         <div className="space-y-1">
                                           <Label>Amount Paid to UTCL (₹) *</Label>
-                                          <Input type="number" value={editAmount || ""} onChange={(e) => setEditAmount(Number(e.target.value))} required />
+                                          <Input
+                                            type="number"
+                                            value={editAmount || ""}
+                                            onChange={(e) => setEditAmount(Number(e.target.value))}
+                                            required
+                                          />
                                         </div>
                                         <div className="grid grid-cols-2 gap-4">
                                           <div className="space-y-1">
                                             <Label>Payment Date *</Label>
-                                            <Input type="date" value={editPaymentDate} onChange={(e) => setEditPaymentDate(e.target.value)} required />
+                                            <Input
+                                              type="date"
+                                              value={editPaymentDate}
+                                              onChange={(e) => setEditPaymentDate(e.target.value)}
+                                              required
+                                            />
                                           </div>
                                           <div className="space-y-1">
                                             <Label>Mode *</Label>
-                                            <Select value={editPaymentMode} onValueChange={setEditPaymentMode} required>
-                                              <SelectTrigger><SelectValue placeholder="Select mode" /></SelectTrigger>
+                                            <Select
+                                              value={editPaymentMode}
+                                              onValueChange={setEditPaymentMode}
+                                              required
+                                            >
+                                              <SelectTrigger>
+                                                <SelectValue placeholder="Select mode" />
+                                              </SelectTrigger>
                                               <SelectContent>
                                                 <SelectItem value="RTGS">RTGS</SelectItem>
                                                 <SelectItem value="NEFT">NEFT</SelectItem>
@@ -625,7 +774,11 @@ function AdminPaymentsPage() {
                                         </div>
                                         <div className="space-y-1">
                                           <Label>Reference / UTR Number *</Label>
-                                          <Input value={editReferenceNumber} onChange={(e) => setEditReferenceNumber(e.target.value)} required />
+                                          <Input
+                                            value={editReferenceNumber}
+                                            onChange={(e) => setEditReferenceNumber(e.target.value)}
+                                            required
+                                          />
                                         </div>
                                       </div>
                                       <DialogFooter className="flex justify-between items-center sm:justify-between w-full">
@@ -633,7 +786,11 @@ function AdminPaymentsPage() {
                                           type="button"
                                           variant="destructive"
                                           onClick={() => {
-                                            if (window.confirm("Are you sure you want to delete this payment? This cannot be undone.")) {
+                                            if (
+                                              window.confirm(
+                                                "Are you sure you want to delete this payment? This cannot be undone.",
+                                              )
+                                            ) {
                                               deleteMutation.mutate(p.id);
                                             }
                                           }}
@@ -642,17 +799,29 @@ function AdminPaymentsPage() {
                                           Delete Entry
                                         </Button>
                                         <Button type="submit" disabled={updateMutation.isPending}>
-                                          {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
+                                          {updateMutation.isPending && (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                          )}{" "}
+                                          Save Changes
                                         </Button>
                                       </DialogFooter>
                                     </form>
                                   </DialogContent>
                                 </Dialog>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => {
-                                  if (window.confirm("Are you sure you want to delete this payment? This cannot be undone.")) {
-                                    deleteMutation.mutate(p.id);
-                                  }
-                                }}>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive"
+                                  onClick={() => {
+                                    if (
+                                      window.confirm(
+                                        "Are you sure you want to delete this payment? This cannot be undone.",
+                                      )
+                                    ) {
+                                      deleteMutation.mutate(p.id);
+                                    }
+                                  }}
+                                >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </TableCell>
@@ -661,7 +830,10 @@ function AdminPaymentsPage() {
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
+                          <TableCell
+                            colSpan={7}
+                            className="text-center py-10 text-muted-foreground"
+                          >
                             No UTCL payments recorded yet.
                           </TableCell>
                         </TableRow>
@@ -692,7 +864,11 @@ function AdminPaymentsPage() {
                     <div className="grid gap-4 py-4">
                       <div className="space-y-1">
                         <Label>Client *</Label>
-                        <Select value={clientSelectedOrgId} onValueChange={setClientSelectedOrgId} required>
+                        <Select
+                          value={clientSelectedOrgId}
+                          onValueChange={setClientSelectedOrgId}
+                          required
+                        >
                           <SelectTrigger>
                             <SelectValue placeholder="Select Client" />
                           </SelectTrigger>
@@ -708,68 +884,96 @@ function AdminPaymentsPage() {
 
                       <div className="space-y-1">
                         <Label>Payment Type *</Label>
-                        <Select value={clientPaymentType} onValueChange={(val: any) => {
-                          setClientPaymentType(val);
-                          if (val === "on_account") {
-                            setClientSelectedReference("none");
-                          }
-                        }}>
+                        <Select
+                          value={clientPaymentType}
+                          onValueChange={(val: any) => {
+                            setClientPaymentType(val);
+                            if (val === "on_account") {
+                              setClientSelectedReference("none");
+                            }
+                          }}
+                        >
                           <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="on_account">On Account (No specific reference)</SelectItem>
-                            <SelectItem value="against_reference">Against Reference (PO or Dispatch)</SelectItem>
+                            <SelectItem value="on_account">
+                              On Account (No specific reference)
+                            </SelectItem>
+                            <SelectItem value="against_reference">
+                              Against Reference (PO or Dispatch)
+                            </SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
-                      
-                      {clientPaymentType === "against_reference" && clientSelectedOrgId && (() => {
-                        const openClientPos = purchaseOrders?.filter((po: any) => 
-                          po.organization_id === clientSelectedOrgId && po.status !== 'completed' && po.status !== 'cancelled'
-                        ) || [];
 
-                        let openClientDispatches = dispatches?.filter((d: any) => 
-                          d.organization_id === clientSelectedOrgId && 
-                          ['approved', 'auto_approved', 'pending_mundra', 'submitted'].includes(d.status)
-                        ) || [];
-                        
-                        return (
-                          <div className="space-y-1">
-                            <Label>Dispatch or PO *</Label>
-                            <Select value={clientSelectedReference} onValueChange={setClientSelectedReference}>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select Dispatch or PO" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none" disabled>Select Dispatch / PO</SelectItem>
-                                
-                                {openClientDispatches.length > 0 && (
-                                  <SelectGroup>
-                                    <SelectLabel>Dispatches (Preferred)</SelectLabel>
-                                    {openClientDispatches.map((d: any) => (
-                                      <SelectItem key={d.id} value={`dr_${d.id}`}>
-                                        Dispatch: Qty {d.quantity} MT {d.purchase_order?.po_number ? `(PO: ${d.purchase_order.po_number})` : ""}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectGroup>
-                                )}
+                      {clientPaymentType === "against_reference" &&
+                        clientSelectedOrgId &&
+                        (() => {
+                          const openClientPos =
+                            purchaseOrders?.filter(
+                              (po: any) =>
+                                po.organization_id === clientSelectedOrgId &&
+                                po.status !== "completed" &&
+                                po.status !== "cancelled",
+                            ) || [];
 
-                                {openClientPos.length > 0 && (
-                                  <SelectGroup>
-                                    <SelectLabel>Purchase Orders</SelectLabel>
-                                    {openClientPos.map((po: any) => (
-                                      <SelectItem key={po.id} value={`po_${po.id}`}>
-                                        PO: {po.po_number || "Unnamed PO"} (Pay against PO)
-                                      </SelectItem>
-                                    ))}
-                                  </SelectGroup>
-                                )}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        );
-                      })()}
+                          let openClientDispatches =
+                            dispatches?.filter(
+                              (d: any) =>
+                                d.organization_id === clientSelectedOrgId &&
+                                [
+                                  "approved",
+                                  "auto_approved",
+                                  "pending_mundra",
+                                  "submitted",
+                                ].includes(d.status),
+                            ) || [];
+
+                          return (
+                            <div className="space-y-1">
+                              <Label>Dispatch or PO *</Label>
+                              <Select
+                                value={clientSelectedReference}
+                                onValueChange={setClientSelectedReference}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select Dispatch or PO" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none" disabled>
+                                    Select Dispatch / PO
+                                  </SelectItem>
+
+                                  {openClientDispatches.length > 0 && (
+                                    <SelectGroup>
+                                      <SelectLabel>Dispatches (Preferred)</SelectLabel>
+                                      {openClientDispatches.map((d: any) => (
+                                        <SelectItem key={d.id} value={`dr_${d.id}`}>
+                                          Dispatch: Qty {d.quantity} MT{" "}
+                                          {d.purchase_order?.po_number
+                                            ? `(PO: ${d.purchase_order.po_number})`
+                                            : ""}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectGroup>
+                                  )}
+
+                                  {openClientPos.length > 0 && (
+                                    <SelectGroup>
+                                      <SelectLabel>Purchase Orders</SelectLabel>
+                                      {openClientPos.map((po: any) => (
+                                        <SelectItem key={po.id} value={`po_${po.id}`}>
+                                          PO: {po.po_number || "Unnamed PO"} (Pay against PO)
+                                        </SelectItem>
+                                      ))}
+                                    </SelectGroup>
+                                  )}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          );
+                        })()}
 
                       <div className="space-y-1">
                         <Label>Amount Paid to UTCL (₹) *</Label>
@@ -793,7 +997,11 @@ function AdminPaymentsPage() {
                         </div>
                         <div className="space-y-1">
                           <Label>Mode *</Label>
-                          <Select value={clientPaymentMode} onValueChange={setClientPaymentMode} required>
+                          <Select
+                            value={clientPaymentMode}
+                            onValueChange={setClientPaymentMode}
+                            required
+                          >
                             <SelectTrigger>
                               <SelectValue placeholder="Select mode" />
                             </SelectTrigger>
@@ -818,7 +1026,9 @@ function AdminPaymentsPage() {
                     </div>
                     <DialogFooter>
                       <Button type="submit" disabled={recordMutation.isPending}>
-                        {recordMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {recordMutation.isPending && (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        )}
                         Confirm Payment
                       </Button>
                     </DialogFooter>
@@ -829,7 +1039,9 @@ function AdminPaymentsPage() {
 
             <Card>
               <CardHeader className="pb-3 border-b flex flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base font-semibold">Client to UTCL Payment History</CardTitle>
+                <CardTitle className="text-base font-semibold">
+                  Client to UTCL Payment History
+                </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 {historyLoading ? (
@@ -851,7 +1063,9 @@ function AdminPaymentsPage() {
                     <TableBody>
                       {clientUtclPayments.length > 0 ? (
                         clientUtclPayments.map((p: any) => {
-                          const clientName = clients?.find((c: any) => c.id === p.organization_id)?.legal_name || "Unknown Client";
+                          const clientName =
+                            clients?.find((c: any) => c.id === p.organization_id)?.legal_name ||
+                            "Unknown Client";
 
                           return (
                             <TableRow key={p.id}>
@@ -859,69 +1073,108 @@ function AdminPaymentsPage() {
                                 {new Date(p.payment_date).toLocaleDateString()}
                               </TableCell>
                               <TableCell className="font-semibold">{clientName}</TableCell>
-                              <TableCell className="text-success font-bold">{formatCurrency(p.amount)}</TableCell>
+                              <TableCell className="text-success font-bold">
+                                {formatCurrency(p.amount)}
+                              </TableCell>
                               <TableCell>
                                 <div className="text-sm">{p.payment_mode}</div>
-                                <div className="text-xs text-muted-foreground">{p.reference_number}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {p.reference_number}
+                                </div>
                               </TableCell>
                               <TableCell>
                                 {(() => {
-                                  const linkedDispatches = dispatches?.filter((d: any) => d.utcl_payment_id === p.id) || [];
-                                  const linkedPo = purchaseOrders?.find((po: any) => po.id === p.purchase_order_id);
-                                  
+                                  const linkedDispatches =
+                                    dispatches?.filter((d: any) => d.utcl_payment_id === p.id) ||
+                                    [];
+                                  const linkedPo = purchaseOrders?.find(
+                                    (po: any) => po.id === p.purchase_order_id,
+                                  );
+
                                   if (linkedDispatches.length > 0) {
-                                    return <Badge variant="outline">Dispatches ({linkedDispatches.length})</Badge>;
+                                    return (
+                                      <Badge variant="outline">
+                                        Dispatches ({linkedDispatches.length})
+                                      </Badge>
+                                    );
                                   }
                                   if (linkedPo) {
-                                    return <Badge variant="secondary">PO: {linkedPo.po_number}</Badge>;
+                                    return (
+                                      <Badge variant="secondary">PO: {linkedPo.po_number}</Badge>
+                                    );
                                   }
                                   return <Badge variant="default">On Account</Badge>;
                                 })()}
                               </TableCell>
                               <TableCell className="text-right flex items-center justify-end space-x-2">
-                                <Dialog open={editPaymentOpen === p.id} onOpenChange={(isOpen) => {
-                                  if (!isOpen) setEditPaymentOpen(null);
-                                  else {
-                                    setEditAmount(p.amount);
-                                    setEditPaymentDate(p.payment_date);
-                                    setEditPaymentMode(p.payment_mode);
-                                    setEditReferenceNumber(p.reference_number);
-                                    setEditPaymentOpen(p.id);
-                                  }
-                                }}>
+                                <Dialog
+                                  open={editPaymentOpen === p.id}
+                                  onOpenChange={(isOpen) => {
+                                    if (!isOpen) setEditPaymentOpen(null);
+                                    else {
+                                      setEditAmount(p.amount);
+                                      setEditPaymentDate(p.payment_date);
+                                      setEditPaymentMode(p.payment_mode);
+                                      setEditReferenceNumber(p.reference_number);
+                                      setEditPaymentOpen(p.id);
+                                    }
+                                  }}
+                                >
                                   <DialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-primary">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 text-primary"
+                                    >
                                       <Pencil className="h-4 w-4" />
                                     </Button>
                                   </DialogTrigger>
                                   <DialogContent>
-                                    <form onSubmit={(e) => {
-                                      e.preventDefault();
-                                      updateMutation.mutate({
-                                        id: p.id,
-                                        amount: editAmount,
-                                        paymentDate: editPaymentDate,
-                                        paymentMode: editPaymentMode,
-                                        referenceNumber: editReferenceNumber,
-                                      });
-                                    }}>
+                                    <form
+                                      onSubmit={(e) => {
+                                        e.preventDefault();
+                                        updateMutation.mutate({
+                                          id: p.id,
+                                          amount: editAmount,
+                                          paymentDate: editPaymentDate,
+                                          paymentMode: editPaymentMode,
+                                          referenceNumber: editReferenceNumber,
+                                        });
+                                      }}
+                                    >
                                       <DialogHeader>
                                         <DialogTitle>Edit Payment</DialogTitle>
                                       </DialogHeader>
                                       <div className="grid gap-4 py-4">
                                         <div className="space-y-1">
                                           <Label>Amount Paid to UTCL (₹) *</Label>
-                                          <Input type="number" value={editAmount || ""} onChange={(e) => setEditAmount(Number(e.target.value))} required />
+                                          <Input
+                                            type="number"
+                                            value={editAmount || ""}
+                                            onChange={(e) => setEditAmount(Number(e.target.value))}
+                                            required
+                                          />
                                         </div>
                                         <div className="grid grid-cols-2 gap-4">
                                           <div className="space-y-1">
                                             <Label>Payment Date *</Label>
-                                            <Input type="date" value={editPaymentDate} onChange={(e) => setEditPaymentDate(e.target.value)} required />
+                                            <Input
+                                              type="date"
+                                              value={editPaymentDate}
+                                              onChange={(e) => setEditPaymentDate(e.target.value)}
+                                              required
+                                            />
                                           </div>
                                           <div className="space-y-1">
                                             <Label>Mode *</Label>
-                                            <Select value={editPaymentMode} onValueChange={setEditPaymentMode} required>
-                                              <SelectTrigger><SelectValue placeholder="Select mode" /></SelectTrigger>
+                                            <Select
+                                              value={editPaymentMode}
+                                              onValueChange={setEditPaymentMode}
+                                              required
+                                            >
+                                              <SelectTrigger>
+                                                <SelectValue placeholder="Select mode" />
+                                              </SelectTrigger>
                                               <SelectContent>
                                                 <SelectItem value="RTGS">RTGS</SelectItem>
                                                 <SelectItem value="NEFT">NEFT</SelectItem>
@@ -933,7 +1186,11 @@ function AdminPaymentsPage() {
                                         </div>
                                         <div className="space-y-1">
                                           <Label>Reference / UTR Number *</Label>
-                                          <Input value={editReferenceNumber} onChange={(e) => setEditReferenceNumber(e.target.value)} required />
+                                          <Input
+                                            value={editReferenceNumber}
+                                            onChange={(e) => setEditReferenceNumber(e.target.value)}
+                                            required
+                                          />
                                         </div>
                                       </div>
                                       <DialogFooter className="flex justify-between items-center sm:justify-between w-full">
@@ -941,7 +1198,11 @@ function AdminPaymentsPage() {
                                           type="button"
                                           variant="destructive"
                                           onClick={() => {
-                                            if (window.confirm("Are you sure you want to delete this payment? This cannot be undone.")) {
+                                            if (
+                                              window.confirm(
+                                                "Are you sure you want to delete this payment? This cannot be undone.",
+                                              )
+                                            ) {
                                               deleteMutation.mutate(p.id);
                                             }
                                           }}
@@ -950,17 +1211,29 @@ function AdminPaymentsPage() {
                                           Delete Entry
                                         </Button>
                                         <Button type="submit" disabled={updateMutation.isPending}>
-                                          {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
+                                          {updateMutation.isPending && (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                          )}{" "}
+                                          Save Changes
                                         </Button>
                                       </DialogFooter>
                                     </form>
                                   </DialogContent>
                                 </Dialog>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => {
-                                  if (window.confirm("Are you sure you want to delete this payment? This cannot be undone.")) {
-                                    deleteMutation.mutate(p.id);
-                                  }
-                                }}>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive"
+                                  onClick={() => {
+                                    if (
+                                      window.confirm(
+                                        "Are you sure you want to delete this payment? This cannot be undone.",
+                                      )
+                                    ) {
+                                      deleteMutation.mutate(p.id);
+                                    }
+                                  }}
+                                >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </TableCell>
@@ -969,7 +1242,10 @@ function AdminPaymentsPage() {
                         })
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
+                          <TableCell
+                            colSpan={5}
+                            className="text-center py-10 text-muted-foreground"
+                          >
                             No Client to UTCL payments recorded yet.
                           </TableCell>
                         </TableRow>

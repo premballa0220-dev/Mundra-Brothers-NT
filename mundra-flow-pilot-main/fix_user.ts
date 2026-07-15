@@ -16,7 +16,7 @@ async function fix() {
     return;
   }
 
-  const user = users.users.find(u => u.email === email);
+  const user = users.users.find((u) => u.email === email);
   if (!user) {
     console.log("User not found in auth.users.");
     return;

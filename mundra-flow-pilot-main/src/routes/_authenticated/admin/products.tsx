@@ -1,17 +1,54 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getProducts, createProduct, updateProduct, deleteProduct, getRatesForProduct, proposeProductRate, approveProductRate, getClients } from "@/lib/api/business.functions";
+import {
+  getProducts,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  getRatesForProduct,
+  proposeProductRate,
+  approveProductRate,
+  getClients,
+} from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Package, Plus, Loader2, IndianRupee, Clock, Check, X, Pencil, Trash2 } from "lucide-react";
@@ -21,7 +58,15 @@ export const Route = createFileRoute("/_authenticated/admin/products")({
   component: AdminProductsPage,
 });
 
-function ProductDetailsSheet({ product, open, setOpen }: { product: any; open: boolean; setOpen: (o: boolean) => void }) {
+function ProductDetailsSheet({
+  product,
+  open,
+  setOpen,
+}: {
+  product: any;
+  open: boolean;
+  setOpen: (o: boolean) => void;
+}) {
   const queryClient = useQueryClient();
   const [rateAmount, setRateAmount] = useState("");
   const [effectiveFrom, setEffectiveFrom] = useState(new Date().toISOString().split("T")[0]);
@@ -45,10 +90,13 @@ function ProductDetailsSheet({ product, open, setOpen }: { product: any; open: b
   });
 
   const approveMutation = useMutation({
-    mutationFn: (data: { rateId: string; action: "approve" | "reject" }) => approveProductRate({ data }),
+    mutationFn: (data: { rateId: string; action: "approve" | "reject" }) =>
+      approveProductRate({ data }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["product-rates", product.id] });
-      toast.success(`Rate ${variables.action === "approve" ? "approved" : "rejected"} successfully`);
+      toast.success(
+        `Rate ${variables.action === "approve" ? "approved" : "rejected"} successfully`,
+      );
     },
     onError: (err: any) => toast.error(err?.message ?? "Failed to process rate"),
   });
@@ -95,7 +143,9 @@ function ProductDetailsSheet({ product, open, setOpen }: { product: any; open: b
                 <div>
                   <div className="text-muted-foreground">Price (ex. GST)</div>
                   <div className="font-medium">
-                    {product.basePrice ? `₹${Number(product.basePrice).toLocaleString("en-IN")}` : "—"}
+                    {product.basePrice
+                      ? `₹${Number(product.basePrice).toLocaleString("en-IN")}`
+                      : "—"}
                   </div>
                 </div>
                 <div>
@@ -117,7 +167,9 @@ function ProductDetailsSheet({ product, open, setOpen }: { product: any; open: b
                   <div className="font-semibold text-primary">
                     {product.basePrice != null && product.gst_rate != null
                       ? `₹${(Number(product.basePrice) * (1 + Number(product.gst_rate) / 100)).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
-                      : product.basePrice ? `₹${Number(product.basePrice).toLocaleString("en-IN")}` : "—"}
+                      : product.basePrice
+                        ? `₹${Number(product.basePrice).toLocaleString("en-IN")}`
+                        : "—"}
                   </div>
                 </div>
                 <div>
@@ -144,7 +196,9 @@ function ProductDetailsSheet({ product, open, setOpen }: { product: any; open: b
                         <SelectContent>
                           <SelectItem value="generic">Generic Standard Rate</SelectItem>
                           {clients?.map((c: any) => (
-                            <SelectItem key={c.id} value={c.id}>{c.trade_name || c.legal_name}</SelectItem>
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.trade_name || c.legal_name}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -152,15 +206,28 @@ function ProductDetailsSheet({ product, open, setOpen }: { product: any; open: b
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Amount (excluding GST) (₹)</Label>
-                        <Input value={rateAmount} onChange={e => setRateAmount(e.target.value)} type="number" step="0.01" required />
+                        <Input
+                          value={rateAmount}
+                          onChange={(e) => setRateAmount(e.target.value)}
+                          type="number"
+                          step="0.01"
+                          required
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label>Effective From</Label>
-                        <Input value={effectiveFrom} onChange={e => setEffectiveFrom(e.target.value)} type="date" required />
+                        <Input
+                          value={effectiveFrom}
+                          onChange={(e) => setEffectiveFrom(e.target.value)}
+                          type="date"
+                          required
+                        />
                       </div>
                     </div>
                     <Button type="submit" disabled={proposeMutation.isPending} className="w-full">
-                      {proposeMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      {proposeMutation.isPending && (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      )}
                       Propose Rate
                     </Button>
                   </form>
@@ -170,7 +237,9 @@ function ProductDetailsSheet({ product, open, setOpen }: { product: any; open: b
               <div>
                 <h3 className="font-medium mb-3">Rate History</h3>
                 {ratesLoading ? (
-                  <div className="flex justify-center p-4"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+                  <div className="flex justify-center p-4">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  </div>
                 ) : rates && rates.length > 0 ? (
                   <div className="space-y-3">
                     {rates.map((rate: any) => (
@@ -179,28 +248,66 @@ function ProductDetailsSheet({ product, open, setOpen }: { product: any; open: b
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="font-semibold flex items-center">
-                                <IndianRupee className="h-3 w-3 mr-1" />{Number(rate.amount).toLocaleString()}
+                                <IndianRupee className="h-3 w-3 mr-1" />
+                                {Number(rate.amount).toLocaleString()}
                               </span>
-                              <Badge variant={rate.status === "active" ? "default" : rate.status === "pending_approval" ? "outline" : "secondary"}>
+                              <Badge
+                                variant={
+                                  rate.status === "active"
+                                    ? "default"
+                                    : rate.status === "pending_approval"
+                                      ? "outline"
+                                      : "secondary"
+                                }
+                              >
                                 {rate.status.replace("_", " ")}
                               </Badge>
                               {!rate.organization_id ? (
-                                <Badge variant="secondary" className="bg-blue-100 text-blue-800 hover:bg-blue-100 border-none">Generic</Badge>
+                                <Badge
+                                  variant="secondary"
+                                  className="bg-blue-100 text-blue-800 hover:bg-blue-100 border-none"
+                                >
+                                  Generic
+                                </Badge>
                               ) : (
-                                <Badge variant="secondary" className="bg-purple-100 text-purple-800 hover:bg-purple-100 border-none">{rate.organization?.trade_name}</Badge>
+                                <Badge
+                                  variant="secondary"
+                                  className="bg-purple-100 text-purple-800 hover:bg-purple-100 border-none"
+                                >
+                                  {rate.organization?.trade_name}
+                                </Badge>
                               )}
                             </div>
                             <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                               <Clock className="h-3 w-3" />
-                              {new Date(rate.effective_from).toLocaleDateString()} to {rate.effective_to ? new Date(rate.effective_to).toLocaleDateString() : "Ongoing"}
+                              {new Date(rate.effective_from).toLocaleDateString()} to{" "}
+                              {rate.effective_to
+                                ? new Date(rate.effective_to).toLocaleDateString()
+                                : "Ongoing"}
                             </div>
                           </div>
                           {rate.status === "pending_approval" && (
                             <div className="flex gap-2">
-                              <Button size="icon" variant="outline" className="h-8 w-8 text-green-600" onClick={() => approveMutation.mutate({ rateId: rate.id, action: "approve" })} disabled={approveMutation.isPending}>
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="h-8 w-8 text-green-600"
+                                onClick={() =>
+                                  approveMutation.mutate({ rateId: rate.id, action: "approve" })
+                                }
+                                disabled={approveMutation.isPending}
+                              >
                                 <Check className="h-4 w-4" />
                               </Button>
-                              <Button size="icon" variant="outline" className="h-8 w-8 text-destructive" onClick={() => approveMutation.mutate({ rateId: rate.id, action: "reject" })} disabled={approveMutation.isPending}>
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="h-8 w-8 text-destructive"
+                                onClick={() =>
+                                  approveMutation.mutate({ rateId: rate.id, action: "reject" })
+                                }
+                                disabled={approveMutation.isPending}
+                              >
                                 <X className="h-4 w-4" />
                               </Button>
                             </div>
@@ -210,7 +317,9 @@ function ProductDetailsSheet({ product, open, setOpen }: { product: any; open: b
                     ))}
                   </div>
                 ) : (
-                  <div className="text-sm text-muted-foreground text-center py-4 border rounded-md">No rates found for this product.</div>
+                  <div className="text-sm text-muted-foreground text-center py-4 border rounded-md">
+                    No rates found for this product.
+                  </div>
                 )}
               </div>
             </TabsContent>
@@ -235,7 +344,7 @@ function AdminProductsPage() {
   const [gstRate, setGstRate] = useState("");
   const [unitSelection, setUnitSelection] = useState("Bag");
   const [customUnit, setCustomUnit] = useState("");
-  
+
   const [editOpen, setEditOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
 
@@ -297,25 +406,27 @@ function AdminProductsPage() {
     const finalName = name.trim().endsWith("(1T)") ? name.trim() : `${name.trim()} (1T)`;
     const finalPackaging = packaging.trim() ? `${packaging.trim()} ${weightUnit}` : "";
 
-    createMutation.mutate({ 
-      name: finalName, 
-      packaging: finalPackaging, 
+    createMutation.mutate({
+      name: finalName,
+      packaging: finalPackaging,
       unit: finalUnit,
       basePrice: basePrice ? Number(basePrice) : undefined,
       hsnCode,
-      gstRate: gstRate ? Number(gstRate) : undefined 
+      gstRate: gstRate ? Number(gstRate) : undefined,
     });
   }
 
   function openEditDialog(prod: any) {
     setEditingProduct(prod);
     setName(prod.name);
-    
+
     if (prod.packaging) {
       const match = prod.packaging.match(/^([\d.]+)\s*(kg|T|MT)$/i);
       if (match) {
         setPackaging(match[1]);
-        setWeightUnit(match[2].toUpperCase() === 'T' ? 'T' : match[2].toUpperCase() === 'MT' ? 'MT' : 'kg');
+        setWeightUnit(
+          match[2].toUpperCase() === "T" ? "T" : match[2].toUpperCase() === "MT" ? "MT" : "kg",
+        );
       } else {
         setPackaging(prod.packaging);
         setWeightUnit("kg");
@@ -324,7 +435,7 @@ function AdminProductsPage() {
       setPackaging("");
       setWeightUnit("kg");
     }
-    
+
     setBasePrice(prod.basePrice ? String(prod.basePrice) : "");
     setHsnCode(prod.hsn_code || "");
     setGstRate(prod.gst_rate ? String(prod.gst_rate) : "");
@@ -349,14 +460,14 @@ function AdminProductsPage() {
     const finalName = name.trim().endsWith("(1T)") ? name.trim() : `${name.trim()} (1T)`;
     const finalPackaging = packaging.trim() ? `${packaging.trim()} ${weightUnit}` : "";
 
-    updateMutation.mutate({ 
+    updateMutation.mutate({
       id: editingProduct.id,
-      name: finalName, 
-      packaging: finalPackaging, 
+      name: finalName,
+      packaging: finalPackaging,
       unit: finalUnit,
       basePrice: basePrice ? Number(basePrice) : undefined,
       hsnCode,
-      gstRate: gstRate ? Number(gstRate) : undefined 
+      gstRate: gstRate ? Number(gstRate) : undefined,
     });
   }
 
@@ -386,17 +497,35 @@ function AdminProductsPage() {
               <form onSubmit={handleSubmit}>
                 <DialogHeader>
                   <DialogTitle>Add Product to Master</DialogTitle>
-                  <DialogDescription>Define product parameters including name, and standard weight.</DialogDescription>
+                  <DialogDescription>
+                    Define product parameters including name, and standard weight.
+                  </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="name" className="text-right">Name *</Label>
-                    <Input id="name" value={name} onChange={(e) => setName(e.target.value)} className="col-span-3" placeholder="e.g. UltraTech Premium Cement" required />
+                    <Label htmlFor="name" className="text-right">
+                      Name *
+                    </Label>
+                    <Input
+                      id="name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="col-span-3"
+                      placeholder="e.g. UltraTech Premium Cement"
+                      required
+                    />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="packaging" className="text-right">Weight</Label>
+                    <Label htmlFor="packaging" className="text-right">
+                      Weight
+                    </Label>
                     <div className="col-span-3 flex gap-2">
-                      <Input id="packaging" value={packaging} onChange={(e) => setPackaging(e.target.value)} placeholder="e.g. 50" />
+                      <Input
+                        id="packaging"
+                        value={packaging}
+                        onChange={(e) => setPackaging(e.target.value)}
+                        placeholder="e.g. 50"
+                      />
                       <Select value={weightUnit} onValueChange={setWeightUnit}>
                         <SelectTrigger className="w-[100px]">
                           <SelectValue placeholder="Unit" />
@@ -410,7 +539,9 @@ function AdminProductsPage() {
                     </div>
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="unit" className="text-right">Unit *</Label>
+                    <Label htmlFor="unit" className="text-right">
+                      Unit *
+                    </Label>
                     <div className="col-span-3 space-y-2">
                       <Select value={unitSelection} onValueChange={setUnitSelection}>
                         <SelectTrigger>
@@ -423,35 +554,76 @@ function AdminProductsPage() {
                         </SelectContent>
                       </Select>
                       {unitSelection === "Other" && (
-                        <Input value={customUnit} onChange={(e) => setCustomUnit(e.target.value)} placeholder="Enter custom unit" required />
+                        <Input
+                          value={customUnit}
+                          onChange={(e) => setCustomUnit(e.target.value)}
+                          placeholder="Enter custom unit"
+                          required
+                        />
                       )}
                     </div>
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="basePrice" className="text-right">Price (ex. GST)</Label>
-                    <Input id="basePrice" type="number" step="0.01" value={basePrice} onChange={(e) => setBasePrice(e.target.value)} className="col-span-3" placeholder="e.g. 350" />
+                    <Label htmlFor="basePrice" className="text-right">
+                      Price (ex. GST)
+                    </Label>
+                    <Input
+                      id="basePrice"
+                      type="number"
+                      step="0.01"
+                      value={basePrice}
+                      onChange={(e) => setBasePrice(e.target.value)}
+                      className="col-span-3"
+                      placeholder="e.g. 350"
+                    />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="hsnCode" className="text-right">HSN Code</Label>
-                    <Input id="hsnCode" value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} className="col-span-3" placeholder="e.g. 2523" />
+                    <Label htmlFor="hsnCode" className="text-right">
+                      HSN Code
+                    </Label>
+                    <Input
+                      id="hsnCode"
+                      value={hsnCode}
+                      onChange={(e) => setHsnCode(e.target.value)}
+                      className="col-span-3"
+                      placeholder="e.g. 2523"
+                    />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="gstRate" className="text-right">GST Rate (%)</Label>
-                    <Input id="gstRate" type="number" step="0.01" value={gstRate} onChange={(e) => setGstRate(e.target.value)} className="col-span-3" placeholder="e.g. 18" />
+                    <Label htmlFor="gstRate" className="text-right">
+                      GST Rate (%)
+                    </Label>
+                    <Input
+                      id="gstRate"
+                      type="number"
+                      step="0.01"
+                      value={gstRate}
+                      onChange={(e) => setGstRate(e.target.value)}
+                      className="col-span-3"
+                      placeholder="e.g. 18"
+                    />
                   </div>
                 </div>
                 <DialogFooter>
                   <Button type="submit" disabled={createMutation.isPending}>
-                    {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Product
+                    {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{" "}
+                    Save Product
                   </Button>
                 </DialogFooter>
               </form>
             </DialogContent>
           </Dialog>
 
-          <Dialog open={editOpen} onOpenChange={(o) => {
-            if (!o) { setEditOpen(false); setEditingProduct(null); resetForm(); }
-          }}>
+          <Dialog
+            open={editOpen}
+            onOpenChange={(o) => {
+              if (!o) {
+                setEditOpen(false);
+                setEditingProduct(null);
+                resetForm();
+              }
+            }}
+          >
             <DialogContent className="sm:max-w-[425px]">
               <form onSubmit={handleEditSubmit}>
                 <DialogHeader>
@@ -460,13 +632,27 @@ function AdminProductsPage() {
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="edit-name" className="text-right">Name *</Label>
-                    <Input id="edit-name" value={name} onChange={(e) => setName(e.target.value)} className="col-span-3" required />
+                    <Label htmlFor="edit-name" className="text-right">
+                      Name *
+                    </Label>
+                    <Input
+                      id="edit-name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="col-span-3"
+                      required
+                    />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="edit-packaging" className="text-right">Weight</Label>
+                    <Label htmlFor="edit-packaging" className="text-right">
+                      Weight
+                    </Label>
                     <div className="col-span-3 flex gap-2">
-                      <Input id="edit-packaging" value={packaging} onChange={(e) => setPackaging(e.target.value)} />
+                      <Input
+                        id="edit-packaging"
+                        value={packaging}
+                        onChange={(e) => setPackaging(e.target.value)}
+                      />
                       <Select value={weightUnit} onValueChange={setWeightUnit}>
                         <SelectTrigger className="w-[100px]">
                           <SelectValue placeholder="Unit" />
@@ -493,26 +679,57 @@ function AdminProductsPage() {
                         </SelectContent>
                       </Select>
                       {unitSelection === "Other" && (
-                        <Input value={customUnit} onChange={(e) => setCustomUnit(e.target.value)} placeholder="Enter custom unit" required />
+                        <Input
+                          value={customUnit}
+                          onChange={(e) => setCustomUnit(e.target.value)}
+                          placeholder="Enter custom unit"
+                          required
+                        />
                       )}
                     </div>
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="edit-basePrice" className="text-right">Price (ex. GST)</Label>
-                    <Input id="edit-basePrice" type="number" step="0.01" value={basePrice} onChange={(e) => setBasePrice(e.target.value)} className="col-span-3" />
+                    <Label htmlFor="edit-basePrice" className="text-right">
+                      Price (ex. GST)
+                    </Label>
+                    <Input
+                      id="edit-basePrice"
+                      type="number"
+                      step="0.01"
+                      value={basePrice}
+                      onChange={(e) => setBasePrice(e.target.value)}
+                      className="col-span-3"
+                    />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="edit-hsnCode" className="text-right">HSN Code</Label>
-                    <Input id="edit-hsnCode" value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} className="col-span-3" />
+                    <Label htmlFor="edit-hsnCode" className="text-right">
+                      HSN Code
+                    </Label>
+                    <Input
+                      id="edit-hsnCode"
+                      value={hsnCode}
+                      onChange={(e) => setHsnCode(e.target.value)}
+                      className="col-span-3"
+                    />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="edit-gstRate" className="text-right">GST Rate (%)</Label>
-                    <Input id="edit-gstRate" type="number" step="0.01" value={gstRate} onChange={(e) => setGstRate(e.target.value)} className="col-span-3" />
+                    <Label htmlFor="edit-gstRate" className="text-right">
+                      GST Rate (%)
+                    </Label>
+                    <Input
+                      id="edit-gstRate"
+                      type="number"
+                      step="0.01"
+                      value={gstRate}
+                      onChange={(e) => setGstRate(e.target.value)}
+                      className="col-span-3"
+                    />
                   </div>
                 </div>
                 <DialogFooter>
                   <Button type="submit" disabled={updateMutation.isPending}>
-                    {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
+                    {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{" "}
+                    Save Changes
                   </Button>
                 </DialogFooter>
               </form>
@@ -521,7 +738,9 @@ function AdminProductsPage() {
         </header>
 
         {isLoading ? (
-          <div className="flex justify-center items-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+          <div className="flex justify-center items-center py-20">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
         ) : (
           <Card>
             <CardHeader className="pb-3">
@@ -553,12 +772,18 @@ function AdminProductsPage() {
                         </TableCell>
                         <TableCell>{prod.packaging || "—"}</TableCell>
                         <TableCell>{prod.unit}</TableCell>
-                        <TableCell>{prod.basePrice ? `₹${Number(prod.basePrice).toLocaleString("en-IN")}` : "—"}</TableCell>
+                        <TableCell>
+                          {prod.basePrice
+                            ? `₹${Number(prod.basePrice).toLocaleString("en-IN")}`
+                            : "—"}
+                        </TableCell>
                         <TableCell>{prod.gst_rate != null ? `${prod.gst_rate}%` : "—"}</TableCell>
                         <TableCell className="font-semibold">
                           {prod.basePrice != null && prod.gst_rate != null
                             ? `₹${(Number(prod.basePrice) * (1 + Number(prod.gst_rate) / 100)).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
-                            : prod.basePrice ? `₹${Number(prod.basePrice).toLocaleString("en-IN")}` : "—"}
+                            : prod.basePrice
+                              ? `₹${Number(prod.basePrice).toLocaleString("en-IN")}`
+                              : "—"}
                         </TableCell>
                         <TableCell>
                           <Badge variant={prod.is_active ? "default" : "secondary"}>
@@ -567,13 +792,28 @@ function AdminProductsPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={() => setSelectedProduct(prod)}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSelectedProduct(prod)}
+                            >
                               Details & Rates
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-500 hover:text-blue-600 hover:bg-blue-500/10" onClick={() => openEditDialog(prod)}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-blue-500 hover:text-blue-600 hover:bg-blue-500/10"
+                              onClick={() => openEditDialog(prod)}
+                            >
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => handleDelete(prod.id)} disabled={deleteMutation.isPending}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                              onClick={() => handleDelete(prod.id)}
+                              disabled={deleteMutation.isPending}
+                            >
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
@@ -582,7 +822,9 @@ function AdminProductsPage() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">No products configured yet.</TableCell>
+                      <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                        No products configured yet.
+                      </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
@@ -593,10 +835,10 @@ function AdminProductsPage() {
       </div>
 
       {selectedProduct && (
-        <ProductDetailsSheet 
-          product={selectedProduct} 
-          open={!!selectedProduct} 
-          setOpen={(o) => !o && setSelectedProduct(null)} 
+        <ProductDetailsSheet
+          product={selectedProduct}
+          open={!!selectedProduct}
+          setOpen={(o) => !o && setSelectedProduct(null)}
         />
       )}
     </AppShell>

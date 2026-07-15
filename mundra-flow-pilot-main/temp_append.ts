@@ -1,10 +1,9 @@
-
 export async function broadcastNotification(
   supabase: any,
   title: string,
   message: string,
   link: string | null = null,
-  targetOrganizationId: string | null = null
+  targetOrganizationId: string | null = null,
 ) {
   let query = supabase.from("profiles").select("id, organization_id").eq("is_active", true);
   if (targetOrganizationId) {
@@ -55,7 +54,7 @@ export const deleteNotification = createServerFn({ method: "POST" })
       .delete()
       .eq("id", data.id)
       .eq("user_id", context.userId);
-    
+
     if (error) throw new Error("Failed to delete notification: " + error.message);
     return { success: true };
   });
@@ -70,7 +69,7 @@ export const markNotificationRead = createServerFn({ method: "POST" })
       .update({ is_read: true })
       .eq("id", data.id)
       .eq("user_id", context.userId);
-    
+
     if (error) throw new Error("Failed to mark notification as read: " + error.message);
     return { success: true };
   });

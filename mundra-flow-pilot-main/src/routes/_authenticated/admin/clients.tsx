@@ -1,7 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getClients, createClient, updateClientStatus, updateClientCommercials, updateClient } from "@/lib/api/business.functions";
+import {
+  getClients,
+  createClient,
+  updateClientStatus,
+  updateClientCommercials,
+  updateClient,
+} from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,12 +50,28 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Building2, Plus, Loader2, MoreVertical, Ban, CheckCircle2, X } from "lucide-react";
 
-function DeliveryLocationsBuilder({ locations, setLocations }: { locations: any[], setLocations: any }) {
-  const addLocation = () => setLocations([...locations, { label: "", address: "", isDefault: locations.length === 0, contactPerson: "", contactPhone: "" }]);
+function DeliveryLocationsBuilder({
+  locations,
+  setLocations,
+}: {
+  locations: any[];
+  setLocations: any;
+}) {
+  const addLocation = () =>
+    setLocations([
+      ...locations,
+      {
+        label: "",
+        address: "",
+        isDefault: locations.length === 0,
+        contactPerson: "",
+        contactPhone: "",
+      },
+    ]);
   const updateLocation = (index: number, key: string, value: any) => {
     const newLocs = [...locations];
     if (key === "isDefault" && value === true) {
-      newLocs.forEach(l => l.isDefault = false);
+      newLocs.forEach((l) => (l.isDefault = false));
     }
     newLocs[index][key] = value;
     setLocations(newLocs);
@@ -71,42 +93,84 @@ function DeliveryLocationsBuilder({ locations, setLocations }: { locations: any[
         </Button>
       </div>
       {locations.length === 0 && (
-        <p className="text-xs text-muted-foreground italic">No delivery locations added. Add at least one if required.</p>
+        <p className="text-xs text-muted-foreground italic">
+          No delivery locations added. Add at least one if required.
+        </p>
       )}
       {locations.map((loc, i) => (
         <div key={i} className="flex items-start gap-3 p-3 border rounded-md relative bg-muted/20">
           <div className="flex-1 space-y-3">
             <div className="flex gap-3">
-               <div className="flex-1 space-y-1">
-                 <Label className="text-xs">Location Label (e.g. Site A) *</Label>
-                 <Input value={loc.label} onChange={(e) => updateLocation(i, "label", e.target.value)} required placeholder="e.g. Main Warehouse" />
-               </div>
-               <div className="flex items-end pb-2">
-                 <Label className="flex items-center gap-2 cursor-pointer text-xs bg-background border px-3 py-2 rounded-md">
-                   <input type="radio" name="defaultLocationNew" checked={loc.isDefault} onChange={() => updateLocation(i, "isDefault", true)} className="w-3.5 h-3.5 accent-primary" />
-                   Set as Default
-                 </Label>
-               </div>
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs">Location Label (e.g. Site A) *</Label>
+                <Input
+                  value={loc.label}
+                  onChange={(e) => updateLocation(i, "label", e.target.value)}
+                  required
+                  placeholder="e.g. Main Warehouse"
+                />
+              </div>
+              <div className="flex items-end pb-2">
+                <Label className="flex items-center gap-2 cursor-pointer text-xs bg-background border px-3 py-2 rounded-md">
+                  <input
+                    type="radio"
+                    name="defaultLocationNew"
+                    checked={loc.isDefault}
+                    onChange={() => updateLocation(i, "isDefault", true)}
+                    className="w-3.5 h-3.5 accent-primary"
+                  />
+                  Set as Default
+                </Label>
+              </div>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Full Address *</Label>
-              <Textarea value={loc.address} onChange={(e) => updateLocation(i, "address", e.target.value)} required rows={2} placeholder="Enter full shipping address..." />
+              <Textarea
+                value={loc.address}
+                onChange={(e) => updateLocation(i, "address", e.target.value)}
+                required
+                rows={2}
+                placeholder="Enter full shipping address..."
+              />
             </div>
             <div className="flex gap-3">
-               <div className="flex-1 space-y-1">
-                 <Label className="text-xs">Contact Person *</Label>
-                 <Input value={loc.contactPerson || ""} onChange={(e) => updateLocation(i, "contactPerson", e.target.value)} placeholder="e.g. John Doe" required />
-               </div>
-               <div className="flex-1 space-y-1">
-                 <Label className="text-xs">Contact Phone *</Label>
-                 <Input value={loc.contactPhone || ""} onChange={(e) => updateLocation(i, "contactPhone", e.target.value.replace(/\D/g, ''))} placeholder="10-digit number" maxLength={10} required />
-                 {loc.contactPhone && loc.contactPhone.length > 0 && loc.contactPhone.length < 10 && (
-                   <span className="text-[10px] text-destructive block">Must be exactly 10 digits</span>
-                 )}
-               </div>
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs">Contact Person *</Label>
+                <Input
+                  value={loc.contactPerson || ""}
+                  onChange={(e) => updateLocation(i, "contactPerson", e.target.value)}
+                  placeholder="e.g. John Doe"
+                  required
+                />
+              </div>
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs">Contact Phone *</Label>
+                <Input
+                  value={loc.contactPhone || ""}
+                  onChange={(e) =>
+                    updateLocation(i, "contactPhone", e.target.value.replace(/\D/g, ""))
+                  }
+                  placeholder="10-digit number"
+                  maxLength={10}
+                  required
+                />
+                {loc.contactPhone &&
+                  loc.contactPhone.length > 0 &&
+                  loc.contactPhone.length < 10 && (
+                    <span className="text-[10px] text-destructive block">
+                      Must be exactly 10 digits
+                    </span>
+                  )}
+              </div>
             </div>
           </div>
-          <Button type="button" variant="ghost" size="icon" className="text-destructive h-8 w-8 mt-5" onClick={() => removeLocation(i)}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="text-destructive h-8 w-8 mt-5"
+            onClick={() => removeLocation(i)}
+          >
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -124,7 +188,7 @@ function AdminClientsPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<any | null>(null);
-  
+
   // Status Modal
   const [statusModalOpen, setStatusModalOpen] = useState(false);
   const [clientToUpdateStatus, setClientToUpdateStatus] = useState<any | null>(null);
@@ -141,7 +205,7 @@ function AdminClientsPage() {
   const [primaryContactName, setPrimaryContactName] = useState("");
   const [primaryContactEmail, setPrimaryContactEmail] = useState("");
   const [primaryContactPhone, setPrimaryContactPhone] = useState("");
-  
+
   const [creditLimit, setCreditLimit] = useState<number | "">("");
   const [paymentTermsDays, setPaymentTermsDays] = useState<number | "">("");
   const [gracePeriodDays, setGracePeriodDays] = useState<number | "">("");
@@ -150,7 +214,16 @@ function AdminClientsPage() {
   const [includeInvoices, setIncludeInvoices] = useState(true);
   const [restrictions, setRestrictions] = useState("");
   const [commissionPercentage, setCommissionPercentage] = useState<number | "">("");
-  const [deliveryLocations, setDeliveryLocations] = useState<{ id?: string, label: string, address: string, isDefault: boolean, contactPerson?: string, contactPhone?: string }[]>([{ label: "", address: "", isDefault: true, contactPerson: "", contactPhone: "" }]);
+  const [deliveryLocations, setDeliveryLocations] = useState<
+    {
+      id?: string;
+      label: string;
+      address: string;
+      isDefault: boolean;
+      contactPerson?: string;
+      contactPhone?: string;
+    }[]
+  >([{ label: "", address: "", isDefault: true, contactPerson: "", contactPhone: "" }]);
 
   const { data: clients, isLoading } = useQuery({
     queryKey: ["admin-clients"],
@@ -226,21 +299,32 @@ function AdminClientsPage() {
     setIncludeInvoices(true);
     setRestrictions("");
     setCommissionPercentage("");
-    setDeliveryLocations([{ label: "", address: "", isDefault: true, contactPerson: "", contactPhone: "" }]);
+    setDeliveryLocations([
+      { label: "", address: "", isDefault: true, contactPerson: "", contactPhone: "" },
+    ]);
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     createMutation.mutate({
-      legalName, shortName, tradeName, gstNumber, panNumber, 
-      billingAddress, primaryContactName, primaryContactEmail, primaryContactPhone,
-      creditLimit: creditLimit === "" ? 0 : creditLimit, paymentTermsDays: paymentTermsDays === "" ? 30 : paymentTermsDays, gracePeriodDays: gracePeriodDays === "" ? 0 : gracePeriodDays,
+      legalName,
+      shortName,
+      tradeName,
+      gstNumber,
+      panNumber,
+      billingAddress,
+      primaryContactName,
+      primaryContactEmail,
+      primaryContactPhone,
+      creditLimit: creditLimit === "" ? 0 : creditLimit,
+      paymentTermsDays: paymentTermsDays === "" ? 30 : paymentTermsDays,
+      gracePeriodDays: gracePeriodDays === "" ? 0 : gracePeriodDays,
       includeUndispatchedPos: includeUndispatched,
       includeDispatchedUnbilled: includeDispatched,
       includeUnpaidInvoices: includeInvoices,
       restrictions,
       commissionPercentage: commissionPercentage === "" ? null : Number(commissionPercentage),
-      deliveryLocations: deliveryLocations.map(l => ({ ...l, isDefault: !!l.isDefault }))
+      deliveryLocations: deliveryLocations.map((l) => ({ ...l, isDefault: !!l.isDefault })),
     });
   }
 
@@ -287,7 +371,7 @@ function AdminClientsPage() {
                     Configure identity and commercial terms for the new tenant.
                   </DialogDescription>
                 </DialogHeader>
-                
+
                 <div className="space-y-6 py-4">
                   {/* Master Info */}
                   <div className="space-y-4">
@@ -295,7 +379,11 @@ function AdminClientsPage() {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Legal Name *</Label>
-                        <Input value={legalName} onChange={(e) => setLegalName(e.target.value)} required />
+                        <Input
+                          value={legalName}
+                          onChange={(e) => setLegalName(e.target.value)}
+                          required
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label>Trade / Short Name</Label>
@@ -313,40 +401,59 @@ function AdminClientsPage() {
                   </div>
 
                   <hr className="border-border" />
-                  
+
                   {/* Contact & Billing */}
                   <div className="space-y-4">
                     <h4 className="text-sm font-medium">Contact & Billing</h4>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Primary Contact Name</Label>
-                        <Input value={primaryContactName} onChange={(e) => setPrimaryContactName(e.target.value)} />
+                        <Input
+                          value={primaryContactName}
+                          onChange={(e) => setPrimaryContactName(e.target.value)}
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label>Primary Contact Email</Label>
-                        <Input type="email" value={primaryContactEmail} onChange={(e) => setPrimaryContactEmail(e.target.value)} />
+                        <Input
+                          type="email"
+                          value={primaryContactEmail}
+                          onChange={(e) => setPrimaryContactEmail(e.target.value)}
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label>Whatsapp / Contact Number</Label>
-                        <Input 
+                        <Input
                           type="tel"
                           pattern="[0-9]{10}"
                           maxLength={10}
                           title="Please enter exactly 10 digits"
-                          value={primaryContactPhone} 
-                          onChange={(e) => setPrimaryContactPhone(e.target.value.replace(/\D/g, ''))} 
+                          value={primaryContactPhone}
+                          onChange={(e) =>
+                            setPrimaryContactPhone(e.target.value.replace(/\D/g, ""))
+                          }
                         />
-                        {primaryContactPhone && primaryContactPhone.length > 0 && primaryContactPhone.length < 10 && (
-                          <span className="text-[10px] text-destructive block mt-1">Must be exactly 10 digits</span>
-                        )}
+                        {primaryContactPhone &&
+                          primaryContactPhone.length > 0 &&
+                          primaryContactPhone.length < 10 && (
+                            <span className="text-[10px] text-destructive block mt-1">
+                              Must be exactly 10 digits
+                            </span>
+                          )}
                       </div>
                       <div className="space-y-2 col-span-2">
                         <Label>Billing Address</Label>
-                        <Textarea value={billingAddress} onChange={(e) => setBillingAddress(e.target.value)} />
+                        <Textarea
+                          value={billingAddress}
+                          onChange={(e) => setBillingAddress(e.target.value)}
+                        />
                       </div>
-                      
+
                       <div className="col-span-2 pt-2">
-                         <DeliveryLocationsBuilder locations={deliveryLocations} setLocations={setDeliveryLocations} />
+                        <DeliveryLocationsBuilder
+                          locations={deliveryLocations}
+                          setLocations={setDeliveryLocations}
+                        />
                       </div>
                     </div>
                   </div>
@@ -359,31 +466,70 @@ function AdminClientsPage() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="space-y-2">
                         <Label>Credit Limit *</Label>
-                        <Input type="number" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value === "" ? "" : Number(e.target.value))} required />
+                        <Input
+                          type="number"
+                          value={creditLimit}
+                          onChange={(e) =>
+                            setCreditLimit(e.target.value === "" ? "" : Number(e.target.value))
+                          }
+                          required
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label>Terms (Days) *</Label>
-                        <Input type="number" value={paymentTermsDays} onChange={(e) => setPaymentTermsDays(e.target.value === "" ? "" : Number(e.target.value))} required />
+                        <Input
+                          type="number"
+                          value={paymentTermsDays}
+                          onChange={(e) =>
+                            setPaymentTermsDays(e.target.value === "" ? "" : Number(e.target.value))
+                          }
+                          required
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label>Grace (Days)</Label>
-                        <Input type="number" value={gracePeriodDays} onChange={(e) => setGracePeriodDays(e.target.value === "" ? "" : Number(e.target.value))} />
+                        <Input
+                          type="number"
+                          value={gracePeriodDays}
+                          onChange={(e) =>
+                            setGracePeriodDays(e.target.value === "" ? "" : Number(e.target.value))
+                          }
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label>Commission (%)</Label>
-                        <Input type="number" min="0" max="100" step="0.01" value={commissionPercentage} onChange={(e) => setCommissionPercentage(e.target.value === "" ? "" : Number(e.target.value))} />
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={commissionPercentage}
+                          onChange={(e) =>
+                            setCommissionPercentage(
+                              e.target.value === "" ? "" : Number(e.target.value),
+                            )
+                          }
+                        />
                       </div>
                     </div>
-                    
+
                     <div className="space-y-3 mt-4 border p-4 rounded-md">
-                      <h5 className="text-xs font-semibold uppercase text-muted-foreground">Exposure Rules</h5>
+                      <h5 className="text-xs font-semibold uppercase text-muted-foreground">
+                        Exposure Rules
+                      </h5>
                       <div className="flex items-center justify-between">
                         <Label className="text-sm font-normal">Include Undispatched POs</Label>
-                        <Switch checked={includeUndispatched} onCheckedChange={setIncludeUndispatched} />
+                        <Switch
+                          checked={includeUndispatched}
+                          onCheckedChange={setIncludeUndispatched}
+                        />
                       </div>
                       <div className="flex items-center justify-between">
                         <Label className="text-sm font-normal">Include Dispatched Unbilled</Label>
-                        <Switch checked={includeDispatched} onCheckedChange={setIncludeDispatched} />
+                        <Switch
+                          checked={includeDispatched}
+                          onCheckedChange={setIncludeDispatched}
+                        />
                       </div>
                       <div className="flex items-center justify-between">
                         <Label className="text-sm font-normal">Include Unpaid Invoices</Label>
@@ -394,7 +540,9 @@ function AdminClientsPage() {
                 </div>
 
                 <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                    Cancel
+                  </Button>
                   <Button type="submit" disabled={createMutation.isPending}>
                     {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Save Client
@@ -462,7 +610,11 @@ function AdminClientsPage() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center gap-2 justify-end">
-                              <Button variant="secondary" size="sm" onClick={() => setSelectedClient(client)}>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setSelectedClient(client)}
+                              >
                                 Details
                               </Button>
                               <DropdownMenu>
@@ -473,19 +625,23 @@ function AdminClientsPage() {
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
                                   {client.status === "active" ? (
-                                    <DropdownMenuItem onClick={() => {
-                                      setClientToUpdateStatus(client);
-                                      setTargetStatus("suspended");
-                                      setStatusModalOpen(true);
-                                    }}>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setClientToUpdateStatus(client);
+                                        setTargetStatus("suspended");
+                                        setStatusModalOpen(true);
+                                      }}
+                                    >
                                       <Ban className="h-4 w-4 mr-2" /> Suspend
                                     </DropdownMenuItem>
                                   ) : (
-                                    <DropdownMenuItem onClick={() => {
-                                      setClientToUpdateStatus(client);
-                                      setTargetStatus("active");
-                                      setStatusModalOpen(true);
-                                    }}>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setClientToUpdateStatus(client);
+                                        setTargetStatus("active");
+                                        setStatusModalOpen(true);
+                                      }}
+                                    >
                                       <CheckCircle2 className="h-4 w-4 mr-2" /> Reactivate
                                     </DropdownMenuItem>
                                   )}
@@ -513,10 +669,10 @@ function AdminClientsPage() {
         <Sheet open={!!selectedClient} onOpenChange={(o) => !o && setSelectedClient(null)}>
           <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
             {selectedClient && (
-              <ClientDetailsForm 
-                client={selectedClient} 
-                onClose={() => setSelectedClient(null)} 
-                mutation={commercialsMutation} 
+              <ClientDetailsForm
+                client={selectedClient}
+                onClose={() => setSelectedClient(null)}
+                mutation={commercialsMutation}
                 masterMutation={updateMasterMutation}
               />
             )}
@@ -528,25 +684,34 @@ function AdminClientsPage() {
           <DialogContent>
             <form onSubmit={handleStatusUpdate}>
               <DialogHeader>
-                <DialogTitle>{targetStatus === "suspended" ? "Suspend Client" : "Reactivate Client"}</DialogTitle>
+                <DialogTitle>
+                  {targetStatus === "suspended" ? "Suspend Client" : "Reactivate Client"}
+                </DialogTitle>
                 <DialogDescription>
-                  Please provide a reason for changing the status of {clientToUpdateStatus?.legal_name}.
+                  Please provide a reason for changing the status of{" "}
+                  {clientToUpdateStatus?.legal_name}.
                 </DialogDescription>
               </DialogHeader>
               <div className="py-4 space-y-4">
                 <div className="space-y-2">
                   <Label>Reason *</Label>
-                  <Textarea 
-                    value={statusReason} 
-                    onChange={(e) => setStatusReason(e.target.value)} 
+                  <Textarea
+                    value={statusReason}
+                    onChange={(e) => setStatusReason(e.target.value)}
                     placeholder="Enter reason..."
-                    required 
+                    required
                   />
                 </div>
               </div>
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setStatusModalOpen(false)}>Cancel</Button>
-                <Button type="submit" variant={targetStatus === "suspended" ? "destructive" : "default"} disabled={statusMutation.isPending}>
+                <Button type="button" variant="outline" onClick={() => setStatusModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant={targetStatus === "suspended" ? "destructive" : "default"}
+                  disabled={statusMutation.isPending}
+                >
                   {statusMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Confirm
                 </Button>
@@ -554,15 +719,24 @@ function AdminClientsPage() {
             </form>
           </DialogContent>
         </Dialog>
-
       </div>
     </AppShell>
   );
 }
 
-function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { client: any, onClose: () => void, mutation: any, masterMutation: any }) {
+function ClientDetailsForm({
+  client,
+  onClose,
+  mutation,
+  masterMutation,
+}: {
+  client: any;
+  onClose: () => void;
+  mutation: any;
+  masterMutation: any;
+}) {
   const comm = client.client_commercial_profile || {};
-  
+
   const [cl, setCl] = useState<number | "">(comm.credit_limit || "");
   const [pt, setPt] = useState<number | "">(comm.payment_terms_days || "");
   const [gp, setGp] = useState<number | "">(comm.grace_period_days || "");
@@ -582,8 +756,22 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
   const [mContactName, setMContactName] = useState(client.primary_contact_name || "");
   const [mContactEmail, setMContactEmail] = useState(client.primary_contact_email || "");
   const [mContactPhone, setMContactPhone] = useState(client.primary_contact_phone || "");
-  const [mDeliveryLocations, setMDeliveryLocations] = useState<{ id?: string, label: string, address: string, isDefault: boolean, contactPerson?: string, contactPhone?: string }[]>(
-    client.delivery_locations?.map((l: any) => ({ ...l, isDefault: l.is_default, contactPerson: l.contact_person, contactPhone: l.contact_phone })) || []
+  const [mDeliveryLocations, setMDeliveryLocations] = useState<
+    {
+      id?: string;
+      label: string;
+      address: string;
+      isDefault: boolean;
+      contactPerson?: string;
+      contactPhone?: string;
+    }[]
+  >(
+    client.delivery_locations?.map((l: any) => ({
+      ...l,
+      isDefault: l.is_default,
+      contactPerson: l.contact_person,
+      contactPhone: l.contact_phone,
+    })) || [],
   );
 
   useEffect(() => {
@@ -596,7 +784,14 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
     setMContactName(client.primary_contact_name || "");
     setMContactEmail(client.primary_contact_email || "");
     setMContactPhone(client.primary_contact_phone || "");
-    setMDeliveryLocations(client.delivery_locations?.map((l: any) => ({ ...l, isDefault: l.is_default, contactPerson: l.contact_person, contactPhone: l.contact_phone })) || []);
+    setMDeliveryLocations(
+      client.delivery_locations?.map((l: any) => ({
+        ...l,
+        isDefault: l.is_default,
+        contactPerson: l.contact_person,
+        contactPhone: l.contact_phone,
+      })) || [],
+    );
   }, [client]);
 
   const handleSave = () => {
@@ -614,21 +809,24 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
   };
 
   const handleSaveMaster = () => {
-    masterMutation.mutate({
-      organizationId: client.id,
-      legalName: mLegal,
-      shortName: mShort,
-      tradeName: mTrade,
-      gstNumber: mGst,
-      panNumber: mPan,
-      billingAddress: mBilling,
-      primaryContactName: mContactName,
-      primaryContactEmail: mContactEmail,
-      primaryContactPhone: mContactPhone,
-      deliveryLocations: mDeliveryLocations.map(l => ({ ...l, isDefault: !!l.isDefault })),
-    }, {
-      onSuccess: () => setIsEditingMaster(false)
-    });
+    masterMutation.mutate(
+      {
+        organizationId: client.id,
+        legalName: mLegal,
+        shortName: mShort,
+        tradeName: mTrade,
+        gstNumber: mGst,
+        panNumber: mPan,
+        billingAddress: mBilling,
+        primaryContactName: mContactName,
+        primaryContactEmail: mContactEmail,
+        primaryContactPhone: mContactPhone,
+        deliveryLocations: mDeliveryLocations.map((l) => ({ ...l, isDefault: !!l.isDefault })),
+      },
+      {
+        onSuccess: () => setIsEditingMaster(false),
+      },
+    );
   };
 
   return (
@@ -636,15 +834,22 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
       <SheetHeader className="mb-6">
         <SheetTitle>{client.legal_name}</SheetTitle>
         <SheetDescription>
-          {client.gst_number ? `GST: ${client.gst_number}` : "No GST configured"} | Status: <span className="capitalize">{client.status}</span>
+          {client.gst_number ? `GST: ${client.gst_number}` : "No GST configured"} | Status:{" "}
+          <span className="capitalize">{client.status}</span>
         </SheetDescription>
       </SheetHeader>
 
       <Tabs defaultValue="overview">
         <TabsList className="w-full mb-4">
-          <TabsTrigger value="overview" className="flex-1">Overview</TabsTrigger>
-          <TabsTrigger value="commercials" className="flex-1">Commercials</TabsTrigger>
-          <TabsTrigger value="history" className="flex-1">Credit History</TabsTrigger>
+          <TabsTrigger value="overview" className="flex-1">
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="commercials" className="flex-1">
+            Commercials
+          </TabsTrigger>
+          <TabsTrigger value="history" className="flex-1">
+            Credit History
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -688,29 +893,43 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
                 </div>
                 <div className="space-y-2">
                   <Label>Contact Email</Label>
-                  <Input type="email" value={mContactEmail} onChange={(e) => setMContactEmail(e.target.value)} />
+                  <Input
+                    type="email"
+                    value={mContactEmail}
+                    onChange={(e) => setMContactEmail(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Whatsapp / Contact Number</Label>
-                  <Input 
+                  <Input
                     type="tel"
                     pattern="[0-9]{10}"
                     maxLength={10}
                     title="Please enter exactly 10 digits"
-                    value={mContactPhone} 
-                    onChange={(e) => setMContactPhone(e.target.value.replace(/\D/g, ''))} 
+                    value={mContactPhone}
+                    onChange={(e) => setMContactPhone(e.target.value.replace(/\D/g, ""))}
                   />
                   {mContactPhone && mContactPhone.length > 0 && mContactPhone.length < 10 && (
-                    <span className="text-[10px] text-destructive block mt-1">Must be exactly 10 digits</span>
+                    <span className="text-[10px] text-destructive block mt-1">
+                      Must be exactly 10 digits
+                    </span>
                   )}
                 </div>
-                
+
                 <div className="col-span-2 pt-2 border-t mt-2">
-                  <DeliveryLocationsBuilder locations={mDeliveryLocations} setLocations={setMDeliveryLocations} />
+                  <DeliveryLocationsBuilder
+                    locations={mDeliveryLocations}
+                    setLocations={setMDeliveryLocations}
+                  />
                 </div>
               </div>
-              <Button onClick={handleSaveMaster} className="w-full" disabled={masterMutation.isPending}>
-                {masterMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Details
+              <Button
+                onClick={handleSaveMaster}
+                className="w-full"
+                disabled={masterMutation.isPending}
+              >
+                {masterMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save
+                Details
               </Button>
             </div>
           ) : (
@@ -733,11 +952,14 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
               </div>
               <div>
                 <p className="font-semibold text-muted-foreground">Contact Details</p>
-                <p>{client.primary_contact_email} {client.primary_contact_phone && `| ${client.primary_contact_phone}`}</p>
+                <p>
+                  {client.primary_contact_email}{" "}
+                  {client.primary_contact_phone && `| ${client.primary_contact_phone}`}
+                </p>
               </div>
             </div>
           )}
-          
+
           {client.status_reason && (
             <div className="p-3 bg-muted rounded-md text-sm border">
               <span className="font-semibold">Status Reason:</span> {client.status_reason}
@@ -749,10 +971,17 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
             {client.delivery_locations?.length > 0 ? (
               <ul className="space-y-2 text-sm mt-2">
                 {client.delivery_locations.map((loc: any) => (
-                  <li key={loc.id} className="p-3 border rounded-md bg-muted/20 flex flex-col gap-1">
+                  <li
+                    key={loc.id}
+                    className="p-3 border rounded-md bg-muted/20 flex flex-col gap-1"
+                  >
                     <div className="flex items-center justify-between">
                       <span className="font-semibold block">{loc.label}</span>
-                      {loc.is_default && <Badge variant="outline" className="text-[10px] uppercase bg-background">Default</Badge>}
+                      {loc.is_default && (
+                        <Badge variant="outline" className="text-[10px] uppercase bg-background">
+                          Default
+                        </Badge>
+                      )}
                     </div>
                     <span className="text-muted-foreground whitespace-pre-wrap">{loc.address}</span>
                   </li>
@@ -768,19 +997,38 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label>Credit Limit (₹)</Label>
-              <Input type="number" value={cl} onChange={(e) => setCl(e.target.value === "" ? "" : Number(e.target.value))} />
+              <Input
+                type="number"
+                value={cl}
+                onChange={(e) => setCl(e.target.value === "" ? "" : Number(e.target.value))}
+              />
             </div>
             <div className="space-y-2">
               <Label>Terms (Days)</Label>
-              <Input type="number" value={pt} onChange={(e) => setPt(e.target.value === "" ? "" : Number(e.target.value))} />
+              <Input
+                type="number"
+                value={pt}
+                onChange={(e) => setPt(e.target.value === "" ? "" : Number(e.target.value))}
+              />
             </div>
             <div className="space-y-2">
               <Label>Grace (Days)</Label>
-              <Input type="number" value={gp} onChange={(e) => setGp(e.target.value === "" ? "" : Number(e.target.value))} />
+              <Input
+                type="number"
+                value={gp}
+                onChange={(e) => setGp(e.target.value === "" ? "" : Number(e.target.value))}
+              />
             </div>
             <div className="space-y-2">
               <Label>Commission (%)</Label>
-              <Input type="number" min="0" max="100" step="0.01" value={commPerc} onChange={(e) => setCommPerc(e.target.value === "" ? "" : Number(e.target.value))} />
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={commPerc}
+                onChange={(e) => setCommPerc(e.target.value === "" ? "" : Number(e.target.value))}
+              />
             </div>
           </div>
 
@@ -789,7 +1037,9 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <Label>Include Undispatched POs</Label>
-                <p className="text-xs text-muted-foreground">Count approved PO quantity minus dispatched quantity</p>
+                <p className="text-xs text-muted-foreground">
+                  Count approved PO quantity minus dispatched quantity
+                </p>
               </div>
               <Switch checked={undispatched} onCheckedChange={setUndispatched} />
             </div>
@@ -803,7 +1053,9 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <Label>Include Unpaid Invoices</Label>
-                <p className="text-xs text-muted-foreground">Count outstanding generated invoices</p>
+                <p className="text-xs text-muted-foreground">
+                  Count outstanding generated invoices
+                </p>
               </div>
               <Switch checked={unpaid} onCheckedChange={setUnpaid} />
             </div>
@@ -811,7 +1063,11 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
 
           <div className="space-y-2">
             <Label>Account Restrictions / Notes</Label>
-            <Textarea value={rest} onChange={(e) => setRest(e.target.value)} placeholder="Any special instructions or constraints..." />
+            <Textarea
+              value={rest}
+              onChange={(e) => setRest(e.target.value)}
+              placeholder="Any special instructions or constraints..."
+            />
           </div>
 
           <Button onClick={handleSave} className="w-full" disabled={mutation.isPending}>
@@ -833,12 +1089,16 @@ function ClientDetailsForm({ client, onClose, mutation, masterMutation }: { clie
                 client.credit_history.map((hist: any) => (
                   <TableRow key={hist.id}>
                     <TableCell>{new Date(hist.effective_from).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right font-medium">₹{hist.credit_limit.toLocaleString()}</TableCell>
+                    <TableCell className="text-right font-medium">
+                      ₹{hist.credit_limit.toLocaleString()}
+                    </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={2} className="text-center text-muted-foreground italic">No history available</TableCell>
+                  <TableCell colSpan={2} className="text-center text-muted-foreground italic">
+                    No history available
+                  </TableCell>
                 </TableRow>
               )}
             </TableBody>

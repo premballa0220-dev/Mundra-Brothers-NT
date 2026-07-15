@@ -1,7 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getDispatchRequests, createDispatchRequest, getPurchaseOrders, getClientDeliveryLocations } from "@/lib/api/business.functions";
+import {
+  getDispatchRequests,
+  createDispatchRequest,
+  getPurchaseOrders,
+  getClientDeliveryLocations,
+} from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,12 +39,22 @@ import {
 } from "@/components/ui/select";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Truck, Plus, Loader2, AlertTriangle, CreditCard, FileSignature, HelpCircle } from "lucide-react";
+import {
+  Truck,
+  Plus,
+  Loader2,
+  AlertTriangle,
+  CreditCard,
+  FileSignature,
+  HelpCircle,
+} from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 function formatBlockReason(reason: string): string {
   // Normalize legacy format: "Credit limit exceeded (Exposure: ₹X vs Limit: ₹Y)"
-  const creditMatch = reason.match(/Credit limit exceeded \(Exposure: (₹[\d,]+) vs Limit: (₹[\d,]+)\)/);
+  const creditMatch = reason.match(
+    /Credit limit exceeded \(Exposure: (₹[\d,]+) vs Limit: (₹[\d,]+)\)/,
+  );
   if (creditMatch) {
     return `Credit limit breached — current exposure of ${creditMatch[1]} exceeds the approved limit of ${creditMatch[2]}`;
   }
@@ -58,7 +73,7 @@ function ClientDispatchesPage() {
   // Form states
   const [purchaseOrderId, setPurchaseOrderId] = useState("");
   const [quantity, setQuantity] = useState<number>(0);
-  const [requestedDate, setRequestedDate] = useState(new Date().toISOString().split("T")[0]);   //Requested date is different than what was entered in Dispatch
+  const [requestedDate, setRequestedDate] = useState(new Date().toISOString().split("T")[0]); //Requested date is different than what was entered in Dispatch
   const [siteAddress, setSiteAddress] = useState("");
   const [deliveryContact, setDeliveryContact] = useState("");
 
@@ -88,7 +103,7 @@ function ClientDispatchesPage() {
         return;
       }
     }
-    
+
     // Fallback to default delivery location if PO doesn't have one or none selected
     if (deliveryLocations && deliveryLocations.length > 0) {
       const defaultLoc = deliveryLocations.find((l: any) => l.is_default) || deliveryLocations[0];
@@ -128,7 +143,9 @@ function ClientDispatchesPage() {
       return;
     }
     if (quantity > remainingQty) {
-      toast.error(`Cannot request dispatch. Requested ${quantity} MT exceeds remaining quantity ${remainingQty.toFixed(2)} MT`);
+      toast.error(
+        `Cannot request dispatch. Requested ${quantity} MT exceeds remaining quantity ${remainingQty.toFixed(2)} MT`,
+      );
       return;
     }
     createMutation.mutate({
@@ -137,7 +154,7 @@ function ClientDispatchesPage() {
       requestedDate,
       siteAddress,
       deliveryContact,
-    });          //po
+    }); //po
   }
 
   const formatCurrency = (amount: number) => {
@@ -152,11 +169,12 @@ function ClientDispatchesPage() {
 
   const selectedPO = approvedPOs.find((p: any) => p.id === purchaseOrderId);
   const poOriginalQty = selectedPO ? Number(selectedPO.original_quantity) : 0;
-  const usedQty = selectedPO && dispatches
-    ? dispatches
-        .filter((dr: any) => dr.purchase_order_id === purchaseOrderId && dr.status !== "rejected")
-        .reduce((sum: number, dr: any) => sum + Number(dr.quantity), 0)
-    : 0;
+  const usedQty =
+    selectedPO && dispatches
+      ? dispatches
+          .filter((dr: any) => dr.purchase_order_id === purchaseOrderId && dr.status !== "rejected")
+          .reduce((sum: number, dr: any) => sum + Number(dr.quantity), 0)
+      : 0;
   const remainingQty = Math.max(0, poOriginalQty - usedQty);
 
   return (
@@ -166,7 +184,8 @@ function ClientDispatchesPage() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Dispatch Requests</h1>
             <p className="text-sm text-muted-foreground">
-              Request dispatch of materials against approved POs. Blocked requests are verified against real-time credit metrics.
+              Request dispatch of materials against approved POs. Blocked requests are verified
+              against real-time credit metrics.
             </p>
           </div>
           <Dialog open={open} onOpenChange={setOpen}>
@@ -193,7 +212,9 @@ function ClientDispatchesPage() {
                       <SelectContent>
                         {approvedPOs.map((p: any) => (
                           <SelectItem key={p.id} value={p.id}>
-                            {p.po_number} — {p.product?.name ?? "Product"} ({Number(p.original_quantity).toFixed(0)} MT @ {formatCurrency(Number(p.locked_rate))}/MT)
+                            {p.po_number} — {p.product?.name ?? "Product"} (
+                            {Number(p.original_quantity).toFixed(0)} MT @{" "}
+                            {formatCurrency(Number(p.locked_rate))}/MT)
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -202,10 +223,13 @@ function ClientDispatchesPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <div className="flex justify-between items-end gap-2">
-                        <Label htmlFor="qty" className="shrink-0">Dispatch Qty (MT) *</Label>
+                        <Label htmlFor="qty" className="shrink-0">
+                          Dispatch Qty (MT) *
+                        </Label>
                         {selectedPO && (
                           <span className="text-[10px] text-muted-foreground font-medium bg-muted px-2 py-0.5 rounded text-right">
-                            PO: {poOriginalQty.toFixed(2)} | Used: {usedQty.toFixed(2)} | Rem: {remainingQty.toFixed(2)}
+                            PO: {poOriginalQty.toFixed(2)} | Used: {usedQty.toFixed(2)} | Rem:{" "}
+                            {remainingQty.toFixed(2)}
                           </span>
                         )}
                       </div>
@@ -218,10 +242,16 @@ function ClientDispatchesPage() {
                         value={quantity || ""}
                         onChange={(e) => setQuantity(Number(e.target.value))}
                         required
-                        className={quantity > remainingQty ? "border-destructive focus-visible:ring-destructive" : ""}
+                        className={
+                          quantity > remainingQty
+                            ? "border-destructive focus-visible:ring-destructive"
+                            : ""
+                        }
                       />
                       {quantity > remainingQty && (
-                        <p className="text-[10px] text-destructive mt-1 font-medium">Quantity exceeds remaining balance.</p>
+                        <p className="text-[10px] text-destructive mt-1 font-medium">
+                          Quantity exceeds remaining balance.
+                        </p>
                       )}
                     </div>
                     <div className="space-y-1">
@@ -238,31 +268,52 @@ function ClientDispatchesPage() {
                   <div className="space-y-1">
                     <Label htmlFor="address">Site Address *</Label>
                     {deliveryLocations && deliveryLocations.length > 0 ? (
-                      <Select value={siteAddress} onValueChange={(val) => {
-                        setSiteAddress(val);
-                        const matchedLoc = deliveryLocations.find((l: any) => l.address === val);
-                        if (matchedLoc) {
-                          setDeliveryContact(
-                            matchedLoc.contact_person
-                              ? `${matchedLoc.contact_person}${matchedLoc.contact_phone ? ` (${matchedLoc.contact_phone})` : ""}`
-                              : ""
-                          );
-                        }
-                      }} required>
+                      <Select
+                        value={siteAddress}
+                        onValueChange={(val) => {
+                          setSiteAddress(val);
+                          const matchedLoc = deliveryLocations.find((l: any) => l.address === val);
+                          if (matchedLoc) {
+                            setDeliveryContact(
+                              matchedLoc.contact_person
+                                ? `${matchedLoc.contact_person}${matchedLoc.contact_phone ? ` (${matchedLoc.contact_phone})` : ""}`
+                                : "",
+                            );
+                          }
+                        }}
+                        required
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder="Select Delivery Address" />
                         </SelectTrigger>
                         <SelectContent>
                           {deliveryLocations.map((loc: any) => (
                             <SelectItem key={loc.id} value={loc.address}>
-                              <span className="font-semibold">{loc.label}</span> - <span className="text-muted-foreground">{loc.address.substring(0, 30)}...</span>
+                              <span className="font-semibold">{loc.label}</span> -{" "}
+                              <span className="text-muted-foreground">
+                                {loc.address.substring(0, 30)}...
+                              </span>
                             </SelectItem>
                           ))}
-                          {purchaseOrderId && pos?.find((p: any) => p.id === purchaseOrderId)?.site_address && !deliveryLocations.find((l: any) => l.address === pos?.find((p: any) => p.id === purchaseOrderId)?.site_address) && (
-                            <SelectItem value={pos.find((p: any) => p.id === purchaseOrderId).site_address}>
-                              <span className="font-semibold">PO Address</span> - <span className="text-muted-foreground">{pos.find((p: any) => p.id === purchaseOrderId).site_address.substring(0, 30)}...</span>
-                            </SelectItem>
-                          )}
+                          {purchaseOrderId &&
+                            pos?.find((p: any) => p.id === purchaseOrderId)?.site_address &&
+                            !deliveryLocations.find(
+                              (l: any) =>
+                                l.address ===
+                                pos?.find((p: any) => p.id === purchaseOrderId)?.site_address,
+                            ) && (
+                              <SelectItem
+                                value={pos.find((p: any) => p.id === purchaseOrderId).site_address}
+                              >
+                                <span className="font-semibold">PO Address</span> -{" "}
+                                <span className="text-muted-foreground">
+                                  {pos
+                                    .find((p: any) => p.id === purchaseOrderId)
+                                    .site_address.substring(0, 30)}
+                                  ...
+                                </span>
+                              </SelectItem>
+                            )}
                         </SelectContent>
                       </Select>
                     ) : (
@@ -290,9 +341,7 @@ function ClientDispatchesPage() {
                 </div>
                 <DialogFooter>
                   <Button type="submit" disabled={createMutation.isPending}>
-                    {createMutation.isPending && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
+                    {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Request Dispatch
                   </Button>
                 </DialogFooter>
@@ -301,9 +350,7 @@ function ClientDispatchesPage() {
           </Dialog>
         </header>
 
-        <div className="hidden">
-          {/* Legacy global address settings removed */}
-        </div>
+        <div className="hidden">{/* Legacy global address settings removed */}</div>
 
         {dispatchesLoading ? (
           <div className="flex justify-center items-center py-20">
@@ -316,7 +363,11 @@ function ClientDispatchesPage() {
                 const res = dr.eligibility_result || {};
                 const reasonsList = res.reasons || [];
                 return (
-                  <Alert variant="destructive" key={dr.id} className="border-destructive/50 bg-destructive/5">
+                  <Alert
+                    variant="destructive"
+                    key={dr.id}
+                    className="border-destructive/50 bg-destructive/5"
+                  >
                     <AlertTriangle className="h-5 w-5" />
                     <AlertTitle className="font-semibold flex items-center gap-2">
                       Dispatch #{dr.id.slice(0, 8)} is Blocked
@@ -330,7 +381,9 @@ function ClientDispatchesPage() {
                       </p>
                       <ul className="list-disc list-inside text-sm space-y-1.5 pl-2">
                         {reasonsList.map((reason: string, i: number) => (
-                          <li key={i} className="text-destructive/90">{formatBlockReason(reason)}</li>
+                          <li key={i} className="text-destructive/90">
+                            {formatBlockReason(reason)}
+                          </li>
                         ))}
                       </ul>
                       <div className="flex flex-wrap gap-2 pt-2">
@@ -381,21 +434,22 @@ function ClientDispatchesPage() {
                           <TableCell className="font-semibold">
                             {dr.purchase_order?.po_number ?? "—"}
                           </TableCell>
-                          <TableCell>
-                            {dr.purchase_order?.product?.name ?? "—"}
-                          </TableCell>
+                          <TableCell>{dr.purchase_order?.product?.name ?? "—"}</TableCell>
                           <TableCell>
                             {formatCurrency(Number(dr.purchase_order?.locked_rate || 0))}
                           </TableCell>
+                          <TableCell>{Number(dr.quantity).toFixed(2)} MT</TableCell>
                           <TableCell>
-                            {Number(dr.quantity).toFixed(2)} MT
+                            {formatCurrency(
+                              Number(dr.quantity) *
+                                Number(
+                                  dr.purchase_order?.locked_rate ||
+                                    dr.purchase_orders?.locked_rate ||
+                                    0,
+                                ),
+                            )}
                           </TableCell>
-                          <TableCell>
-                            {formatCurrency(Number(dr.quantity) * Number(dr.purchase_order?.locked_rate || dr.purchase_orders?.locked_rate || 0))}
-                          </TableCell>
-                          <TableCell>
-                            {new Date(dr.requested_date).toLocaleDateString()}
-                          </TableCell>
+                          <TableCell>{new Date(dr.requested_date).toLocaleDateString()}</TableCell>
                           <TableCell className="truncate max-w-[200px]" title={dr.site_address}>
                             {dr.site_address}
                           </TableCell>
@@ -405,8 +459,8 @@ function ClientDispatchesPage() {
                                 dr.status === "auto_approved" || dr.status === "approved"
                                   ? "default"
                                   : dr.status === "blocked"
-                                  ? "destructive"
-                                  : "secondary"
+                                    ? "destructive"
+                                    : "secondary"
                               }
                               className="capitalize"
                             >
@@ -418,7 +472,8 @@ function ClientDispatchesPage() {
                     ) : (
                       <TableRow>
                         <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
-                          No dispatch requests submitted yet. Click "Request Dispatch" to create one.
+                          No dispatch requests submitted yet. Click "Request Dispatch" to create
+                          one.
                         </TableCell>
                       </TableRow>
                     )}

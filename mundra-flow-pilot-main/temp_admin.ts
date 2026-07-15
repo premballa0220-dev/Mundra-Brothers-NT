@@ -1,4 +1,3 @@
-
 export const getAdminPaymentMonitoring = createServerFn({ method: "GET" })
   .middleware([requireAuth])
   .handler(async ({ context }) => {
@@ -8,19 +7,26 @@ export const getAdminPaymentMonitoring = createServerFn({ method: "GET" })
     // Fetch all POs with their client details
     const { data: pos, error: posError } = await supabase
       .from("purchase_orders")
-      .select("*, organizations(id, name, client_commercial_profiles(*)), dispatch_requests(quantity, status), payments(amount, status)");
+      .select(
+        "*, organizations(id, name, client_commercial_profiles(*)), dispatch_requests(quantity, status), payments(amount, status)",
+      );
 
     if (posError) throw new Error("Failed to fetch POs: " + posError.message);
 
     // Aggregate data
     const monitoringData = pos.map((po: any) => {
-      const dispatchedQuantity = po.dispatch_requests
-        ?.filter((dr: any) => dr.status === "approved" || dr.status === "dispatched" || dr.status === "delivered")
-        .reduce((sum: number, dr: any) => sum + (dr.quantity || 0), 0) || 0;
+      const dispatchedQuantity =
+        po.dispatch_requests
+          ?.filter(
+            (dr: any) =>
+              dr.status === "approved" || dr.status === "dispatched" || dr.status === "delivered",
+          )
+          .reduce((sum: number, dr: any) => sum + (dr.quantity || 0), 0) || 0;
 
-      const amountPaid = po.payments
-        ?.filter((p: any) => p.status === "approved" || p.status === "verified")
-        .reduce((sum: number, p: any) => sum + (p.amount || 0), 0) || 0;
+      const amountPaid =
+        po.payments
+          ?.filter((p: any) => p.status === "approved" || p.status === "verified")
+          .reduce((sum: number, p: any) => sum + (p.amount || 0), 0) || 0;
 
       return {
         id: po.id,
@@ -49,7 +55,7 @@ export const recordPaymentAdmin = createServerFn({ method: "POST" })
       paymentDate: z.string(),
       paymentMode: z.string(),
       referenceNumber: z.string(),
-    })
+    }),
   )
   .handler(async ({ data, context }) => {
     ensureMundraOrg(context.orgType);
@@ -70,6 +76,13 @@ export const recordPaymentAdmin = createServerFn({ method: "POST" })
     const { error } = await supabase.from("payments").insert(payment);
     if (error) throw new Error("Failed to record payment: " + error.message);
 
-    await createAuditLog(context.userId, "RECORD_PAYMENT_ADMIN", "payments", payment.id, null, payment);
+    await createAuditLog(
+      context.userId,
+      "RECORD_PAYMENT_ADMIN",
+      "payments",
+      payment.id,
+      null,
+      payment,
+    );
     return { success: true, payment };
   });

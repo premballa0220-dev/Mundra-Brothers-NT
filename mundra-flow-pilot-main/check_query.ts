@@ -8,8 +8,10 @@ async function test() {
   console.log("Fetching POs...");
   const { data, error } = await supabase
     .from("purchase_orders")
-    .select("*, organizations(id, name, client_commercial_profiles(*)), dispatch_requests(quantity, status), payments(amount, status)");
-  
+    .select(
+      "*, organizations(id, name, client_commercial_profiles(*)), dispatch_requests(quantity, status), payments(amount, status)",
+    );
+
   if (error) {
     console.error("ERROR:", error);
   } else {

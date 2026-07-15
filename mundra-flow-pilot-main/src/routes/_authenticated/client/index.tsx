@@ -23,8 +23,7 @@ export const Route = createFileRoute("/_authenticated/client/")({
   component: ClientDashboard,
 });
 
-const INR = (n: number) =>
-  new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(n);
+const INR = (n: number) => new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(n);
 
 // Financials, operations, and blocks will be loaded dynamically
 
@@ -98,15 +97,27 @@ function ClientDashboard() {
         <section>
           <SectionTitle>Credit & Exposure</SectionTitle>
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-            <Stat label="Approved Credit Limit" value={`₹${INR(FIN.creditLimit)}`} meta="Sanctioned" />
-            <Stat label="Utilized Exposure" value={`₹${INR(FIN.utilizedExposure)}`} meta="Recognised" />
+            <Stat
+              label="Approved Credit Limit"
+              value={`₹${INR(FIN.creditLimit)}`}
+              meta="Sanctioned"
+            />
+            <Stat
+              label="Utilized Exposure"
+              value={`₹${INR(FIN.utilizedExposure)}`}
+              meta="Recognised"
+            />
             <Stat
               label="Available Credit"
               value={`₹${INR(available)}`}
               tone={available < FIN.creditLimit * 0.15 ? "warning" : "success"}
               meta={`${creditLimitPct}% of limit`}
             />
-            <Stat label="Outstanding" value={`₹${INR(FIN.outstanding)}`} meta="Per approved ledger" />
+            <Stat
+              label="Outstanding"
+              value={`₹${INR(FIN.outstanding)}`}
+              meta="Per approved ledger"
+            />
             <Stat
               label="Overdue"
               value={`₹${INR(FIN.overdue)}`}
@@ -122,7 +133,11 @@ function ClientDashboard() {
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             <Stat label="Active POs" value={OPS.activePOs.toString()} meta="Open commercially" />
             <Stat label="Dispatched Qty" value={`${INR(OPS.dispatchedQty)} MT`} meta="MTD" />
-            <Stat label="Pending PO Qty" value={`${INR(OPS.pendingPoQty)} MT`} meta="Undelivered balance" />
+            <Stat
+              label="Pending PO Qty"
+              value={`${INR(OPS.pendingPoQty)} MT`}
+              meta="Undelivered balance"
+            />
             <Stat
               label="Payment Approvals"
               value={OPS.pendingPaymentApprovals.toString()}
@@ -145,10 +160,14 @@ function ClientDashboard() {
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-destructive" />
                 <CardTitle className="text-base">Blocked dispatches</CardTitle>
-                <Badge variant="destructive" className="ml-1">{BLOCKS.length}</Badge>
+                <Badge variant="destructive" className="ml-1">
+                  {BLOCKS.length}
+                </Badge>
               </div>
               <Button asChild variant="ghost" size="sm">
-                <Link to="/client/dispatches">View all <ArrowRight className="h-3.5 w-3.5 ml-1" /></Link>
+                <Link to="/client/dispatches">
+                  View all <ArrowRight className="h-3.5 w-3.5 ml-1" />
+                </Link>
               </Button>
             </CardHeader>
             <CardContent className="p-0">
@@ -157,9 +176,13 @@ function ClientDashboard() {
                   <div key={b.id} className="flex items-center justify-between px-5 py-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs text-muted-foreground">#{b.id.slice(0, 8)}</span>
+                        <span className="font-mono text-xs text-muted-foreground">
+                          #{b.id.slice(0, 8)}
+                        </span>
                         <span className="text-sm font-medium">{b.po}</span>
-                        <Badge variant="outline" className="text-[10px] truncate max-w-[150px]">{b.site}</Badge>
+                        <Badge variant="outline" className="text-[10px] truncate max-w-[150px]">
+                          {b.site}
+                        </Badge>
                       </div>
                       <div className="text-sm text-destructive mt-0.5">{b.reason}</div>
                     </div>
@@ -186,8 +209,16 @@ function ClientDashboard() {
               <QuickAction icon={FileText} title="Create new PO" href="/client/purchase-orders" />
               <QuickAction icon={Truck} title="Request dispatch" href="/client/dispatches" />
               <QuickAction icon={Wallet} title="Report payment" href="/client/payments" />
-              <QuickAction icon={Upload} title="Upload signed balance confirmation" href="/client/ledgers" />
-              <QuickAction icon={ShieldAlert} title="Request special approval" href="/client/purchase-orders" />
+              <QuickAction
+                icon={Upload}
+                title="Upload signed balance confirmation"
+                href="/client/ledgers"
+              />
+              <QuickAction
+                icon={ShieldAlert}
+                title="Request special approval"
+                href="/client/purchase-orders"
+              />
             </CardContent>
           </Card>
         </div>
@@ -198,7 +229,8 @@ function ClientDashboard() {
             <CardContent className="flex items-center gap-3 py-4">
               <Clock className="h-4 w-4 text-warning" />
               <div className="text-sm">
-                <span className="font-medium">Quarterly balance confirmation is due</span> — please upload the signed PDF to avoid automated dispatch blockages.
+                <span className="font-medium">Quarterly balance confirmation is due</span> — please
+                upload the signed PDF to avoid automated dispatch blockages.
               </div>
               <Button asChild size="sm" variant="outline" className="ml-auto">
                 <Link to="/client/ledgers">Open Ledgers</Link>

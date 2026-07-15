@@ -1,7 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPurchaseOrders, updatePurchaseOrderStatus, getClients, getProducts, getApplicableRate, createPurchaseOrderAdmin, getClientDeliveryLocationsAdmin, deletePurchaseOrdersAdmin } from "@/lib/api/business.functions";
+import {
+  getPurchaseOrders,
+  updatePurchaseOrderStatus,
+  getClients,
+  getProducts,
+  getApplicableRate,
+  createPurchaseOrderAdmin,
+  getClientDeliveryLocationsAdmin,
+  deletePurchaseOrdersAdmin,
+} from "@/lib/api/business.functions";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -81,7 +90,10 @@ const formatCurrency = (amount: number) =>
     maximumFractionDigits: 2,
   }).format(amount);
 
-const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; color: string }> = {
+const statusConfig: Record<
+  string,
+  { label: string; variant: "default" | "secondary" | "destructive" | "outline"; color: string }
+> = {
   pending_approval: { label: "Pending Approval", variant: "secondary", color: "text-warning" },
   approved: { label: "Approved", variant: "default", color: "text-success" },
   rejected: { label: "Rejected", variant: "destructive", color: "text-destructive" },
@@ -96,7 +108,9 @@ function AdminPOQueuePage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPO, setSelectedPO] = useState<any>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<"approve" | "reject" | "revert_approve" | "revert_reject" | null>(null);
+  const [confirmAction, setConfirmAction] = useState<
+    "approve" | "reject" | "revert_approve" | "revert_reject" | null
+  >(null);
   const [confirmPOId, setConfirmPOId] = useState<string | null>(null);
   const [confirmPONumber, setConfirmPONumber] = useState<string>("");
 
@@ -163,7 +177,9 @@ function AdminPOQueuePage() {
       const defaultLoc = deliveryLocations.find((l: any) => l.is_default) || deliveryLocations[0];
       setSiteAddress(defaultLoc.address);
       if (defaultLoc.contact_person) {
-        setDeliveryContact(`${defaultLoc.contact_person} ${defaultLoc.contact_phone ? `(${defaultLoc.contact_phone})` : ""}`.trim());
+        setDeliveryContact(
+          `${defaultLoc.contact_person} ${defaultLoc.contact_phone ? `(${defaultLoc.contact_phone})` : ""}`.trim(),
+        );
       } else {
         setDeliveryContact("");
       }
@@ -186,8 +202,7 @@ function AdminPOQueuePage() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: (id: string) =>
-      updatePurchaseOrderStatus({ data: { id, status: "approved" } }),
+    mutationFn: (id: string) => updatePurchaseOrderStatus({ data: { id, status: "approved" } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-po-queue"] });
       toast.success("Purchase Order approved successfully");
@@ -199,8 +214,7 @@ function AdminPOQueuePage() {
   });
 
   const rejectMutation = useMutation({
-    mutationFn: (id: string) =>
-      updatePurchaseOrderStatus({ data: { id, status: "rejected" } }),
+    mutationFn: (id: string) => updatePurchaseOrderStatus({ data: { id, status: "rejected" } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-po-queue"] });
       toast.success("Purchase Order rejected");
@@ -271,25 +285,25 @@ function AdminPOQueuePage() {
   const handleCreatePOSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClientId) return toast.error("Please select a client.");
-    
+
     let finalDocumentUrl = documentUrl;
 
     if (documentMethod === "upload" && documentFile) {
       setIsUploading(true);
       try {
-        const fileExt = documentFile.name.split('.').pop();
+        const fileExt = documentFile.name.split(".").pop();
         const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
         const filePath = `${fileName}`;
 
         const { error: uploadError } = await supabase.storage
-          .from('po_container')
+          .from("po_container")
           .upload(filePath, documentFile);
 
         if (uploadError) throw uploadError;
 
-        const { data: { publicUrl } } = supabase.storage
-          .from('po_container')
-          .getPublicUrl(filePath);
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("po_container").getPublicUrl(filePath);
 
         finalDocumentUrl = publicUrl;
       } catch (err: any) {
@@ -345,7 +359,11 @@ function AdminPOQueuePage() {
   const approvedCount = (allPOs || []).filter((po: any) => po.status === "approved").length;
   const rejectedCount = (allPOs || []).filter((po: any) => po.status === "rejected").length;
 
-  function openConfirm(action: "approve" | "reject" | "revert_approve" | "revert_reject", poId: string, poNumber: string) {
+  function openConfirm(
+    action: "approve" | "reject" | "revert_approve" | "revert_reject",
+    poId: string,
+    poNumber: string,
+  ) {
     setConfirmAction(action);
     setConfirmPOId(poId);
     setConfirmPONumber(poNumber);
@@ -374,8 +392,8 @@ function AdminPOQueuePage() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">PO Queue</h1>
             <p className="text-sm text-muted-foreground">
-              Review submitted Purchase Orders from clients, validate documents,
-              and approve or reject them.
+              Review submitted Purchase Orders from clients, validate documents, and approve or
+              reject them.
             </p>
           </div>
           <Button onClick={() => setCreatePOOpen(true)}>
@@ -388,7 +406,9 @@ function AdminPOQueuePage() {
         <div className="grid grid-cols-3 gap-3">
           <Card
             className={`cursor-pointer transition-colors ${filterStatus === "pending_approval" ? "border-warning/60 bg-warning/5" : "hover:border-warning/30"}`}
-            onClick={() => setFilterStatus(filterStatus === "pending_approval" ? "all" : "pending_approval")}
+            onClick={() =>
+              setFilterStatus(filterStatus === "pending_approval" ? "all" : "pending_approval")
+            }
           >
             <CardContent className="p-4 flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-warning/10 flex items-center justify-center">
@@ -457,7 +477,9 @@ function AdminPOQueuePage() {
 
         {selectedPOIds.size > 0 && (
           <div className="bg-muted p-3 rounded-md flex items-center justify-between border bulk-action-bar">
-            <span className="text-sm font-medium">{selectedPOIds.size} Purchase Order(s) selected</span>
+            <span className="text-sm font-medium">
+              {selectedPOIds.size} Purchase Order(s) selected
+            </span>
             <Button variant="destructive" size="sm" onClick={() => setBulkDeleteConfirmOpen(true)}>
               <Trash2 className="h-4 w-4 mr-2" /> Delete Selected
             </Button>
@@ -481,8 +503,10 @@ function AdminPOQueuePage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-12 text-center">
-                      <Checkbox 
-                        checked={filteredPOs.length > 0 && selectedPOIds.size === filteredPOs.length}
+                      <Checkbox
+                        checked={
+                          filteredPOs.length > 0 && selectedPOIds.size === filteredPOs.length
+                        }
                         onCheckedChange={toggleSelectAll}
                       />
                     </TableHead>
@@ -508,7 +532,7 @@ function AdminPOQueuePage() {
                       return (
                         <TableRow key={po.id} className="group">
                           <TableCell className="text-center">
-                            <Checkbox 
+                            <Checkbox
                               checked={selectedPOIds.has(po.id)}
                               onCheckedChange={() => toggleSelectPO(po.id)}
                             />
@@ -522,7 +546,10 @@ function AdminPOQueuePage() {
                           <TableCell>
                             <div className="flex items-center gap-1.5">
                               <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                              <span className="truncate max-w-[140px]" title={po.organization?.legal_name}>
+                              <span
+                                className="truncate max-w-[140px]"
+                                title={po.organization?.legal_name}
+                              >
                                 {po.organization?.trade_name || po.organization?.legal_name || "—"}
                               </span>
                             </div>
@@ -607,13 +634,19 @@ function AdminPOQueuePage() {
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8 text-muted-foreground hover:text-warning hover:bg-warning/10"
-                                  onClick={() => openConfirm(
-                                    po.status === "approved" ? "revert_approve" : "revert_reject",
-                                    po.id,
-                                    po.po_number
-                                  )}
+                                  onClick={() =>
+                                    openConfirm(
+                                      po.status === "approved" ? "revert_approve" : "revert_reject",
+                                      po.id,
+                                      po.po_number,
+                                    )
+                                  }
                                   disabled={revertMutation.isPending}
-                                  title={po.status === "approved" ? "Revoke Approval" : "Remove Rejection"}
+                                  title={
+                                    po.status === "approved"
+                                      ? "Revoke Approval"
+                                      : "Remove Rejection"
+                                  }
                                 >
                                   <Undo2 className="h-4 w-4" />
                                 </Button>
@@ -625,10 +658,7 @@ function AdminPOQueuePage() {
                     })
                   ) : (
                     <TableRow>
-                      <TableCell
-                        colSpan={10}
-                        className="text-center py-10 text-muted-foreground"
-                      >
+                      <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
                         No purchase orders match your filter.
                       </TableCell>
                     </TableRow>
@@ -649,26 +679,19 @@ function AdminPOQueuePage() {
                     <FileText className="h-5 w-5 text-primary" />
                     {selectedPO.po_number}
                     <Badge
-                      variant={
-                        (statusConfig[selectedPO.status]?.variant as any) ||
-                        "secondary"
-                      }
+                      variant={(statusConfig[selectedPO.status]?.variant as any) || "secondary"}
                       className="ml-2 capitalize"
                     >
-                      {statusConfig[selectedPO.status]?.label ||
-                        selectedPO.status}
+                      {statusConfig[selectedPO.status]?.label || selectedPO.status}
                     </Badge>
                   </DialogTitle>
                   <DialogDescription>
                     Submitted on{" "}
-                    {new Date(selectedPO.created_at).toLocaleDateString(
-                      "en-IN",
-                      {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      }
-                    )}
+                    {new Date(selectedPO.created_at).toLocaleDateString("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}
                   </DialogDescription>
                 </DialogHeader>
 
@@ -727,8 +750,7 @@ function AdminPOQueuePage() {
                           <div className="font-medium">Product</div>
                           <div className="text-xs text-muted-foreground">
                             {selectedPO.product?.name}
-                            {selectedPO.product?.grade &&
-                              ` (${selectedPO.product.grade})`}
+                            {selectedPO.product?.grade && ` (${selectedPO.product.grade})`}
                           </div>
                         </div>
                       </div>
@@ -774,9 +796,7 @@ function AdminPOQueuePage() {
                             <FileText className="h-5 w-5" />
                           </div>
                           <div>
-                            <div className="text-sm font-medium">
-                              Uploaded Document
-                            </div>
+                            <div className="text-sm font-medium">Uploaded Document</div>
                             <div className="text-xs text-muted-foreground">
                               Method: {selectedPO.document_method}
                             </div>
@@ -807,18 +827,14 @@ function AdminPOQueuePage() {
                     <Button
                       variant="destructive"
                       onClick={() => openConfirm("reject", selectedPO.id, selectedPO.po_number)}
-                      disabled={
-                        rejectMutation.isPending || approveMutation.isPending
-                      }
+                      disabled={rejectMutation.isPending || approveMutation.isPending}
                     >
                       <XCircle className="h-4 w-4 mr-1.5" />
                       Reject
                     </Button>
                     <Button
                       onClick={() => openConfirm("approve", selectedPO.id, selectedPO.po_number)}
-                      disabled={
-                        approveMutation.isPending || rejectMutation.isPending
-                      }
+                      disabled={approveMutation.isPending || rejectMutation.isPending}
                     >
                       <CheckCircle2 className="h-4 w-4 mr-1.5" />
                       Approve PO
@@ -829,11 +845,13 @@ function AdminPOQueuePage() {
                   <DialogFooter>
                     <Button
                       variant="outline"
-                      onClick={() => openConfirm(
-                        selectedPO.status === "approved" ? "revert_approve" : "revert_reject",
-                        selectedPO.id,
-                        selectedPO.po_number
-                      )}
+                      onClick={() =>
+                        openConfirm(
+                          selectedPO.status === "approved" ? "revert_approve" : "revert_reject",
+                          selectedPO.id,
+                          selectedPO.po_number,
+                        )
+                      }
                       disabled={revertMutation.isPending}
                     >
                       <Undo2 className="h-4 w-4 mr-1.5" />
@@ -846,7 +864,15 @@ function AdminPOQueuePage() {
           </DialogContent>
         </Dialog>
         {/* Confirmation AlertDialog */}
-        <AlertDialog open={!!confirmAction} onOpenChange={(open) => { if (!open) { setConfirmAction(null); setConfirmPOId(null); } }}>
+        <AlertDialog
+          open={!!confirmAction}
+          onOpenChange={(open) => {
+            if (!open) {
+              setConfirmAction(null);
+              setConfirmPOId(null);
+            }
+          }}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>
@@ -856,30 +882,40 @@ function AdminPOQueuePage() {
                 {confirmAction === "revert_reject" && "Remove Rejection"}
               </AlertDialogTitle>
               <AlertDialogDescription>
-                {confirmAction === "approve"
-                  && `Are you sure you want to approve PO "${confirmPONumber}"? This will allow the client to request dispatches against this order.`}
-                {confirmAction === "reject"
-                  && `Are you sure you want to reject PO "${confirmPONumber}"? The client will be notified and will need to re-submit.`}
-                {confirmAction === "revert_approve"
-                  && `Are you sure you want to revoke approval for PO "${confirmPONumber}"? It will be moved back to pending approval and dispatches will no longer be allowed.`}
-                {confirmAction === "revert_reject"
-                  && `Are you sure you want to remove the rejection for PO "${confirmPONumber}"? It will be moved back to pending approval for re-review.`}
+                {confirmAction === "approve" &&
+                  `Are you sure you want to approve PO "${confirmPONumber}"? This will allow the client to request dispatches against this order.`}
+                {confirmAction === "reject" &&
+                  `Are you sure you want to reject PO "${confirmPONumber}"? The client will be notified and will need to re-submit.`}
+                {confirmAction === "revert_approve" &&
+                  `Are you sure you want to revoke approval for PO "${confirmPONumber}"? It will be moved back to pending approval and dispatches will no longer be allowed.`}
+                {confirmAction === "revert_reject" &&
+                  `Are you sure you want to remove the rejection for PO "${confirmPONumber}"? It will be moved back to pending approval for re-review.`}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={approveMutation.isPending || rejectMutation.isPending || revertMutation.isPending}>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={executeConfirm}
-                disabled={approveMutation.isPending || rejectMutation.isPending || revertMutation.isPending}
-                className={
-                  confirmAction === "reject" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  : (confirmAction === "revert_approve" || confirmAction === "revert_reject") ? "bg-warning text-warning-foreground hover:bg-warning/90"
-                  : ""
+              <AlertDialogCancel
+                disabled={
+                  approveMutation.isPending || rejectMutation.isPending || revertMutation.isPending
                 }
               >
-                {(approveMutation.isPending || rejectMutation.isPending || revertMutation.isPending) && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={executeConfirm}
+                disabled={
+                  approveMutation.isPending || rejectMutation.isPending || revertMutation.isPending
+                }
+                className={
+                  confirmAction === "reject"
+                    ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    : confirmAction === "revert_approve" || confirmAction === "revert_reject"
+                      ? "bg-warning text-warning-foreground hover:bg-warning/90"
+                      : ""
+                }
+              >
+                {(approveMutation.isPending ||
+                  rejectMutation.isPending ||
+                  revertMutation.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {confirmAction === "approve" && "Yes, Approve"}
                 {confirmAction === "reject" && "Yes, Reject"}
                 {confirmAction === "revert_approve" && "Yes, Revoke"}
@@ -894,7 +930,8 @@ function AdminPOQueuePage() {
             <AlertDialogHeader>
               <AlertDialogTitle>Confirm Bulk Deletion</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete {selectedPOIds.size} Purchase Order(s)? This action cannot be undone.
+                Are you sure you want to delete {selectedPOIds.size} Purchase Order(s)? This action
+                cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -918,10 +955,11 @@ function AdminPOQueuePage() {
               <DialogHeader>
                 <DialogTitle>Create Purchase Order (On Behalf of Client)</DialogTitle>
                 <DialogDescription>
-                  This PO will be created securely as an admin and assigned directly to the selected client.
+                  This PO will be created securely as an admin and assigned directly to the selected
+                  client.
                 </DialogDescription>
               </DialogHeader>
-              
+
               <div className="space-y-6 py-4">
                 <div className="space-y-2">
                   <Label>Select Client *</Label>
@@ -944,7 +982,12 @@ function AdminPOQueuePage() {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>PO Number *</Label>
-                        <Input value={poNumber} onChange={(e) => setPoNumber(e.target.value)} required placeholder="e.g. PO-2026-001" />
+                        <Input
+                          value={poNumber}
+                          onChange={(e) => setPoNumber(e.target.value)}
+                          required
+                          placeholder="e.g. PO-2026-001"
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label>Product *</Label>
@@ -955,7 +998,8 @@ function AdminPOQueuePage() {
                           <SelectContent>
                             {(products || []).map((prod: any) => (
                               <SelectItem key={prod.id} value={prod.id}>
-                                {prod.name} {prod.packaging ? `- ${prod.packaging}` : ""} {prod.grade ? `(${prod.grade})` : ""}
+                                {prod.name} {prod.packaging ? `- ${prod.packaging}` : ""}{" "}
+                                {prod.grade ? `(${prod.grade})` : ""}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -966,21 +1010,37 @@ function AdminPOQueuePage() {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Quantity *</Label>
-                        <Input type="number" min="0" step="0.01" value={quantity || ""} onChange={(e) => setQuantity(parseFloat(e.target.value))} required placeholder="Enter quantity" />
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={quantity || ""}
+                          onChange={(e) => setQuantity(parseFloat(e.target.value))}
+                          required
+                          placeholder="Enter quantity"
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label>Rate / MT (INR) *</Label>
                         <div className="flex gap-2 items-center">
-                          <Input 
-                            type="number" min="0" step="1" 
-                            value={lockedRate || ""} 
-                            onChange={(e) => setLockedRate(parseFloat(e.target.value))} 
-                            required 
-                            disabled={!isExceptionRate} 
+                          <Input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={lockedRate || ""}
+                            onChange={(e) => setLockedRate(parseFloat(e.target.value))}
+                            required
+                            disabled={!isExceptionRate}
                           />
                           <div className="flex items-center gap-2 border px-3 py-2 rounded-md bg-muted/20 whitespace-nowrap">
-                            <Switch checked={isExceptionRate} onCheckedChange={setIsExceptionRate} id="exc-rate" />
-                            <Label htmlFor="exc-rate" className="text-xs cursor-pointer">Exception</Label>
+                            <Switch
+                              checked={isExceptionRate}
+                              onCheckedChange={setIsExceptionRate}
+                              id="exc-rate"
+                            />
+                            <Label htmlFor="exc-rate" className="text-xs cursor-pointer">
+                              Exception
+                            </Label>
                           </div>
                         </div>
                         {!isExceptionRate && applicableRateInfo && (
@@ -996,7 +1056,9 @@ function AdminPOQueuePage() {
                         <div className="text-muted-foreground font-medium">Total Order Value</div>
                         <div className="text-lg font-bold text-primary flex items-center">
                           <IndianRupee className="h-4 w-4 mr-1" />
-                          {new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(quantity * lockedRate)}
+                          {new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(
+                            quantity * lockedRate,
+                          )}
                         </div>
                       </div>
                     )}
@@ -1006,12 +1068,14 @@ function AdminPOQueuePage() {
                         <div className="flex items-center justify-between">
                           <Label>Delivery Site Address *</Label>
                           {deliveryLocations && deliveryLocations.length > 0 && (
-                            <Select 
+                            <Select
                               onValueChange={(val) => {
                                 const loc = deliveryLocations.find((l: any) => l.address === val);
                                 setSiteAddress(loc?.address || val);
                                 if (loc?.contact_person) {
-                                  setDeliveryContact(`${loc.contact_person} ${loc.contact_phone ? `(${loc.contact_phone})` : ""}`.trim());
+                                  setDeliveryContact(
+                                    `${loc.contact_person} ${loc.contact_phone ? `(${loc.contact_phone})` : ""}`.trim(),
+                                  );
                                 }
                               }}
                             >
@@ -1020,17 +1084,29 @@ function AdminPOQueuePage() {
                               </SelectTrigger>
                               <SelectContent>
                                 {deliveryLocations.map((loc: any, i: number) => (
-                                  <SelectItem key={i} value={loc.address}>{loc.label || `Location ${i+1}`}</SelectItem>
+                                  <SelectItem key={i} value={loc.address}>
+                                    {loc.label || `Location ${i + 1}`}
+                                  </SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
                           )}
                         </div>
-                        <Textarea value={siteAddress} onChange={(e) => setSiteAddress(e.target.value)} required rows={2} placeholder="Enter the complete delivery address..." />
+                        <Textarea
+                          value={siteAddress}
+                          onChange={(e) => setSiteAddress(e.target.value)}
+                          required
+                          rows={2}
+                          placeholder="Enter the complete delivery address..."
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label>Site Contact Information</Label>
-                        <Input value={deliveryContact} onChange={(e) => setDeliveryContact(e.target.value)} placeholder="e.g. John Doe (9876543210)" />
+                        <Input
+                          value={deliveryContact}
+                          onChange={(e) => setDeliveryContact(e.target.value)}
+                          placeholder="e.g. John Doe (9876543210)"
+                        />
                       </div>
                     </div>
 
@@ -1039,21 +1115,40 @@ function AdminPOQueuePage() {
                       <div className="border rounded-md p-4 bg-muted/10 space-y-4">
                         <div className="flex gap-4">
                           <Label className="flex items-center gap-2 cursor-pointer">
-                            <input type="radio" name="docMethod" checked={documentMethod === "upload"} onChange={() => setDocumentMethod("upload")} className="accent-primary" />
+                            <input
+                              type="radio"
+                              name="docMethod"
+                              checked={documentMethod === "upload"}
+                              onChange={() => setDocumentMethod("upload")}
+                              className="accent-primary"
+                            />
                             Upload Client PO PDF
                           </Label>
                           <Label className="flex items-center gap-2 cursor-pointer text-muted-foreground">
-                            <input type="radio" name="docMethod" checked={documentMethod === "generate"} onChange={() => setDocumentMethod("generate")} className="accent-primary" disabled />
+                            <input
+                              type="radio"
+                              name="docMethod"
+                              checked={documentMethod === "generate"}
+                              onChange={() => setDocumentMethod("generate")}
+                              className="accent-primary"
+                              disabled
+                            />
                             Generate Proforma (Coming Soon)
                           </Label>
                         </div>
-                        
+
                         {documentMethod === "upload" && (
                           <div className="flex flex-col gap-2">
-                            <Input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileUpload} className="cursor-pointer file:cursor-pointer" />
+                            <Input
+                              type="file"
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              onChange={handleFileUpload}
+                              className="cursor-pointer file:cursor-pointer"
+                            />
                             {documentFile && (
                               <div className="text-xs text-success flex items-center gap-1 mt-1">
-                                <CheckCircle2 className="h-3 w-3" /> {documentFile.name} ready to upload
+                                <CheckCircle2 className="h-3 w-3" /> {documentFile.name} ready to
+                                upload
                               </div>
                             )}
                           </div>
@@ -1064,9 +1159,18 @@ function AdminPOQueuePage() {
                 )}
               </div>
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setCreatePOOpen(false)}>Cancel</Button>
-                <Button type="submit" disabled={createPOMutation.isPending || isUploading || !selectedClientId}>
-                  {(createPOMutation.isPending || isUploading) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
+                <Button type="button" variant="outline" onClick={() => setCreatePOOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={createPOMutation.isPending || isUploading || !selectedClientId}
+                >
+                  {createPOMutation.isPending || isUploading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileText className="mr-2 h-4 w-4" />
+                  )}
                   {isUploading ? "Uploading PO..." : "Create & Approve PO"}
                 </Button>
               </DialogFooter>
@@ -1077,4 +1181,3 @@ function AdminPOQueuePage() {
     </AppShell>
   );
 }
-

@@ -14,7 +14,6 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { getAuthTokenChangeEventName } from "@/integrations/auth/client";
 import { Toaster } from "@/components/ui/sonner";
 
-
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -81,7 +80,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Mundra Brothers — Non-Trade Control Platform" },
-      { name: "description", content: "Secure white-label control platform for UltraTech non-trade dispatches, credit, payments, and compliance." },
+      {
+        name: "description",
+        content:
+          "Secure white-label control platform for UltraTech non-trade dispatches, credit, payments, and compliance.",
+      },
       { name: "robots", content: "noindex, nofollow" },
     ],
     links: [

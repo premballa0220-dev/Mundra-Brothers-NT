@@ -9,7 +9,9 @@ const SUPABASE_PUBLISHABLE_KEY =
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-  throw new Error("Missing Supabase environment variables: SUPABASE_URL and/or SUPABASE_PUBLISHABLE_KEY/SUPABASE_ANON_KEY.");
+  throw new Error(
+    "Missing Supabase environment variables: SUPABASE_URL and/or SUPABASE_PUBLISHABLE_KEY/SUPABASE_ANON_KEY.",
+  );
 }
 
 function createSupabaseClient(token?: string) {
@@ -60,8 +62,8 @@ function mapSupabaseUserToAuthUser(user: any): AuthUser {
   const roles = Array.isArray(metadata.roles)
     ? metadata.roles
     : typeof metadata.roles === "string"
-    ? metadata.roles.split(",").map((role: string) => role.trim())
-    : ["client_admin"];
+      ? metadata.roles.split(",").map((role: string) => role.trim())
+      : ["client_admin"];
 
   return {
     _id: user.id,
@@ -215,7 +217,9 @@ export async function signInUser({
   }
 
   if (!profile) {
-    throw new Error("User profile not found. If you just registered, your profile might be pending creation.");
+    throw new Error(
+      "User profile not found. If you just registered, your profile might be pending creation.",
+    );
   }
 
   if (profile.approval_status === "rejected") {
@@ -338,7 +342,9 @@ export async function listPendingUsers() {
   const supabase = createSupabaseAdminClient();
   const { data: profiles, error } = await supabase
     .from("profiles")
-    .select("id, email, full_name, approval_status, created_at, organizations(legal_name, org_type)");
+    .select(
+      "id, email, full_name, approval_status, created_at, organizations(legal_name, org_type)",
+    );
 
   if (error) throw new Error(error.message);
 
@@ -396,10 +402,7 @@ export async function changeUserRole(userId: string, newRole: AppRole) {
 
 export async function deactivateUser(userId: string) {
   const supabase = createSupabaseAdminClient();
-  const { error } = await supabase
-    .from("profiles")
-    .update({ is_active: false })
-    .eq("id", userId);
+  const { error } = await supabase.from("profiles").update({ is_active: false }).eq("id", userId);
   if (error) throw new Error(error.message);
   return { success: true };
 }
@@ -427,4 +430,3 @@ export async function listOrganizationUsers(organizationId: string) {
     createdAt: p.created_at,
   }));
 }
-

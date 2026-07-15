@@ -3,10 +3,7 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
 async function nukeAllClientData() {
   console.log("=== NUKING ALL CLIENT DATA ===\n");
@@ -38,7 +35,9 @@ async function nukeAllClientData() {
     .from("audit_logs")
     .delete()
     .neq("id", "00000000-0000-0000-0000-000000000000"); // delete all
-  console.log(`Audit Logs: deleted ${auditCount ?? "all"} rows ${auditErr ? "ERROR: " + auditErr.message : "✓"}`);
+  console.log(
+    `Audit Logs: deleted ${auditCount ?? "all"} rows ${auditErr ? "ERROR: " + auditErr.message : "✓"}`,
+  );
 
   // 3. Notifications
   const { error: notifErr } = await supabase
@@ -69,10 +68,7 @@ async function nukeAllClientData() {
   console.log(`Special Approvals: ${saErr ? "ERROR: " + saErr.message : "✓"}`);
 
   // 7. Issues
-  const { error: issErr } = await supabase
-    .from("issues")
-    .delete()
-    .in("organization_id", orgIds);
+  const { error: issErr } = await supabase.from("issues").delete().in("organization_id", orgIds);
   console.log(`Issues: ${issErr ? "ERROR: " + issErr.message : "✓"}`);
 
   // 8. Invoice Allocations (child of invoices)
@@ -90,10 +86,7 @@ async function nukeAllClientData() {
   }
 
   // 9. Invoices
-  const { error: invErr } = await supabase
-    .from("invoices")
-    .delete()
-    .in("organization_id", orgIds);
+  const { error: invErr } = await supabase.from("invoices").delete().in("organization_id", orgIds);
   console.log(`Invoices: ${invErr ? "ERROR: " + invErr.message : "✓"}`);
 
   // 10. ALL Payments (both mundra-to-utcl and client-to-utcl)
@@ -102,12 +95,11 @@ async function nukeAllClientData() {
     .from("dispatch_requests")
     .update({ utcl_payment_id: null })
     .in("organization_id", orgIds);
-  console.log(`Unlink Dispatches from Payments: ${unlinkErr ? "ERROR: " + unlinkErr.message : "✓"}`);
+  console.log(
+    `Unlink Dispatches from Payments: ${unlinkErr ? "ERROR: " + unlinkErr.message : "✓"}`,
+  );
 
-  const { error: payErr } = await supabase
-    .from("payments")
-    .delete()
-    .in("organization_id", orgIds);
+  const { error: payErr } = await supabase.from("payments").delete().in("organization_id", orgIds);
   console.log(`Payments (client org): ${payErr ? "ERROR: " + payErr.message : "✓"}`);
 
   // Also delete any Mundra-to-UTCL payments (is_utcl_payment = true, not client_to_utcl)
@@ -128,7 +120,9 @@ async function nukeAllClientData() {
       .from("payments")
       .delete()
       .in("purchase_order_id", poIds);
-    console.log(`Payments (Mundra-to-UTCL via PO): ${mundraPayErr ? "ERROR: " + mundraPayErr.message : "✓"}`);
+    console.log(
+      `Payments (Mundra-to-UTCL via PO): ${mundraPayErr ? "ERROR: " + mundraPayErr.message : "✓"}`,
+    );
   }
 
   // 11. Dispatch Requests
@@ -177,10 +171,7 @@ async function nukeAllClientData() {
   console.log(`Client Commercial Profiles: ${ccpErr ? "ERROR: " + ccpErr.message : "✓"}`);
 
   // 14. Client Rates
-  const { error: ratesErr } = await supabase
-    .from("rates")
-    .delete()
-    .in("organization_id", orgIds);
+  const { error: ratesErr } = await supabase.from("rates").delete().in("organization_id", orgIds);
   console.log(`Rates (client-specific): ${ratesErr ? "ERROR: " + ratesErr.message : "✓"}`);
 
   // 15. Profiles (users) tied to client orgs
@@ -188,20 +179,19 @@ async function nukeAllClientData() {
     .from("profiles")
     .select("id")
     .in("organization_id", orgIds);
-  
+
   if (clientProfiles && clientProfiles.length > 0) {
     const { error: profErr } = await supabase
       .from("profiles")
       .delete()
       .in("organization_id", orgIds);
-    console.log(`Client User Profiles: deleted ${clientProfiles.length} ${profErr ? "ERROR: " + profErr.message : "✓"}`);
+    console.log(
+      `Client User Profiles: deleted ${clientProfiles.length} ${profErr ? "ERROR: " + profErr.message : "✓"}`,
+    );
   }
 
   // 16. Finally, delete the client organizations themselves
-  const { error: orgErr } = await supabase
-    .from("organizations")
-    .delete()
-    .eq("org_type", "client");
+  const { error: orgErr } = await supabase.from("organizations").delete().eq("org_type", "client");
   console.log(`Client Organizations: ${orgErr ? "ERROR: " + orgErr.message : "✓"}`);
 
   console.log("\n=== DONE. All client data has been wiped. ===");

@@ -110,11 +110,15 @@ function ClientPaymentsPage() {
   // Calculated unallocated amount
   const totalAllocated = Object.values(allocations).reduce(
     (sum, val) => sum + val.allocatedAmount,
-    0
+    0,
   );
   const unallocatedAmount = amount - totalAllocated;
 
-  function handleAllocationChange(invoiceId: string, field: "allocatedAmount" | "tdsAmount", value: number) {
+  function handleAllocationChange(
+    invoiceId: string,
+    field: "allocatedAmount" | "tdsAmount",
+    value: number,
+  ) {
     setAllocations((prev) => {
       const current = prev[invoiceId] || { allocatedAmount: 0, tdsAmount: 0 };
       const updated = { ...current, [field]: value };
@@ -190,7 +194,8 @@ function ClientPaymentsPage() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Report Payments</h1>
             <p className="text-sm text-muted-foreground">
-              Report bank transfer payments (RTGS/NEFT/IMPS), allocate against outstanding invoices, and submit TDS proof.
+              Report bank transfer payments (RTGS/NEFT/IMPS), allocate against outstanding invoices,
+              and submit TDS proof.
             </p>
           </div>
           <Dialog open={open} onOpenChange={setOpen}>
@@ -204,7 +209,8 @@ function ClientPaymentsPage() {
                 <DialogHeader>
                   <DialogTitle>Report Bank Transfer Payment</DialogTitle>
                   <DialogDescription>
-                    Provide UTR transaction details and allocate funds to specific outstanding invoices.
+                    Provide UTR transaction details and allocate funds to specific outstanding
+                    invoices.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
@@ -272,15 +278,27 @@ function ClientPaymentsPage() {
                       />
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center space-x-6">
                     <div className="flex items-center space-x-2">
-                      <Checkbox id="utcl" checked={isUtclPayment} onCheckedChange={(c: boolean) => setIsUtclPayment(c)} />
-                      <Label htmlFor="utcl" className="text-sm font-medium leading-none">Payment done to UTCL</Label>
+                      <Checkbox
+                        id="utcl"
+                        checked={isUtclPayment}
+                        onCheckedChange={(c: boolean) => setIsUtclPayment(c)}
+                      />
+                      <Label htmlFor="utcl" className="text-sm font-medium leading-none">
+                        Payment done to UTCL
+                      </Label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <Checkbox id="advance" checked={isAdvance} onCheckedChange={(c: boolean) => setIsAdvance(c)} />
-                      <Label htmlFor="advance" className="text-sm font-medium leading-none">Advance Payment</Label>
+                      <Checkbox
+                        id="advance"
+                        checked={isAdvance}
+                        onCheckedChange={(c: boolean) => setIsAdvance(c)}
+                      />
+                      <Label htmlFor="advance" className="text-sm font-medium leading-none">
+                        Advance Payment
+                      </Label>
                     </div>
                   </div>
 
@@ -288,8 +306,12 @@ function ClientPaymentsPage() {
 
                   <div>
                     <div className="flex justify-between items-center mb-2">
-                      <Label className="text-base font-semibold">Allocate Against Outstanding Invoices</Label>
-                      <span className={`text-xs font-bold ${unallocatedAmount < 0 ? "text-destructive" : "text-success"}`}>
+                      <Label className="text-base font-semibold">
+                        Allocate Against Outstanding Invoices
+                      </Label>
+                      <span
+                        className={`text-xs font-bold ${unallocatedAmount < 0 ? "text-destructive" : "text-success"}`}
+                      >
                         Unallocated On Account: {formatCurrency(unallocatedAmount)}
                       </span>
                     </div>
@@ -308,19 +330,34 @@ function ClientPaymentsPage() {
                           </TableHeader>
                           <TableBody>
                             {unpaidInvoices.map((inv: any) => {
-                              const alloc = allocations[inv.id] || { allocatedAmount: 0, tdsAmount: 0 };
+                              const alloc = allocations[inv.id] || {
+                                allocatedAmount: 0,
+                                tdsAmount: 0,
+                              };
                               return (
                                 <TableRow key={inv.id}>
-                                  <TableCell className="font-semibold text-xs">{inv.invoice_number}</TableCell>
-                                  <TableCell className="text-xs">{new Date(inv.invoice_date).toLocaleDateString()}</TableCell>
-                                  <TableCell className="font-bold text-xs">{formatCurrency(inv.amount)}</TableCell>
+                                  <TableCell className="font-semibold text-xs">
+                                    {inv.invoice_number}
+                                  </TableCell>
+                                  <TableCell className="text-xs">
+                                    {new Date(inv.invoice_date).toLocaleDateString()}
+                                  </TableCell>
+                                  <TableCell className="font-bold text-xs">
+                                    {formatCurrency(inv.amount)}
+                                  </TableCell>
                                   <TableCell className="p-1">
                                     <Input
                                       type="number"
                                       className="h-7 text-xs w-28"
                                       value={alloc.allocatedAmount || ""}
                                       placeholder="0"
-                                      onChange={(e) => handleAllocationChange(inv.id, "allocatedAmount", Number(e.target.value))}
+                                      onChange={(e) =>
+                                        handleAllocationChange(
+                                          inv.id,
+                                          "allocatedAmount",
+                                          Number(e.target.value),
+                                        )
+                                      }
                                     />
                                   </TableCell>
                                   <TableCell className="p-1">
@@ -329,7 +366,13 @@ function ClientPaymentsPage() {
                                       className="h-7 text-xs w-24"
                                       value={alloc.tdsAmount || ""}
                                       placeholder="0"
-                                      onChange={(e) => handleAllocationChange(inv.id, "tdsAmount", Number(e.target.value))}
+                                      onChange={(e) =>
+                                        handleAllocationChange(
+                                          inv.id,
+                                          "tdsAmount",
+                                          Number(e.target.value),
+                                        )
+                                      }
                                     />
                                   </TableCell>
                                 </TableRow>
@@ -340,16 +383,18 @@ function ClientPaymentsPage() {
                       </div>
                     ) : (
                       <div className="p-4 bg-muted/40 text-center rounded border border-dashed text-xs text-muted-foreground">
-                        No outstanding unpaid invoices found. This payment will default entirely "On Account".
+                        No outstanding unpaid invoices found. This payment will default entirely "On
+                        Account".
                       </div>
                     )}
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button type="submit" disabled={createMutation.isPending || unallocatedAmount < 0}>
-                    {createMutation.isPending && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
+                  <Button
+                    type="submit"
+                    disabled={createMutation.isPending || unallocatedAmount < 0}
+                  >
+                    {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Submit Payment
                   </Button>
                 </DialogFooter>
@@ -358,13 +403,16 @@ function ClientPaymentsPage() {
           </Dialog>
 
           {/* Edit Payment Dialog */}
-          <Dialog open={editOpen} onOpenChange={(isOpen) => {
-            setEditOpen(isOpen);
-            if (!isOpen) {
-              setEditingPayment(null);
-              resetForm();
-            }
-          }}>
+          <Dialog
+            open={editOpen}
+            onOpenChange={(isOpen) => {
+              setEditOpen(isOpen);
+              if (!isOpen) {
+                setEditingPayment(null);
+                resetForm();
+              }
+            }}
+          >
             <DialogContent className="sm:max-w-[500px]">
               <form onSubmit={handleEditSubmit}>
                 <DialogHeader>
@@ -437,9 +485,7 @@ function ClientPaymentsPage() {
                 </div>
                 <DialogFooter>
                   <Button type="submit" disabled={editMutation.isPending}>
-                    {editMutation.isPending && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
+                    {editMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Save Changes
                   </Button>
                 </DialogFooter>
@@ -476,17 +522,21 @@ function ClientPaymentsPage() {
                     payments.map((pm: any) => (
                       <TableRow key={pm.id}>
                         <TableCell>{new Date(pm.payment_date).toLocaleDateString()}</TableCell>
-                        <TableCell className="font-mono text-xs font-semibold">{pm.reference_number}</TableCell>
+                        <TableCell className="font-mono text-xs font-semibold">
+                          {pm.reference_number}
+                        </TableCell>
                         <TableCell>{pm.payment_mode}</TableCell>
                         <TableCell>{pm.bank_name ?? "—"}</TableCell>
-                        <TableCell className="font-bold text-success">{formatCurrency(pm.amount)}</TableCell>
+                        <TableCell className="font-bold text-success">
+                          {formatCurrency(pm.amount)}
+                        </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1 items-start">
                             <Badge
                               variant={
                                 pm.status === "approved"
-                                    ? "default"
-                                    : pm.status === "submitted" || pm.status === "under_verification"
+                                  ? "default"
+                                  : pm.status === "submitted" || pm.status === "under_verification"
                                     ? "secondary"
                                     : "destructive"
                               }
@@ -495,10 +545,20 @@ function ClientPaymentsPage() {
                               {pm.status}
                             </Badge>
                             {pm.is_utcl_payment && (
-                              <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200">UTCL Payment</Badge>
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] bg-blue-50 text-blue-700 border-blue-200"
+                              >
+                                UTCL Payment
+                              </Badge>
                             )}
                             {pm.is_advance && (
-                              <Badge variant="outline" className="text-[10px] bg-purple-50 text-purple-700 border-purple-200">Advance</Badge>
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] bg-purple-50 text-purple-700 border-purple-200"
+                              >
+                                Advance
+                              </Badge>
                             )}
                           </div>
                         </TableCell>
@@ -517,7 +577,12 @@ function ClientPaymentsPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditOpen(pm)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleEditOpen(pm)}
+                          >
                             <Edit className="h-4 w-4 text-muted-foreground" />
                           </Button>
                         </TableCell>

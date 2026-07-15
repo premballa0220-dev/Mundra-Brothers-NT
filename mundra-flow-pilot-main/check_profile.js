@@ -1,11 +1,11 @@
-import fs from 'fs';
+import fs from "fs";
 
-const envFile = fs.readFileSync('.env', 'utf-8');
+const envFile = fs.readFileSync(".env", "utf-8");
 const env = {};
-envFile.split('\n').forEach(line => {
-  const [key, ...val] = line.split('=');
-  if (key && val.length > 0 && !key.startsWith('#')) {
-    env[key.trim()] = val.join('=').trim();
+envFile.split("\n").forEach((line) => {
+  const [key, ...val] = line.split("=");
+  if (key && val.length > 0 && !key.startsWith("#")) {
+    env[key.trim()] = val.join("=").trim();
   }
 });
 
@@ -17,9 +17,9 @@ async function checkProfile() {
 
   const res = await fetch(`${URL}/rest/v1/profiles?id=eq.${userId}&select=*`, {
     headers: {
-      "apikey": KEY,
-      "Authorization": `Bearer ${KEY}`
-    }
+      apikey: KEY,
+      Authorization: `Bearer ${KEY}`,
+    },
   });
 
   if (!res.ok) {

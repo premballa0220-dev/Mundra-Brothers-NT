@@ -3,10 +3,7 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
 async function backfillWallets() {
   console.log("Starting wallet backfill...");
@@ -25,9 +22,10 @@ async function backfillWallets() {
   const orgWalletUpdates: Record<string, number> = {};
 
   for (const po of pos) {
-    const amountPaid = po.payments
-      ?.filter((p: any) => p.status === "approved" || p.status === "verified")
-      .reduce((sum: number, p: any) => sum + (p.amount || 0), 0) || 0;
+    const amountPaid =
+      po.payments
+        ?.filter((p: any) => p.status === "approved" || p.status === "verified")
+        .reduce((sum: number, p: any) => sum + (p.amount || 0), 0) || 0;
 
     const overpayment = amountPaid - po.total_value;
 
@@ -57,7 +55,7 @@ async function backfillWallets() {
         .from("client_commercial_profiles")
         .update({ wallet_balance: newBalance })
         .eq("id", profile.id);
-        
+
       if (updateError) {
         console.error(`Failed to update org ${orgId}`, updateError);
       } else {
@@ -65,7 +63,7 @@ async function backfillWallets() {
       }
     }
   }
-  
+
   console.log("Wallet backfill complete.");
 }
 

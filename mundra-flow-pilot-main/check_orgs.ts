@@ -21,10 +21,7 @@ async function checkUsers() {
       .single();
 
     // Get roles
-    const { data: roles } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", p.id);
+    const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", p.id);
 
     console.log(`\nEmail: ${p.email}`);
     console.log(`  Full Name: ${p.full_name}`);

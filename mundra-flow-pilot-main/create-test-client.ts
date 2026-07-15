@@ -8,9 +8,9 @@ const supabase = createClient(supabaseUrl!, supabaseKey!);
 
 async function run() {
   const org = {
-      legal_name: "Test Client",
-      org_type: "client",
-      status: "active",
+    legal_name: "Test Client",
+    org_type: "client",
+    status: "active",
   };
   const { data, error } = await supabase.from("organizations").insert(org).select();
   console.log("Inserted:", data);

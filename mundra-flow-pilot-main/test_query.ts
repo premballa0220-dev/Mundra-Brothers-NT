@@ -11,7 +11,7 @@ async function test() {
     .from("purchase_orders")
     .select("*, organizations(id, legal_name, client_commercial_profiles(*))")
     .limit(1);
-    
+
   console.log(JSON.stringify(data, null, 2));
 }
 

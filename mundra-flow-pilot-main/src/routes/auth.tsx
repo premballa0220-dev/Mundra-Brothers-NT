@@ -15,7 +15,11 @@ export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
       { title: "Sign in — Mundra Brothers Non-Trade Portal" },
-      { name: "description", content: "Secure access to the Mundra Brothers non-trade dispatch and accounts control platform." },
+      {
+        name: "description",
+        content:
+          "Secure access to the Mundra Brothers non-trade dispatch and accounts control platform.",
+      },
       { name: "robots", content: "noindex, nofollow" },
     ],
   }),
@@ -73,9 +77,8 @@ function AuthPage() {
             Transparent, auditable dispatch decisions for every non-trade order.
           </h1>
           <p className="text-sm text-sidebar-foreground/75">
-            One control system for purchase orders, credit exposure, payment
-            verification, refund letters, balance confirmations and approvals —
-            with full audit trail.
+            One control system for purchase orders, credit exposure, payment verification, refund
+            letters, balance confirmations and approvals — with full audit trail.
           </p>
           <ul className="space-y-3 text-sm">
             <li className="flex items-center gap-3">

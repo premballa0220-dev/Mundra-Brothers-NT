@@ -55,7 +55,9 @@ import {
 } from "lucide-react";
 
 function formatBlockReason(reason: string): string {
-  const creditMatch = reason.match(/Credit limit exceeded \(Exposure: (₹[\d,\.]+) vs Limit: (₹[\d,\.]+)\)/);
+  const creditMatch = reason.match(
+    /Credit limit exceeded \(Exposure: (₹[\d,\.]+) vs Limit: (₹[\d,\.]+)\)/,
+  );
   if (creditMatch) {
     return `Credit limit breached — exposure of ${creditMatch[1]} exceeds limit of ${creditMatch[2]}`;
   }
@@ -85,7 +87,9 @@ function AdminDispatchQueuePage() {
   const [editOpen, setEditOpen] = useState(false);
   const [selectedEditDr, setSelectedEditDr] = useState<any>(null);
   const [editQuantity, setEditQuantity] = useState<number>(0);
-  const [editRequestedDate, setEditRequestedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [editRequestedDate, setEditRequestedDate] = useState(
+    new Date().toISOString().split("T")[0],
+  );
   const [editSiteAddress, setEditSiteAddress] = useState("");
   const [editDeliveryContact, setEditDeliveryContact] = useState("");
 
@@ -120,25 +124,36 @@ function AdminDispatchQueuePage() {
 
   const clientApprovedPOs = useMemo(() => {
     if (!allPOs || !selectedClientId) return [];
-    return allPOs.filter((po: any) => po.organization_id === selectedClientId && po.status === "approved");
+    return allPOs.filter(
+      (po: any) => po.organization_id === selectedClientId && po.status === "approved",
+    );
   }, [allPOs, selectedClientId]);
 
   const selectedPO = clientApprovedPOs.find((p: any) => p.id === purchaseOrderId);
   const poOriginalQty = selectedPO ? Number(selectedPO.original_quantity) : 0;
-  const usedQty = selectedPO && dispatches
-    ? dispatches
-        .filter((dr: any) => dr.purchase_order_id === purchaseOrderId && dr.status !== "rejected")
-        .reduce((sum: number, dr: any) => sum + Number(dr.quantity), 0)
-    : 0;
+  const usedQty =
+    selectedPO && dispatches
+      ? dispatches
+          .filter((dr: any) => dr.purchase_order_id === purchaseOrderId && dr.status !== "rejected")
+          .reduce((sum: number, dr: any) => sum + Number(dr.quantity), 0)
+      : 0;
   const remainingQty = Math.max(0, poOriginalQty - usedQty);
 
-  const editSelectedPO = selectedEditDr ? allPOs?.find((p: any) => p.id === selectedEditDr.purchase_order_id) : null;
+  const editSelectedPO = selectedEditDr
+    ? allPOs?.find((p: any) => p.id === selectedEditDr.purchase_order_id)
+    : null;
   const editPoOriginalQty = editSelectedPO ? Number(editSelectedPO.original_quantity) : 0;
-  const editUsedQty = editSelectedPO && dispatches
-    ? dispatches
-        .filter((dr: any) => dr.purchase_order_id === selectedEditDr.purchase_order_id && dr.status !== "rejected" && dr.id !== selectedEditDr.id)
-        .reduce((sum: number, dr: any) => sum + Number(dr.quantity), 0)
-    : 0;
+  const editUsedQty =
+    editSelectedPO && dispatches
+      ? dispatches
+          .filter(
+            (dr: any) =>
+              dr.purchase_order_id === selectedEditDr.purchase_order_id &&
+              dr.status !== "rejected" &&
+              dr.id !== selectedEditDr.id,
+          )
+          .reduce((sum: number, dr: any) => sum + Number(dr.quantity), 0)
+      : 0;
   const editRemainingQty = Math.max(0, editPoOriginalQty - editUsedQty);
 
   // Pre-fill site address logic for Admin Modal
@@ -152,12 +167,14 @@ function AdminDispatchQueuePage() {
         return;
       }
     }
-    
+
     if (deliveryLocations && deliveryLocations.length > 0) {
       const defaultLoc = deliveryLocations.find((l: any) => l.is_default) || deliveryLocations[0];
       setSiteAddress(defaultLoc.address);
       if (defaultLoc.contact_person) {
-        setDeliveryContact(`${defaultLoc.contact_person} ${defaultLoc.contact_phone ? `(${defaultLoc.contact_phone})` : ""}`.trim());
+        setDeliveryContact(
+          `${defaultLoc.contact_person} ${defaultLoc.contact_phone ? `(${defaultLoc.contact_phone})` : ""}`.trim(),
+        );
       } else {
         setDeliveryContact("");
       }
@@ -233,7 +250,9 @@ function AdminDispatchQueuePage() {
       return;
     }
     if (quantity > remainingQty) {
-      toast.error(`Cannot request dispatch. Requested ${quantity} MT exceeds remaining quantity ${remainingQty.toFixed(2)} MT`);
+      toast.error(
+        `Cannot request dispatch. Requested ${quantity} MT exceeds remaining quantity ${remainingQty.toFixed(2)} MT`,
+      );
       return;
     }
     createMutation.mutate({
@@ -253,7 +272,9 @@ function AdminDispatchQueuePage() {
       return;
     }
     if (editQuantity > editRemainingQty) {
-      toast.error(`Cannot update dispatch. Requested ${editQuantity} MT exceeds remaining quantity ${editRemainingQty.toFixed(2)} MT`);
+      toast.error(
+        `Cannot update dispatch. Requested ${editQuantity} MT exceeds remaining quantity ${editRemainingQty.toFixed(2)} MT`,
+      );
       return;
     }
     editMutation.mutate({
@@ -269,7 +290,8 @@ function AdminDispatchQueuePage() {
     if (!dispatches) return [];
     return dispatches.filter((dr: any) => {
       const matchesStatus = filterStatus === "all" || dr.status === filterStatus;
-      const searchStr = `${dr.id} ${dr.organization?.trade_name} ${dr.organization?.legal_name} ${dr.purchase_order?.po_number}`.toLowerCase();
+      const searchStr =
+        `${dr.id} ${dr.organization?.trade_name} ${dr.organization?.legal_name} ${dr.purchase_order?.po_number}`.toLowerCase();
       const matchesSearch = searchStr.includes(searchTerm.toLowerCase());
       return matchesStatus && matchesSearch;
     });
@@ -288,7 +310,10 @@ function AdminDispatchQueuePage() {
   const poStats = useMemo(() => {
     if (!selectedViewDr || !selectedViewDr.purchase_order || !dispatches) return null;
     const po = selectedViewDr.purchase_order;
-    const poDispatches = dispatches.filter((d: any) => d.purchase_order_id === po.id && (d.status === 'approved' || d.status === 'auto_approved'));
+    const poDispatches = dispatches.filter(
+      (d: any) =>
+        d.purchase_order_id === po.id && (d.status === "approved" || d.status === "auto_approved"),
+    );
     const consumedQty = poDispatches.reduce((sum: number, d: any) => sum + Number(d.quantity), 0);
     const originalQty = Number(po.original_quantity);
     const lockedRate = Number(po.locked_rate);
@@ -304,7 +329,7 @@ function AdminDispatchQueuePage() {
       totalValue,
       spentValue,
       remainingValue,
-      lockedRate
+      lockedRate,
     };
   }, [selectedViewDr, dispatches]);
 
@@ -329,16 +354,21 @@ function AdminDispatchQueuePage() {
                 <DialogHeader>
                   <DialogTitle>Request Dispatch on Behalf of Client</DialogTitle>
                   <DialogDescription>
-                    Create a new dispatch request for a client. Standard eligibility rules will apply.
+                    Create a new dispatch request for a client. Standard eligibility rules will
+                    apply.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="space-y-1">
                     <Label htmlFor="client">Client Organization *</Label>
-                    <Select value={selectedClientId} onValueChange={(val) => {
-                      setSelectedClientId(val);
-                      setPurchaseOrderId("");
-                    }} required>
+                    <Select
+                      value={selectedClientId}
+                      onValueChange={(val) => {
+                        setSelectedClientId(val);
+                        setPurchaseOrderId("");
+                      }}
+                      required
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select Client" />
                       </SelectTrigger>
@@ -354,18 +384,27 @@ function AdminDispatchQueuePage() {
 
                   <div className="space-y-1">
                     <Label htmlFor="po">Purchase Order Scope *</Label>
-                    <Select value={purchaseOrderId} onValueChange={setPurchaseOrderId} required disabled={!selectedClientId}>
+                    <Select
+                      value={purchaseOrderId}
+                      onValueChange={setPurchaseOrderId}
+                      required
+                      disabled={!selectedClientId}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select Approved PO" />
                       </SelectTrigger>
                       <SelectContent>
                         {clientApprovedPOs.map((p: any) => (
                           <SelectItem key={p.id} value={p.id}>
-                            {p.po_number} — {p.product?.name ?? "Product"} ({Number(p.original_quantity).toFixed(0)} MT @ {formatCurrency(Number(p.locked_rate))}/MT)
+                            {p.po_number} — {p.product?.name ?? "Product"} (
+                            {Number(p.original_quantity).toFixed(0)} MT @{" "}
+                            {formatCurrency(Number(p.locked_rate))}/MT)
                           </SelectItem>
                         ))}
                         {clientApprovedPOs.length === 0 && (
-                          <div className="p-2 text-xs text-muted-foreground">No approved POs found for this client.</div>
+                          <div className="p-2 text-xs text-muted-foreground">
+                            No approved POs found for this client.
+                          </div>
                         )}
                       </SelectContent>
                     </Select>
@@ -374,10 +413,13 @@ function AdminDispatchQueuePage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <div className="flex justify-between items-end gap-2">
-                        <Label htmlFor="qty" className="shrink-0">Dispatch Qty (MT) *</Label>
+                        <Label htmlFor="qty" className="shrink-0">
+                          Dispatch Qty (MT) *
+                        </Label>
                         {selectedPO && (
                           <span className="text-[10px] text-muted-foreground font-medium bg-muted px-2 py-0.5 rounded text-right">
-                            PO: {poOriginalQty.toFixed(2)} | Used: {usedQty.toFixed(2)} | Rem: {remainingQty.toFixed(2)}
+                            PO: {poOriginalQty.toFixed(2)} | Used: {usedQty.toFixed(2)} | Rem:{" "}
+                            {remainingQty.toFixed(2)}
                           </span>
                         )}
                       </div>
@@ -390,10 +432,16 @@ function AdminDispatchQueuePage() {
                         value={quantity || ""}
                         onChange={(e) => setQuantity(Number(e.target.value))}
                         required
-                        className={quantity > remainingQty ? "border-destructive focus-visible:ring-destructive" : ""}
+                        className={
+                          quantity > remainingQty
+                            ? "border-destructive focus-visible:ring-destructive"
+                            : ""
+                        }
                       />
                       {quantity > remainingQty && (
-                        <p className="text-[10px] text-destructive mt-1 font-medium">Quantity exceeds remaining balance.</p>
+                        <p className="text-[10px] text-destructive mt-1 font-medium">
+                          Quantity exceeds remaining balance.
+                        </p>
                       )}
                     </div>
                     <div className="space-y-1">
@@ -411,31 +459,57 @@ function AdminDispatchQueuePage() {
                   <div className="space-y-1">
                     <Label htmlFor="address">Site Address *</Label>
                     {deliveryLocations && deliveryLocations.length > 0 ? (
-                      <Select value={siteAddress} onValueChange={(val) => {
-                        setSiteAddress(val);
-                        const matchedLoc = deliveryLocations.find((l: any) => l.address === val);
-                        if (matchedLoc) {
-                          setDeliveryContact(
-                            matchedLoc.contact_person
-                              ? `${matchedLoc.contact_person}${matchedLoc.contact_phone ? ` (${matchedLoc.contact_phone})` : ""}`
-                              : ""
-                          );
-                        }
-                      }} required>
+                      <Select
+                        value={siteAddress}
+                        onValueChange={(val) => {
+                          setSiteAddress(val);
+                          const matchedLoc = deliveryLocations.find((l: any) => l.address === val);
+                          if (matchedLoc) {
+                            setDeliveryContact(
+                              matchedLoc.contact_person
+                                ? `${matchedLoc.contact_person}${matchedLoc.contact_phone ? ` (${matchedLoc.contact_phone})` : ""}`
+                                : "",
+                            );
+                          }
+                        }}
+                        required
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder="Select Delivery Address" />
                         </SelectTrigger>
                         <SelectContent>
                           {deliveryLocations.map((loc: any) => (
                             <SelectItem key={loc.id} value={loc.address}>
-                              <span className="font-semibold">{loc.label}</span> - <span className="text-muted-foreground">{loc.address.substring(0, 30)}...</span>
+                              <span className="font-semibold">{loc.label}</span> -{" "}
+                              <span className="text-muted-foreground">
+                                {loc.address.substring(0, 30)}...
+                              </span>
                             </SelectItem>
                           ))}
-                          {purchaseOrderId && clientApprovedPOs?.find((p: any) => p.id === purchaseOrderId)?.site_address && !deliveryLocations.find((l: any) => l.address === clientApprovedPOs?.find((p: any) => p.id === purchaseOrderId)?.site_address) && (
-                            <SelectItem value={clientApprovedPOs.find((p: any) => p.id === purchaseOrderId).site_address}>
-                              <span className="font-semibold">PO Address</span> - <span className="text-muted-foreground">{clientApprovedPOs.find((p: any) => p.id === purchaseOrderId).site_address.substring(0, 30)}...</span>
-                            </SelectItem>
-                          )}
+                          {purchaseOrderId &&
+                            clientApprovedPOs?.find((p: any) => p.id === purchaseOrderId)
+                              ?.site_address &&
+                            !deliveryLocations.find(
+                              (l: any) =>
+                                l.address ===
+                                clientApprovedPOs?.find((p: any) => p.id === purchaseOrderId)
+                                  ?.site_address,
+                            ) && (
+                              <SelectItem
+                                value={
+                                  clientApprovedPOs.find((p: any) => p.id === purchaseOrderId)
+                                    .site_address
+                                }
+                              >
+                                <span className="font-semibold">PO Address</span> -{" "}
+                                <span className="text-muted-foreground">
+                                  {clientApprovedPOs
+                                    .find((p: any) => p.id === purchaseOrderId)
+                                    .site_address.substring(0, 30)}
+                                  ...
+                                </span>
+                              </SelectItem>
+                            )}
                         </SelectContent>
                       </Select>
                     ) : (
@@ -458,9 +532,7 @@ function AdminDispatchQueuePage() {
                 </div>
                 <DialogFooter>
                   <Button type="submit" disabled={createMutation.isPending}>
-                    {createMutation.isPending && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
+                    {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Request Dispatch
                   </Button>
                 </DialogFooter>
@@ -538,14 +610,12 @@ function AdminDispatchQueuePage() {
                         <TableCell>
                           {formatCurrency(Number(dr.purchase_order?.locked_rate || 0))}
                         </TableCell>
+                        <TableCell>{new Date(dr.requested_date).toLocaleDateString()}</TableCell>
+                        <TableCell>{Number(dr.quantity).toFixed(2)} MT</TableCell>
                         <TableCell>
-                          {new Date(dr.requested_date).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>
-                          {Number(dr.quantity).toFixed(2)} MT
-                        </TableCell>
-                        <TableCell>
-                          {formatCurrency(Number(dr.quantity) * Number(dr.purchase_order?.locked_rate || 0))}
+                          {formatCurrency(
+                            Number(dr.quantity) * Number(dr.purchase_order?.locked_rate || 0),
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -553,15 +623,20 @@ function AdminDispatchQueuePage() {
                               dr.status === "auto_approved" || dr.status === "approved"
                                 ? "default"
                                 : dr.status === "blocked" || dr.status === "rejected"
-                                ? "destructive"
-                                : "secondary"
+                                  ? "destructive"
+                                  : "secondary"
                             }
                             className="capitalize"
                           >
                             {dr.status.replace("_", " ")}
                           </Badge>
                           {dr.status === "blocked" && dr.eligibility_result?.reasons && (
-                            <div className="mt-1 text-[10px] text-destructive max-w-[260px] leading-snug" title={dr.eligibility_result.reasons.map(formatBlockReason).join(" • ")}>
+                            <div
+                              className="mt-1 text-[10px] text-destructive max-w-[260px] leading-snug"
+                              title={dr.eligibility_result.reasons
+                                .map(formatBlockReason)
+                                .join(" • ")}
+                            >
                               {formatBlockReason(dr.eligibility_result.reasons[0])}
                             </div>
                           )}
@@ -643,18 +718,19 @@ function AdminDispatchQueuePage() {
             <form onSubmit={handleEditSubmit}>
               <DialogHeader>
                 <DialogTitle>Edit Dispatch Request</DialogTitle>
-                <DialogDescription>
-                  Modify the details of this dispatch request.
-                </DialogDescription>
+                <DialogDescription>Modify the details of this dispatch request.</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <div className="flex justify-between items-end gap-2">
-                      <Label htmlFor="edit-qty" className="shrink-0">Dispatch Qty (MT) *</Label>
+                      <Label htmlFor="edit-qty" className="shrink-0">
+                        Dispatch Qty (MT) *
+                      </Label>
                       {editSelectedPO && (
                         <span className="text-[10px] text-muted-foreground font-medium bg-muted px-2 py-0.5 rounded text-right">
-                          PO: {editPoOriginalQty.toFixed(2)} | Used: {editUsedQty.toFixed(2)} | Rem: {editRemainingQty.toFixed(2)}
+                          PO: {editPoOriginalQty.toFixed(2)} | Used: {editUsedQty.toFixed(2)} | Rem:{" "}
+                          {editRemainingQty.toFixed(2)}
                         </span>
                       )}
                     </div>
@@ -667,10 +743,16 @@ function AdminDispatchQueuePage() {
                       value={editQuantity || ""}
                       onChange={(e) => setEditQuantity(Number(e.target.value))}
                       required
-                      className={editQuantity > editRemainingQty ? "border-destructive focus-visible:ring-destructive" : ""}
+                      className={
+                        editQuantity > editRemainingQty
+                          ? "border-destructive focus-visible:ring-destructive"
+                          : ""
+                      }
                     />
                     {editQuantity > editRemainingQty && (
-                      <p className="text-[10px] text-destructive mt-1 font-medium">Quantity exceeds remaining balance.</p>
+                      <p className="text-[10px] text-destructive mt-1 font-medium">
+                        Quantity exceeds remaining balance.
+                      </p>
                     )}
                   </div>
                   <div className="space-y-1">
@@ -708,9 +790,7 @@ function AdminDispatchQueuePage() {
                   Cancel
                 </Button>
                 <Button type="submit" disabled={editMutation.isPending}>
-                  {editMutation.isPending && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  )}
+                  {editMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Save Changes
                 </Button>
               </DialogFooter>
@@ -724,7 +804,8 @@ function AdminDispatchQueuePage() {
             <DialogHeader>
               <DialogTitle>Dispatch & PO Details</DialogTitle>
               <DialogDescription>
-                Detailed breakdown of the dispatch request and the remaining balance on the linked Purchase Order.
+                Detailed breakdown of the dispatch request and the remaining balance on the linked
+                Purchase Order.
               </DialogDescription>
             </DialogHeader>
             {selectedViewDr && poStats && (
@@ -744,12 +825,18 @@ function AdminDispatchQueuePage() {
                       </Badge>
                     </div>
                     <div>
-                      <span className="text-muted-foreground block text-xs">Requested Delivery Date</span>
+                      <span className="text-muted-foreground block text-xs">
+                        Requested Delivery Date
+                      </span>
                       <span>{new Date(selectedViewDr.requested_date).toLocaleDateString()}</span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground block text-xs">Quantity Requested</span>
-                      <span className="font-semibold">{Number(selectedViewDr.quantity).toFixed(2)} MT</span>
+                      <span className="text-muted-foreground block text-xs">
+                        Quantity Requested
+                      </span>
+                      <span className="font-semibold">
+                        {Number(selectedViewDr.quantity).toFixed(2)} MT
+                      </span>
                     </div>
                     <div className="col-span-2">
                       <span className="text-muted-foreground block text-xs">Site Address</span>
@@ -757,7 +844,9 @@ function AdminDispatchQueuePage() {
                     </div>
                     {selectedViewDr.delivery_contact && (
                       <div className="col-span-2">
-                        <span className="text-muted-foreground block text-xs">Delivery Contact</span>
+                        <span className="text-muted-foreground block text-xs">
+                          Delivery Contact
+                        </span>
                         <span>{selectedViewDr.delivery_contact}</span>
                       </div>
                     )}
@@ -766,11 +855,15 @@ function AdminDispatchQueuePage() {
 
                 {/* PO Balance Tracking */}
                 <div>
-                  <h4 className="text-sm font-semibold mb-3 pb-1 border-b">Purchase Order Balance</h4>
+                  <h4 className="text-sm font-semibold mb-3 pb-1 border-b">
+                    Purchase Order Balance
+                  </h4>
                   <div className="grid grid-cols-2 gap-y-4 gap-x-4 text-sm">
                     <div>
                       <span className="text-muted-foreground block text-xs">PO Number</span>
-                      <span className="font-medium">{selectedViewDr.purchase_order?.po_number}</span>
+                      <span className="font-medium">
+                        {selectedViewDr.purchase_order?.po_number}
+                      </span>
                     </div>
                     <div>
                       <span className="text-muted-foreground block text-xs">Locked Rate</span>
@@ -778,22 +871,40 @@ function AdminDispatchQueuePage() {
                     </div>
 
                     <div className="bg-primary/5 p-3 rounded-md border border-primary/10">
-                      <span className="text-muted-foreground block text-xs mb-1">Total PO Value</span>
-                      <div className="font-semibold text-base">{formatCurrency(poStats.totalValue)}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">{poStats.originalQty.toFixed(2)} MT</div>
+                      <span className="text-muted-foreground block text-xs mb-1">
+                        Total PO Value
+                      </span>
+                      <div className="font-semibold text-base">
+                        {formatCurrency(poStats.totalValue)}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {poStats.originalQty.toFixed(2)} MT
+                      </div>
                     </div>
 
                     <div className="bg-blue-50 p-3 rounded-md border border-blue-100">
-                      <span className="text-muted-foreground block text-xs mb-1">Value Spent (Approved)</span>
-                      <div className="font-semibold text-blue-700 text-base">{formatCurrency(poStats.spentValue)}</div>
-                      <div className="text-xs text-blue-600/80 mt-0.5">{poStats.consumedQty.toFixed(2)} MT consumed</div>
+                      <span className="text-muted-foreground block text-xs mb-1">
+                        Value Spent (Approved)
+                      </span>
+                      <div className="font-semibold text-blue-700 text-base">
+                        {formatCurrency(poStats.spentValue)}
+                      </div>
+                      <div className="text-xs text-blue-600/80 mt-0.5">
+                        {poStats.consumedQty.toFixed(2)} MT consumed
+                      </div>
                     </div>
 
                     <div className="col-span-2 bg-green-50 p-3 rounded-md border border-green-100">
-                      <span className="text-muted-foreground block text-xs mb-1">Remaining Balance</span>
+                      <span className="text-muted-foreground block text-xs mb-1">
+                        Remaining Balance
+                      </span>
                       <div className="flex justify-between items-end">
-                        <div className="font-bold text-green-700 text-lg">{formatCurrency(poStats.remainingValue)}</div>
-                        <div className="font-medium text-green-700">{poStats.remainingQty.toFixed(2)} MT left</div>
+                        <div className="font-bold text-green-700 text-lg">
+                          {formatCurrency(poStats.remainingValue)}
+                        </div>
+                        <div className="font-medium text-green-700">
+                          {poStats.remainingQty.toFixed(2)} MT left
+                        </div>
                       </div>
                     </div>
                   </div>

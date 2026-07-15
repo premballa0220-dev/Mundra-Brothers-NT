@@ -25,9 +25,9 @@ export function StubPage({
             <div className="space-y-1">
               <p className="font-medium">This screen ships in the next phase</p>
               <p className="text-sm text-muted-foreground max-w-md">
-                The foundation (multi-tenant model, role-based access, dashboards) is in
-                place. Detailed CRUD, workflows and document generation for this module are
-                next on the build plan.
+                The foundation (multi-tenant model, role-based access, dashboards) is in place.
+                Detailed CRUD, workflows and document generation for this module are next on the
+                build plan.
               </p>
             </div>
           </CardContent>

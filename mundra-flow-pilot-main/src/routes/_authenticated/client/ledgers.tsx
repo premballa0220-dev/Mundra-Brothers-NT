@@ -1,7 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getBalanceConfirmations, uploadBalanceConfirmation, getInvoices } from "@/lib/api/business.functions";
+import {
+  getBalanceConfirmations,
+  uploadBalanceConfirmation,
+  getInvoices,
+} from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,8 +55,7 @@ function ClientLedgersPage() {
   });
 
   const uploadMutation = useMutation({
-    mutationFn: (data: { id: string; signedPdfUrl: string }) =>
-      uploadBalanceConfirmation({ data }),
+    mutationFn: (data: { id: string; signedPdfUrl: string }) => uploadBalanceConfirmation({ data }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["client-confirmations"] });
       toast.success("Signed balance confirmation uploaded for audit verification!");
@@ -83,7 +86,7 @@ function ClientLedgersPage() {
   };
 
   const pendingConfirmation = confirmations?.find(
-    (c: any) => c.status === "pending_upload" || c.status === "rejected"
+    (c: any) => c.status === "pending_upload" || c.status === "rejected",
   );
 
   return (
@@ -92,23 +95,36 @@ function ClientLedgersPage() {
         <header>
           <h1 className="text-2xl font-semibold tracking-tight">Ledgers & Compliance</h1>
           <p className="text-sm text-muted-foreground">
-            Monitor outstanding invoices, track quarterly statements, and upload signed balance confirmation audits.
+            Monitor outstanding invoices, track quarterly statements, and upload signed balance
+            confirmation audits.
           </p>
         </header>
 
         {pendingConfirmation && (
           <Alert variant="default" className="border-warning/50 bg-warning/5">
             <AlertCircle className="h-5 w-5" />
-            <AlertTitle className="font-semibold">Action Required: Quarterly Statement Pending</AlertTitle>
+            <AlertTitle className="font-semibold">
+              Action Required: Quarterly Statement Pending
+            </AlertTitle>
             <AlertDescription className="mt-2 space-y-2">
               <p className="text-sm">
                 Your statement for quarter ending{" "}
-                <span className="font-bold">{new Date(pendingConfirmation.quarter_end_date).toLocaleDateString()}</span>{" "}
-                must be signed and returned by <span className="font-bold">{new Date(pendingConfirmation.due_date).toLocaleDateString()}</span>.
+                <span className="font-bold">
+                  {new Date(pendingConfirmation.quarter_end_date).toLocaleDateString()}
+                </span>{" "}
+                must be signed and returned by{" "}
+                <span className="font-bold">
+                  {new Date(pendingConfirmation.due_date).toLocaleDateString()}
+                </span>
+                .
               </p>
               <p className="text-xs text-muted-foreground">
-                Critical: Material dispatch will be automatically suspended if unsubmitted past the block date:{" "}
-                <span className="font-bold text-destructive">{new Date(pendingConfirmation.block_date).toLocaleDateString()}</span>.
+                Critical: Material dispatch will be automatically suspended if unsubmitted past the
+                block date:{" "}
+                <span className="font-bold text-destructive">
+                  {new Date(pendingConfirmation.block_date).toLocaleDateString()}
+                </span>
+                .
               </p>
               <Dialog open={open} onOpenChange={setOpen}>
                 <DialogTrigger asChild>
@@ -184,8 +200,8 @@ function ClientLedgersPage() {
                           <Badge
                             variant={
                               conf.status === "approved"
-                                  ? "default"
-                                  : conf.status === "under_review" || conf.status === "pending_upload"
+                                ? "default"
+                                : conf.status === "under_review" || conf.status === "pending_upload"
                                   ? "secondary"
                                   : "destructive"
                             }
@@ -210,7 +226,10 @@ function ClientLedgersPage() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={3} className="text-center py-6 text-muted-foreground text-xs">
+                      <TableCell
+                        colSpan={3}
+                        className="text-center py-6 text-muted-foreground text-xs"
+                      >
                         No confirmations requested.
                       </TableCell>
                     </TableRow>
@@ -240,16 +259,20 @@ function ClientLedgersPage() {
                   {invoices && invoices.length > 0 ? (
                     invoices.map((inv: any) => (
                       <TableRow key={inv.id}>
-                        <TableCell className="font-mono text-xs font-semibold">{inv.invoice_number}</TableCell>
+                        <TableCell className="font-mono text-xs font-semibold">
+                          {inv.invoice_number}
+                        </TableCell>
                         <TableCell>{new Date(inv.invoice_date).toLocaleDateString()}</TableCell>
-                        <TableCell className="font-bold text-success">{formatCurrency(inv.amount)}</TableCell>
+                        <TableCell className="font-bold text-success">
+                          {formatCurrency(inv.amount)}
+                        </TableCell>
                         <TableCell>{new Date(inv.due_date).toLocaleDateString()}</TableCell>
                         <TableCell>
                           <Badge
                             variant={
                               inv.status === "paid"
-                                  ? "default"
-                                  : inv.status === "partially_paid"
+                                ? "default"
+                                : inv.status === "partially_paid"
                                   ? "secondary"
                                   : "destructive"
                             }

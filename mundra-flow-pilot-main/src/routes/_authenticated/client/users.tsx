@@ -9,9 +9,30 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/client/users")({
@@ -85,8 +106,12 @@ function ClientUsersPage() {
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-warning" />
-                <CardTitle className="text-base font-semibold">Awaiting Mundra Admin Approval</CardTitle>
-                <Badge variant="secondary" className="ml-1">{pendingUsers.length}</Badge>
+                <CardTitle className="text-base font-semibold">
+                  Awaiting Mundra Admin Approval
+                </CardTitle>
+                <Badge variant="secondary" className="ml-1">
+                  {pendingUsers.length}
+                </Badge>
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -114,7 +139,11 @@ function ClientUsersPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {new Date(user.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                        {new Date(user.createdAt).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -130,7 +159,9 @@ function ClientUsersPage() {
             <div className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-success" />
               <CardTitle className="text-base font-semibold">Active Team Members</CardTitle>
-              <Badge variant="secondary" className="ml-1">{approvedUsers.length}</Badge>
+              <Badge variant="secondary" className="ml-1">
+                {approvedUsers.length}
+              </Badge>
             </div>
           </CardHeader>
           <CardContent className="p-0">
@@ -210,7 +241,12 @@ function AddUserForm({ onSuccess }: { onSuccess: () => void }) {
   });
 
   return (
-    <form onSubmit={(e) => { e.preventDefault(); mutation.mutate(); }}>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        mutation.mutate();
+      }}
+    >
       <DialogHeader>
         <DialogTitle>Add New Team Member</DialogTitle>
         <DialogDescription>
@@ -219,7 +255,9 @@ function AddUserForm({ onSuccess }: { onSuccess: () => void }) {
       </DialogHeader>
       <div className="grid gap-4 py-4">
         <div className="grid grid-cols-4 items-center gap-4">
-          <Label htmlFor="add-email" className="text-right">Email *</Label>
+          <Label htmlFor="add-email" className="text-right">
+            Email *
+          </Label>
           <Input
             id="add-email"
             type="email"
@@ -231,7 +269,9 @@ function AddUserForm({ onSuccess }: { onSuccess: () => void }) {
           />
         </div>
         <div className="grid grid-cols-4 items-center gap-4">
-          <Label htmlFor="add-password" className="text-right">Password *</Label>
+          <Label htmlFor="add-password" className="text-right">
+            Password *
+          </Label>
           <Input
             id="add-password"
             type="password"
@@ -243,7 +283,9 @@ function AddUserForm({ onSuccess }: { onSuccess: () => void }) {
           />
         </div>
         <div className="grid grid-cols-4 items-center gap-4">
-          <Label htmlFor="add-name" className="text-right">Full Name *</Label>
+          <Label htmlFor="add-name" className="text-right">
+            Full Name *
+          </Label>
           <Input
             id="add-name"
             type="text"
@@ -255,7 +297,9 @@ function AddUserForm({ onSuccess }: { onSuccess: () => void }) {
           />
         </div>
         <div className="grid grid-cols-4 items-center gap-4">
-          <Label htmlFor="add-phone" className="text-right">Phone</Label>
+          <Label htmlFor="add-phone" className="text-right">
+            Phone
+          </Label>
           <Input
             id="add-phone"
             type="tel"
@@ -268,7 +312,10 @@ function AddUserForm({ onSuccess }: { onSuccess: () => void }) {
         <div className="grid grid-cols-4 items-center gap-4">
           <Label className="text-right">Role *</Label>
           <div className="col-span-3">
-            <Select value={formData.role} onValueChange={(v) => setFormData({ ...formData, role: v })}>
+            <Select
+              value={formData.role}
+              onValueChange={(v) => setFormData({ ...formData, role: v })}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select role" />
               </SelectTrigger>
@@ -286,7 +333,12 @@ function AddUserForm({ onSuccess }: { onSuccess: () => void }) {
         </div>
       </div>
       <DialogFooter>
-        <Button type="submit" disabled={mutation.isPending || !formData.email || !formData.password || !formData.fullName}>
+        <Button
+          type="submit"
+          disabled={
+            mutation.isPending || !formData.email || !formData.password || !formData.fullName
+          }
+        >
           {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Add User (Pending Approval)
         </Button>
@@ -296,5 +348,8 @@ function AddUserForm({ onSuccess }: { onSuccess: () => void }) {
 }
 
 function formatRole(role: string) {
-  return role.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  return role
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }

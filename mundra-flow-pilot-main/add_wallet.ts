@@ -3,13 +3,14 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
 async function testWallet() {
-  const { data: orgs } = await supabase.from("organizations").select("id").eq("legal_name", "Ameya traders").limit(1);
+  const { data: orgs } = await supabase
+    .from("organizations")
+    .select("id")
+    .eq("legal_name", "Ameya traders")
+    .limit(1);
   if (orgs && orgs.length > 0) {
     const orgId = orgs[0].id;
     const { error } = await supabase

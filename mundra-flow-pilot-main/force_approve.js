@@ -1,11 +1,11 @@
-import fs from 'fs';
+import fs from "fs";
 
-const envFile = fs.readFileSync('.env', 'utf-8');
+const envFile = fs.readFileSync(".env", "utf-8");
 const env = {};
-envFile.split('\n').forEach(line => {
-  const [key, ...val] = line.split('=');
-  if (key && val.length > 0 && !key.startsWith('#')) {
-    env[key.trim()] = val.join('=').trim();
+envFile.split("\n").forEach((line) => {
+  const [key, ...val] = line.split("=");
+  if (key && val.length > 0 && !key.startsWith("#")) {
+    env[key.trim()] = val.join("=").trim();
   }
 });
 
@@ -18,13 +18,13 @@ async function forceApprove() {
   console.log("Approving user...");
   // Update profile to approved
   const res = await fetch(`${URL}/rest/v1/profiles?id=eq.${userId}`, {
-    method: 'PATCH',
+    method: "PATCH",
     headers: {
-      "apikey": KEY,
-      "Authorization": `Bearer ${KEY}`,
-      "Content-Type": "application/json"
+      apikey: KEY,
+      Authorization: `Bearer ${KEY}`,
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify({ approval_status: "approved" })
+    body: JSON.stringify({ approval_status: "approved" }),
   });
 
   if (!res.ok) {
@@ -37,22 +37,22 @@ async function forceApprove() {
   console.log("Setting super admin role...");
   // Delete existing roles
   await fetch(`${URL}/rest/v1/user_roles?user_id=eq.${userId}`, {
-    method: 'DELETE',
+    method: "DELETE",
     headers: {
-      "apikey": KEY,
-      "Authorization": `Bearer ${KEY}`
-    }
+      apikey: KEY,
+      Authorization: `Bearer ${KEY}`,
+    },
   });
 
   // Insert super admin role
   const roleRes = await fetch(`${URL}/rest/v1/user_roles`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      "apikey": KEY,
-      "Authorization": `Bearer ${KEY}`,
-      "Content-Type": "application/json"
+      apikey: KEY,
+      Authorization: `Bearer ${KEY}`,
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify({ user_id: userId, role: "mundra_super_admin" })
+    body: JSON.stringify({ user_id: userId, role: "mundra_super_admin" }),
   });
 
   if (!roleRes.ok) {

@@ -1,19 +1,55 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getPurchaseOrders, createPurchaseOrder, getProducts, getApplicableRate, getClientDeliveryLocations } from "@/lib/api/business.functions";
+import {
+  getPurchaseOrders,
+  createPurchaseOrder,
+  getProducts,
+  getApplicableRate,
+  getClientDeliveryLocations,
+} from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { FileText, Plus, Loader2, IndianRupee, AlertCircle, UploadCloud, FileIcon, X } from "lucide-react";
+import {
+  FileText,
+  Plus,
+  Loader2,
+  IndianRupee,
+  AlertCircle,
+  UploadCloud,
+  FileIcon,
+  X,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/client/purchase-orders")({
@@ -50,7 +86,9 @@ function ClientPurchaseOrdersPage() {
         const defaultLoc = deliveryLocations.find((l: any) => l.is_default) || deliveryLocations[0];
         setSiteAddress(defaultLoc.address);
         if (defaultLoc.contact_person) {
-          setDeliveryContact(`${defaultLoc.contact_person} ${defaultLoc.contact_phone ? `(${defaultLoc.contact_phone})` : ""}`.trim());
+          setDeliveryContact(
+            `${defaultLoc.contact_person} ${defaultLoc.contact_phone ? `(${defaultLoc.contact_phone})` : ""}`.trim(),
+          );
         } else {
           setDeliveryContact("");
         }
@@ -120,21 +158,21 @@ function ClientPurchaseOrdersPage() {
     if (documentMethod === "upload" && documentFile) {
       setIsUploading(true);
       try {
-        const fileExt = documentFile.name.split('.').pop();
+        const fileExt = documentFile.name.split(".").pop();
         const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
         const filePath = `${fileName}`;
 
         const { error: uploadError } = await supabase.storage
-          .from('po_container')
+          .from("po_container")
           .upload(filePath, documentFile);
 
         if (uploadError) {
           throw uploadError;
         }
 
-        const { data: { publicUrl } } = supabase.storage
-          .from('po_container')
-          .getPublicUrl(filePath);
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("po_container").getPublicUrl(filePath);
 
         finalDocumentUrl = publicUrl;
       } catch (err: any) {
@@ -160,7 +198,11 @@ function ClientPurchaseOrdersPage() {
   }
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(amount);
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 2,
+    }).format(amount);
   };
 
   return (
@@ -170,7 +212,8 @@ function ClientPurchaseOrdersPage() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Purchase Orders</h1>
             <p className="text-sm text-muted-foreground">
-              Create POs, lock contract rates, and upload documents or authorize platform-generated POs.
+              Create POs, lock contract rates, and upload documents or authorize platform-generated
+              POs.
             </p>
           </div>
           <Dialog open={open} onOpenChange={setOpen}>
@@ -184,14 +227,21 @@ function ClientPurchaseOrdersPage() {
                 <DialogHeader>
                   <DialogTitle>Raise Purchase Order</DialogTitle>
                   <DialogDescription>
-                    Fill in PO quantity and shipping details. Contract rates will lock automatically.
+                    Fill in PO quantity and shipping details. Contract rates will lock
+                    automatically.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <Label htmlFor="poNumber">PO Number *</Label>
-                      <Input id="poNumber" value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="e.g. PO-2026-001" required />
+                      <Input
+                        id="poNumber"
+                        value={poNumber}
+                        onChange={(e) => setPoNumber(e.target.value)}
+                        placeholder="e.g. PO-2026-001"
+                        required
+                      />
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="product">Product *</Label>
@@ -202,43 +252,60 @@ function ClientPurchaseOrdersPage() {
                         <SelectContent>
                           {products?.map((p: any) => (
                             <SelectItem key={p.id} value={p.id}>
-                              {p.name} {p.packaging ? `- ${p.packaging}` : ""} {p.grade ? `(${p.grade})` : ""}
+                              {p.name} {p.packaging ? `- ${p.packaging}` : ""}{" "}
+                              {p.grade ? `(${p.grade})` : ""}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
-                  
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <Label htmlFor="quantity">Quantity *</Label>
-                      <Input id="quantity" type="number" min="0.01" step="0.01" value={quantity || ""} onChange={(e) => setQuantity(Number(e.target.value))} required />
+                      <Input
+                        id="quantity"
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={quantity || ""}
+                        onChange={(e) => setQuantity(Number(e.target.value))}
+                        required
+                      />
                     </div>
                     <div className="space-y-1">
                       <div className="flex justify-between items-center h-4 mb-1">
                         <Label>Contract Rate per MT</Label>
-                        {rateLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                        {rateLoading && (
+                          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                        )}
                         {applicableRateInfo && !rateLoading && (
                           <span className="text-[10px] uppercase text-muted-foreground bg-secondary px-1.5 py-0.5 rounded font-medium tracking-wider">
                             {applicableRateInfo.source}
                           </span>
                         )}
                       </div>
-                      <Input 
-                        type="number" 
+                      <Input
+                        type="number"
                         step="0.01"
-                        value={lockedRate || ""} 
-                        onChange={e => setLockedRate(Number(e.target.value))}
+                        value={lockedRate || ""}
+                        onChange={(e) => setLockedRate(Number(e.target.value))}
                         disabled={!isExceptionRate}
-                        className={!isExceptionRate ? "bg-muted font-semibold text-primary" : "font-semibold"}
+                        className={
+                          !isExceptionRate ? "bg-muted font-semibold text-primary" : "font-semibold"
+                        }
                         required
                       />
                     </div>
                   </div>
 
                   <div className="flex items-center space-x-2 border rounded-md p-3 bg-card mt-1">
-                    <Switch id="exception-rate" checked={isExceptionRate} onCheckedChange={setIsExceptionRate} />
+                    <Switch
+                      id="exception-rate"
+                      checked={isExceptionRate}
+                      onCheckedChange={setIsExceptionRate}
+                    />
                     <Label htmlFor="exception-rate" className="flex flex-col cursor-pointer">
                       <span>Request Exception Rate</span>
                       <span className="font-normal text-xs text-muted-foreground leading-snug">
@@ -257,36 +324,53 @@ function ClientPurchaseOrdersPage() {
                     <div className="space-y-1">
                       <Label htmlFor="siteAddress">Site Delivery Address *</Label>
                       {deliveryLocations && deliveryLocations.length > 0 ? (
-                        <Select 
-                          value={siteAddress} 
+                        <Select
+                          value={siteAddress}
                           onValueChange={(val) => {
                             setSiteAddress(val);
                             const loc = deliveryLocations.find((l: any) => l.address === val);
                             if (loc?.contact_person) {
-                              setDeliveryContact(`${loc.contact_person} ${loc.contact_phone ? `(${loc.contact_phone})` : ""}`.trim());
+                              setDeliveryContact(
+                                `${loc.contact_person} ${loc.contact_phone ? `(${loc.contact_phone})` : ""}`.trim(),
+                              );
                             } else {
                               setDeliveryContact("");
                             }
-                          }} 
-                          required>
+                          }}
+                          required
+                        >
                           <SelectTrigger>
                             <SelectValue placeholder="Select Delivery Address" />
                           </SelectTrigger>
                           <SelectContent>
                             {deliveryLocations.map((loc: any) => (
                               <SelectItem key={loc.id} value={loc.address}>
-                                <span className="font-semibold">{loc.label}</span> - <span className="text-muted-foreground">{loc.address.substring(0, 30)}...</span>
+                                <span className="font-semibold">{loc.label}</span> -{" "}
+                                <span className="text-muted-foreground">
+                                  {loc.address.substring(0, 30)}...
+                                </span>
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       ) : (
-                        <Input id="siteAddress" value={siteAddress} onChange={(e) => setSiteAddress(e.target.value)} placeholder="Full site destination address" required />
+                        <Input
+                          id="siteAddress"
+                          value={siteAddress}
+                          onChange={(e) => setSiteAddress(e.target.value)}
+                          placeholder="Full site destination address"
+                          required
+                        />
                       )}
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="deliveryContact">Site Contact Person / Phone</Label>
-                      <Input id="deliveryContact" value={deliveryContact} onChange={(e) => setDeliveryContact(e.target.value)} placeholder="Name, Phone details" />
+                      <Input
+                        id="deliveryContact"
+                        value={deliveryContact}
+                        onChange={(e) => setDeliveryContact(e.target.value)}
+                        placeholder="Name, Phone details"
+                      />
                     </div>
                   </div>
                   {deliveryLocations && deliveryLocations.length > 0 && (
@@ -294,13 +378,13 @@ function ClientPurchaseOrdersPage() {
                       Address is selected from your pre-configured delivery locations.
                     </p>
                   )}
-                  
+
                   <div className="space-y-2 pt-3 border-t mt-1">
                     <Label>PO Document (PDF/Image)</Label>
                     {!documentFile ? (
                       <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-accent/50 transition-colors relative">
-                        <Input 
-                          type="file" 
+                        <Input
+                          type="file"
                           accept=".pdf,image/*"
                           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                           onChange={(e) => {
@@ -319,7 +403,9 @@ function ClientPurchaseOrdersPage() {
                         />
                         <UploadCloud className="h-8 w-8 text-muted-foreground mb-2" />
                         <p className="text-sm font-medium">Click or drag file to upload</p>
-                        <p className="text-xs text-muted-foreground mt-1">Supports PDF, PNG, JPG up to 1MB</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Supports PDF, PNG, JPG up to 1MB
+                        </p>
                       </div>
                     ) : (
                       <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/30">
@@ -329,10 +415,21 @@ function ClientPurchaseOrdersPage() {
                           </div>
                           <div className="min-w-0">
                             <p className="text-sm font-medium truncate">{documentFile.name}</p>
-                            <p className="text-xs text-muted-foreground">{(documentFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                            <p className="text-xs text-muted-foreground">
+                              {(documentFile.size / 1024 / 1024).toFixed(2)} MB
+                            </p>
                           </div>
                         </div>
-                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => { setDocumentFile(null); setDocumentUrl(""); }}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => {
+                            setDocumentFile(null);
+                            setDocumentUrl("");
+                          }}
+                        >
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
@@ -340,8 +437,15 @@ function ClientPurchaseOrdersPage() {
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button type="submit" disabled={createMutation.isPending || isUploading || (!lockedRate && quantity > 0)}>
-                    {(createMutation.isPending || isUploading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} 
+                  <Button
+                    type="submit"
+                    disabled={
+                      createMutation.isPending || isUploading || (!lockedRate && quantity > 0)
+                    }
+                  >
+                    {(createMutation.isPending || isUploading) && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
                     {isUploading ? "Uploading PO..." : "Submit PO"}
                   </Button>
                 </DialogFooter>
@@ -350,12 +454,12 @@ function ClientPurchaseOrdersPage() {
           </Dialog>
         </header>
 
-        <div className="hidden">
-           {/* Legacy settings removed */}
-        </div>
+        <div className="hidden">{/* Legacy settings removed */}</div>
 
         {posLoading ? (
-          <div className="flex justify-center items-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+          <div className="flex justify-center items-center py-20">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
         ) : (
           <Card>
             <CardHeader className="pb-3">
@@ -384,9 +488,15 @@ function ClientPurchaseOrdersPage() {
                           </div>
                         </TableCell>
                         <TableCell>{po.product?.name}</TableCell>
-                        <TableCell className="text-right font-medium">{po.original_quantity}</TableCell>
-                        <TableCell className="text-right text-muted-foreground">{formatCurrency(po.locked_rate)}/MT</TableCell>
-                        <TableCell className="text-right font-medium">{formatCurrency(po.total_value)}</TableCell>
+                        <TableCell className="text-right font-medium">
+                          {po.original_quantity}
+                        </TableCell>
+                        <TableCell className="text-right text-muted-foreground">
+                          {formatCurrency(po.locked_rate)}/MT
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {formatCurrency(po.total_value)}
+                        </TableCell>
                         <TableCell>
                           <Badge variant={po.status === "approved" ? "default" : "secondary"}>
                             {po.status.replace("_", " ")}

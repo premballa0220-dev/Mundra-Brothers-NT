@@ -23,7 +23,11 @@ import {
   Settings2,
   Trash2,
 } from "lucide-react";
-import { getNotifications, markNotificationRead, deleteNotification } from "@/lib/api/business.functions";
+import {
+  getNotifications,
+  markNotificationRead,
+  deleteNotification,
+} from "@/lib/api/business.functions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -155,9 +159,7 @@ export function AppShell({
               <Skeleton className="h-5 w-48" />
             ) : (
               <>
-                <span className="text-sm font-medium truncate">
-                  {session.organizationName}
-                </span>
+                <span className="text-sm font-medium truncate">{session.organizationName}</span>
                 <Badge variant="secondary" className="text-[10px] uppercase tracking-wider">
                   {session.orgType === "mundra" ? "Operator" : "Client Org"}
                 </Badge>
@@ -215,7 +217,9 @@ function UserMenu({ session, onSignOut }: { session: SessionContext; onSignOut: 
           </div>
         ) : (
           session.roles.map((r) => (
-            <div key={r} className="px-2 py-1 text-xs">{ROLE_LABELS[r]}</div>
+            <div key={r} className="px-2 py-1 text-xs">
+              {ROLE_LABELS[r]}
+            </div>
           ))
         )}
         <DropdownMenuSeparator />
@@ -266,21 +270,26 @@ function NotificationsMenu({ notifications }: { notifications: any[] }) {
           </div>
         ) : (
           notifications.map((notif) => (
-            <div key={notif.id} className={`p-3 border-b last:border-0 relative ${notif.is_read ? 'opacity-70' : 'bg-primary/5'}`}>
+            <div
+              key={notif.id}
+              className={`p-3 border-b last:border-0 relative ${notif.is_read ? "opacity-70" : "bg-primary/5"}`}
+            >
               <div className="flex justify-between items-start gap-2">
-                <div 
+                <div
                   className="flex-1 cursor-pointer"
                   onClick={() => {
                     if (!notif.is_read) markReadMutation.mutate(notif.id);
                   }}
                 >
                   <h4 className="text-sm font-semibold">{notif.title}</h4>
-                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{notif.message}</p>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    {notif.message}
+                  </p>
                   <span className="text-[10px] text-muted-foreground block mt-2">
                     {new Date(notif.created_at).toLocaleDateString()}
                   </span>
                 </div>
-                <button 
+                <button
                   onClick={() => deleteMutation.mutate(notif.id)}
                   className="text-muted-foreground hover:text-destructive p-1 rounded-md transition-colors"
                   title="Remove notification permanently"

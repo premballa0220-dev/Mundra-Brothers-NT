@@ -10,8 +10,18 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { createCreditNote, createDebitNote, getAllOrganizations } from "@/lib/api/business.functions";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  createCreditNote,
+  createDebitNote,
+  getAllOrganizations,
+} from "@/lib/api/business.functions";
 import { Loader2 } from "lucide-react";
 import { Textarea } from "./ui/textarea";
 import { toast } from "sonner";
@@ -22,7 +32,7 @@ const CREDIT_REASONS = [
   "Quality Claim",
   "Discount",
   "Goods Return",
-  "Other"
+  "Other",
 ];
 
 const DEBIT_REASONS = [
@@ -30,12 +40,18 @@ const DEBIT_REASONS = [
   "Excess Dispatch",
   "Interest-Penalty",
   "Under-billing Correction",
-  "Other"
+  "Other",
 ];
 
 const ORIGIN_TYPES = ["PO", "Dispatch", "Payment"];
 
-export function CreditDebitNoteDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function CreditDebitNoteDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -55,8 +71,9 @@ export function CreditDebitNoteDialog({ open, onOpenChange }: { open: boolean; o
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!issuedByOrgId || !issuedToOrgId || !amount || !reason || !originType || !originReference) return;
-    
+    if (!issuedByOrgId || !issuedToOrgId || !amount || !reason || !originType || !originReference)
+      return;
+
     setIsSubmitting(true);
     try {
       const payload = {
@@ -88,7 +105,9 @@ export function CreditDebitNoteDialog({ open, onOpenChange }: { open: boolean; o
       }
 
       await queryClient.invalidateQueries({ queryKey: ["admin-journal-entries"] });
-      toast.success(`${type === "credit" ? "Credit" : "Debit"} Note issued successfully and posted to ledger.`);
+      toast.success(
+        `${type === "credit" ? "Credit" : "Debit"} Note issued successfully and posted to ledger.`,
+      );
       onOpenChange(false);
       resetForm();
     } catch (err) {
@@ -118,7 +137,8 @@ export function CreditDebitNoteDialog({ open, onOpenChange }: { open: boolean; o
         <DialogHeader>
           <DialogTitle>Issue Adjustment Note</DialogTitle>
           <DialogDescription>
-            Create a Credit Note or Debit Note to adjust accounting ledgers. Notes are issued immediately and posted to the ledger.
+            Create a Credit Note or Debit Note to adjust accounting ledgers. Notes are issued
+            immediately and posted to the ledger.
           </DialogDescription>
         </DialogHeader>
 
@@ -126,7 +146,13 @@ export function CreditDebitNoteDialog({ open, onOpenChange }: { open: boolean; o
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Type</Label>
-              <Select value={type} onValueChange={(v: "credit" | "debit") => { setType(v); setReason(""); }}>
+              <Select
+                value={type}
+                onValueChange={(v: "credit" | "debit") => {
+                  setType(v);
+                  setReason("");
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -159,7 +185,9 @@ export function CreditDebitNoteDialog({ open, onOpenChange }: { open: boolean; o
                 </SelectTrigger>
                 <SelectContent>
                   {orgs?.map((o) => (
-                    <SelectItem key={o.id} value={o.id}>{o.legal_name}</SelectItem>
+                    <SelectItem key={o.id} value={o.id}>
+                      {o.legal_name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -189,7 +217,11 @@ export function CreditDebitNoteDialog({ open, onOpenChange }: { open: boolean; o
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {ORIGIN_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  {ORIGIN_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -212,7 +244,9 @@ export function CreditDebitNoteDialog({ open, onOpenChange }: { open: boolean; o
               </SelectTrigger>
               <SelectContent>
                 {reasons.map((r) => (
-                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                  <SelectItem key={r} value={r}>
+                    {r}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -230,8 +264,20 @@ export function CreditDebitNoteDialog({ open, onOpenChange }: { open: boolean; o
           </div>
 
           <div className="flex justify-end pt-4 space-x-2">
-            <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={isSubmitting || !issuedByOrgId || !issuedToOrgId || !amount || !reason || !originReference}>
+            <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={
+                isSubmitting ||
+                !issuedByOrgId ||
+                !issuedToOrgId ||
+                !amount ||
+                !reason ||
+                !originReference
+              }
+            >
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Issue {type === "credit" ? "Credit" : "Debit"} Note
             </Button>

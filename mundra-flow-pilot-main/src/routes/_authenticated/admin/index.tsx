@@ -24,8 +24,7 @@ export const Route = createFileRoute("/_authenticated/admin/")({
   component: AdminDashboard,
 });
 
-const INR = (n: number) =>
-  new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(n);
+const INR = (n: number) => new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(n);
 
 // PORTFOLIO and QUEUES are loaded dynamically
 function AdminDashboard() {
@@ -66,22 +65,46 @@ function AdminDashboard() {
 
   const ALERTS = [];
   if (PORTFOLIO.overdueClients > 0) {
-    ALERTS.push({ type: "danger", text: `${PORTFOLIO.overdueClients} clients have overdue payments`, href: "/admin/clients" });
+    ALERTS.push({
+      type: "danger",
+      text: `${PORTFOLIO.overdueClients} clients have overdue payments`,
+      href: "/admin/clients",
+    });
   }
   if (QUEUES.posBlocked > 0) {
-    ALERTS.push({ type: "danger", text: `${QUEUES.posBlocked} POs are currently blocked`, href: "/admin/po-queue" });
+    ALERTS.push({
+      type: "danger",
+      text: `${QUEUES.posBlocked} POs are currently blocked`,
+      href: "/admin/po-queue",
+    });
   }
   if (QUEUES.dispatchPending > 0) {
-    ALERTS.push({ type: "warning", text: `${QUEUES.dispatchPending} dispatches awaiting review`, href: "/admin/dispatch-queue" });
+    ALERTS.push({
+      type: "warning",
+      text: `${QUEUES.dispatchPending} dispatches awaiting review`,
+      href: "/admin/dispatch-queue",
+    });
   }
   if (QUEUES.dispatchBlocked > 0) {
-    ALERTS.push({ type: "danger", text: `${QUEUES.dispatchBlocked} dispatches are blocked`, href: "/admin/dispatch-queue" });
+    ALERTS.push({
+      type: "danger",
+      text: `${QUEUES.dispatchBlocked} dispatches are blocked`,
+      href: "/admin/dispatch-queue",
+    });
   }
   if (QUEUES.paymentsUnderVerification > 0) {
-    ALERTS.push({ type: "warning", text: `${QUEUES.paymentsUnderVerification} payments require verification`, href: "/admin/payments" });
+    ALERTS.push({
+      type: "warning",
+      text: `${QUEUES.paymentsUnderVerification} payments require verification`,
+      href: "/admin/payments",
+    });
   }
   if (QUEUES.balanceConfPending > 0) {
-    ALERTS.push({ type: "warning", text: `${QUEUES.balanceConfPending} balance confirmations pending or overdue`, href: "/admin/balance-confirmations" });
+    ALERTS.push({
+      type: "warning",
+      text: `${QUEUES.balanceConfPending} balance confirmations pending or overdue`,
+      href: "/admin/balance-confirmations",
+    });
   }
 
   return (
@@ -104,10 +127,18 @@ function AdminDashboard() {
         <section>
           <SectionTitle>Portfolio</SectionTitle>
           <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-            <Stat label="Active Clients" value={PORTFOLIO.activeClients.toString()} icon={Building2} />
+            <Stat
+              label="Active Clients"
+              value={PORTFOLIO.activeClients.toString()}
+              icon={Building2}
+            />
             <Stat label="Sanctioned Credit" value={`₹${INR(PORTFOLIO.sanctionedCredit)}`} />
             <Stat label="Recognised Exposure" value={`₹${INR(PORTFOLIO.recognizedExposure)}`} />
-            <Stat label="Available Credit" value={`₹${INR(PORTFOLIO.availableCredit)}`} tone="success" />
+            <Stat
+              label="Available Credit"
+              value={`₹${INR(PORTFOLIO.availableCredit)}`}
+              tone="success"
+            />
             <Stat
               label="Clients with Overdue"
               value={PORTFOLIO.overdueClients.toString()}
@@ -168,7 +199,9 @@ function AdminDashboard() {
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-warning" />
                 <CardTitle className="text-base">Audit & SLA alerts</CardTitle>
-                <Badge variant="secondary" className="ml-1">{ALERTS.length}</Badge>
+                <Badge variant="secondary" className="ml-1">
+                  {ALERTS.length}
+                </Badge>
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -289,11 +322,7 @@ function QueueCard({
         <div className="grid grid-cols-2 gap-2">
           {metrics.map((m, i) => {
             const toneClass =
-              m.tone === "danger"
-                ? "text-destructive"
-                : m.tone === "warning"
-                  ? "text-warning"
-                  : "";
+              m.tone === "danger" ? "text-destructive" : m.tone === "warning" ? "text-warning" : "";
             return (
               <div key={i}>
                 <div className={`text-xl font-semibold tabular-nums ${toneClass}`}>{m.v}</div>

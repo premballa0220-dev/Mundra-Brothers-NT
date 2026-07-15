@@ -1,13 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery } from "@tanstack/react-query";
-import { getTallyExportData } from "@/lib/api/business.functions";
+import { getExcelExportData } from "@/lib/api/business.functions";
 import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import * as XLSX from "xlsx";
 import {
   Download,
   Loader2,
@@ -28,9 +39,9 @@ export const Route = createFileRoute("/_authenticated/admin/reports")({
   component: AdminReportsPage,
 });
 
-// ─── Tally XML Generator ─────────────────────────────────────────────────────
+// ─── Excel Generator ────────────────────────────────────────────────────────
 
-function formatTallyDate(isoDate: string | null | undefined): string {
+function formatExcelDate(isoDate: string | null | undefined): string {
   if (!isoDate) return "";
   const d = new Date(isoDate);
   const dd = String(d.getDate()).padStart(2, "0");
@@ -39,207 +50,107 @@ function formatTallyDate(isoDate: string | null | undefined): string {
   return `${dd}-${mm}-${yyyy}`;
 }
 
-function escapeXml(str: string | null | undefined): string {
-  if (!str) return "";
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
+function generateExcelWorkbook(exportData: any, label: string) {
+  const { clients, invoices, payments, pos, dispatches, creditNotes, debitNotes } = exportData;
+  const wb = XLSX.utils.book_new();
 
-function fmt(n: number | string | null | undefined): string {
-  return Number(n || 0).toFixed(2);
-}
+  // 1. Clients
+  const wsClients = XLSX.utils.json_to_sheet(
+    (clients || []).map((c: any) => ({
+      ID: c.id,
+      Name: c.legal_name,
+      "Trade Name": c.trade_name || "",
+      GSTIN: c.gst_number || "",
+      PAN: c.pan_number || "",
+      "Billing Address": c.billing_address || "",
+    })),
+  );
+  XLSX.utils.book_append_sheet(wb, wsClients, "Clients");
 
-function generateTallyXML(exportData: any): string {
-  const { clients, invoices, payments, creditNotes, debitNotes } = exportData;
-  const companyName = "Mundra Brothers";
+  // 2. Invoices
+  const wsInvoices = XLSX.utils.json_to_sheet(
+    (invoices || []).map((inv: any) => ({
+      "Invoice Number": inv.invoice_number,
+      Date: formatExcelDate(inv.invoice_date),
+      Client: inv.organizations?.trade_name || inv.organizations?.legal_name || "",
+      Amount: inv.amount,
+      "Due Date": formatExcelDate(inv.due_date),
+      Status: inv.status,
+    })),
+  );
+  XLSX.utils.book_append_sheet(wb, wsInvoices, "Invoices");
 
-  // ── Ledger Masters (Clients as Sundry Debtors) ──
-  const ledgerMasters = clients
-    .map(
-      (c: any) => `
-    <LEDGER NAME="${escapeXml(c.trade_name || c.name)}" RESERVEDNAME="">
-      <NAME>${escapeXml(c.trade_name || c.name)}</NAME>
-      <PARENT>Sundry Debtors</PARENT>
-      <ISBILLWISEON>Yes</ISBILLWISEON>
-      <AFFECTSSTOCK>No</AFFECTSSTOCK>
-      <OPENINGBALANCE>0</OPENINGBALANCE>
-      ${c.gstin ? `<TAXREGISTRATIONNUMBER>${escapeXml(c.gstin)}</TAXREGISTRATIONNUMBER>` : ""}
-      ${c.pan ? `<INCOMETAXNUMBER>${escapeXml(c.pan)}</INCOMETAXNUMBER>` : ""}
-      ${c.billing_address ? `<MAILINGNAME>${escapeXml(c.trade_name || c.name)}</MAILINGNAME><ADDRESS.LIST TYPE="String"><ADDRESS>${escapeXml(c.billing_address)}</ADDRESS></ADDRESS.LIST>` : ""}
-    </LEDGER>`
-    )
-    .join("\n");
+  // 3. Payments
+  const wsPayments = XLSX.utils.json_to_sheet(
+    (payments || []).map((p: any) => ({
+      Reference: p.reference_number || p.id,
+      Date: formatExcelDate(p.payment_date),
+      Client: p.organizations?.trade_name || p.organizations?.legal_name || "",
+      Amount: p.amount,
+      Mode: p.payment_mode || "",
+      "Bank Name": p.bank_name || "",
+      Status: p.status,
+    })),
+  );
+  XLSX.utils.book_append_sheet(wb, wsPayments, "Payments");
 
-  // ── Sales Vouchers (Invoices) ──
-  const salesVouchers = invoices
-    .map((inv: any) => {
-      const clientName = escapeXml(inv.organizations?.trade_name || inv.organizations?.name || "Unknown");
-      const amount = fmt(inv.amount);
-      const tallyDate = formatTallyDate(inv.invoice_date);
-      return `
-    <VOUCHER VCHTYPE="Sales" ACTION="Create" OBJVIEW="Invoice Voucher View">
-      <DATE>${tallyDate}</DATE>
-      <GUID>INV-${escapeXml(inv.id)}</GUID>
-      <VOUCHERTYPENAME>Sales</VOUCHERTYPENAME>
-      <VOUCHERNUMBER>${escapeXml(inv.invoice_number)}</VOUCHERNUMBER>
-      <PARTYLEDGERNAME>${clientName}</PARTYLEDGERNAME>
-      <EFFECTIVEDATE>${tallyDate}</EFFECTIVEDATE>
-      <NARRATION>Invoice ${escapeXml(inv.invoice_number)} | Due: ${formatTallyDate(inv.due_date)}</NARRATION>
-      <ALLLEDGERENTRIES.LIST>
-        <LEDGERNAME>${clientName}</LEDGERNAME>
-        <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
-        <AMOUNT>-${amount}</AMOUNT>
-        <BILLALLOCATIONS.LIST>
-          <NAME>${escapeXml(inv.invoice_number)}</NAME>
-          <BILLTYPE>New Ref</BILLTYPE>
-          <AMOUNT>-${amount}</AMOUNT>
-        </BILLALLOCATIONS.LIST>
-      </ALLLEDGERENTRIES.LIST>
-      <ALLLEDGERENTRIES.LIST>
-        <LEDGERNAME>Sales</LEDGERNAME>
-        <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-        <AMOUNT>${amount}</AMOUNT>
-      </ALLLEDGERENTRIES.LIST>
-    </VOUCHER>`;
-    })
-    .join("\n");
+  // 3a. Purchase Orders
+  const wsPOs = XLSX.utils.json_to_sheet(
+    (pos || []).map((po: any) => ({
+      "PO Number": po.po_number,
+      Date: formatExcelDate(po.created_at),
+      Client: po.organizations?.trade_name || po.organizations?.legal_name || "",
+      Quantity: po.original_quantity,
+      "Locked Rate": po.locked_rate,
+      "Total Value": po.total_value,
+      Status: po.status,
+    })),
+  );
+  XLSX.utils.book_append_sheet(wb, wsPOs, "Purchase Orders");
 
-  // ── Receipt Vouchers (Payments) ──
-  const receiptVouchers = payments
-    .map((p: any) => {
-      const clientName = escapeXml(p.organizations?.trade_name || p.organizations?.name || "Unknown");
-      const amount = fmt(p.amount);
-      const tallyDate = formatTallyDate(p.payment_date);
-      const narration = `Payment | ${escapeXml(p.payment_mode || "")} | Ref: ${escapeXml(p.reference_number || "")}${p.bank_name ? ` | Bank: ${escapeXml(p.bank_name)}` : ""}`;
-      return `
-    <VOUCHER VCHTYPE="Receipt" ACTION="Create" OBJVIEW="Accounting Voucher View">
-      <DATE>${tallyDate}</DATE>
-      <GUID>PMT-${escapeXml(p.id)}</GUID>
-      <VOUCHERTYPENAME>Receipt</VOUCHERTYPENAME>
-      <VOUCHERNUMBER>${escapeXml(p.reference_number || p.id)}</VOUCHERNUMBER>
-      <PARTYLEDGERNAME>${clientName}</PARTYLEDGERNAME>
-      <EFFECTIVEDATE>${tallyDate}</EFFECTIVEDATE>
-      <NARRATION>${narration}</NARRATION>
-      <ALLLEDGERENTRIES.LIST>
-        <LEDGERNAME>Bank Account</LEDGERNAME>
-        <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
-        <AMOUNT>-${amount}</AMOUNT>
-      </ALLLEDGERENTRIES.LIST>
-      <ALLLEDGERENTRIES.LIST>
-        <LEDGERNAME>${clientName}</LEDGERNAME>
-        <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-        <AMOUNT>${amount}</AMOUNT>
-      </ALLLEDGERENTRIES.LIST>
-    </VOUCHER>`;
-    })
-    .join("\n");
+  // 3b. Dispatch Requests
+  const wsDispatches = XLSX.utils.json_to_sheet(
+    (dispatches || []).map((dr: any) => ({
+      "Dispatch ID": dr.id,
+      "PO Number": dr.purchase_orders?.po_number || "",
+      Date: formatExcelDate(dr.created_at),
+      Client: dr.organizations?.trade_name || dr.organizations?.legal_name || "",
+      Quantity: dr.quantity,
+      "Requested Date": dr.requested_date,
+      Status: dr.status,
+    })),
+  );
+  XLSX.utils.book_append_sheet(wb, wsDispatches, "Dispatches");
 
-  // ── Credit Note Vouchers ──
-  const creditVouchers = (creditNotes || [])
-    .map((cn: any) => {
-      const clientName = escapeXml(cn.issued_to?.trade_name || cn.issued_to?.name || "Unknown");
-      const amount = fmt(cn.amount);
-      const tallyDate = formatTallyDate(cn.issue_date);
-      return `
-    <VOUCHER VCHTYPE="Credit Note" ACTION="Create" OBJVIEW="Accounting Voucher View">
-      <DATE>${tallyDate}</DATE>
-      <GUID>CN-${escapeXml(cn.id)}</GUID>
-      <VOUCHERTYPENAME>Credit Note</VOUCHERTYPENAME>
-      <VOUCHERNUMBER>${escapeXml(cn.credit_note_number)}</VOUCHERNUMBER>
-      <PARTYLEDGERNAME>${clientName}</PARTYLEDGERNAME>
-      <EFFECTIVEDATE>${tallyDate}</EFFECTIVEDATE>
-      <NARRATION>${escapeXml(cn.reason)}${cn.remarks ? ` - ${escapeXml(cn.remarks)}` : ""}</NARRATION>
-      <ALLLEDGERENTRIES.LIST>
-        <LEDGERNAME>${clientName}</LEDGERNAME>
-        <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-        <AMOUNT>${amount}</AMOUNT>
-      </ALLLEDGERENTRIES.LIST>
-      <ALLLEDGERENTRIES.LIST>
-        <LEDGERNAME>Sales</LEDGERNAME>
-        <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
-        <AMOUNT>-${amount}</AMOUNT>
-      </ALLLEDGERENTRIES.LIST>
-    </VOUCHER>`;
-    })
-    .join("\n");
+  // 4. Credit Notes
+  const wsCreditNotes = XLSX.utils.json_to_sheet(
+    (creditNotes || []).map((cn: any) => ({
+      "Credit Note Number": cn.credit_note_number,
+      Date: formatExcelDate(cn.issue_date),
+      Client: cn.issued_to?.trade_name || cn.issued_to?.legal_name || "",
+      Amount: cn.amount,
+      Reason: cn.reason || "",
+      Remarks: cn.remarks || "",
+      Status: cn.status,
+    })),
+  );
+  XLSX.utils.book_append_sheet(wb, wsCreditNotes, "Credit Notes");
 
-  // ── Debit Note Vouchers ──
-  const debitVouchers = (debitNotes || [])
-    .map((dn: any) => {
-      const clientName = escapeXml(dn.issued_to?.trade_name || dn.issued_to?.name || "Unknown");
-      const amount = fmt(dn.amount);
-      const tallyDate = formatTallyDate(dn.issue_date);
-      return `
-    <VOUCHER VCHTYPE="Debit Note" ACTION="Create" OBJVIEW="Accounting Voucher View">
-      <DATE>${tallyDate}</DATE>
-      <GUID>DN-${escapeXml(dn.id)}</GUID>
-      <VOUCHERTYPENAME>Debit Note</VOUCHERTYPENAME>
-      <VOUCHERNUMBER>${escapeXml(dn.debit_note_number)}</VOUCHERNUMBER>
-      <PARTYLEDGERNAME>${clientName}</PARTYLEDGERNAME>
-      <EFFECTIVEDATE>${tallyDate}</EFFECTIVEDATE>
-      <NARRATION>${escapeXml(dn.reason)}${dn.remarks ? ` - ${escapeXml(dn.remarks)}` : ""}</NARRATION>
-      <ALLLEDGERENTRIES.LIST>
-        <LEDGERNAME>${clientName}</LEDGERNAME>
-        <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
-        <AMOUNT>-${amount}</AMOUNT>
-      </ALLLEDGERENTRIES.LIST>
-      <ALLLEDGERENTRIES.LIST>
-        <LEDGERNAME>Sales</LEDGERNAME>
-        <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-        <AMOUNT>${amount}</AMOUNT>
-      </ALLLEDGERENTRIES.LIST>
-    </VOUCHER>`;
-    })
-    .join("\n");
+  // 5. Debit Notes
+  const wsDebitNotes = XLSX.utils.json_to_sheet(
+    (debitNotes || []).map((dn: any) => ({
+      "Debit Note Number": dn.debit_note_number,
+      Date: formatExcelDate(dn.issue_date),
+      Client: dn.issued_to?.trade_name || dn.issued_to?.legal_name || "",
+      Amount: dn.amount,
+      Reason: dn.reason || "",
+      Remarks: dn.remarks || "",
+      Status: dn.status,
+    })),
+  );
+  XLSX.utils.book_append_sheet(wb, wsDebitNotes, "Debit Notes");
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!--
-  TallyPrime Import File
-  Company    : ${companyName}
-  Generated  : ${new Date().toLocaleString("en-IN")}
-  Period     : ${exportData.fromDate || "All time"} to ${exportData.toDate || "All time"}
-  Records    : ${clients.length} ledgers, ${invoices.length} sales, ${payments.length} receipts, ${(creditNotes || []).length} credit notes, ${(debitNotes || []).length} debit notes
--->
-<ENVELOPE>
-  <HEADER>
-    <TALLYREQUEST>Import Data</TALLYREQUEST>
-  </HEADER>
-  <BODY>
-    <IMPORTDATA>
-      <REQUESTDESC>
-        <REPORTNAME>All Masters</REPORTNAME>
-        <STATICVARIABLES>
-          <SVCURRENTCOMPANY>${escapeXml(companyName)}</SVCURRENTCOMPANY>
-        </STATICVARIABLES>
-      </REQUESTDESC>
-      <REQUESTDATA>
-        <TALLYMESSAGE xmlns:UDF="TallyUDF">
-          ${ledgerMasters}
-        </TALLYMESSAGE>
-      </REQUESTDATA>
-    </IMPORTDATA>
-    <IMPORTDATA>
-      <REQUESTDESC>
-        <REPORTNAME>Vouchers</REPORTNAME>
-        <STATICVARIABLES>
-          <SVCURRENTCOMPANY>${escapeXml(companyName)}</SVCURRENTCOMPANY>
-        </STATICVARIABLES>
-      </REQUESTDESC>
-      <REQUESTDATA>
-        <TALLYMESSAGE xmlns:UDF="TallyUDF">
-          ${salesVouchers}
-          ${receiptVouchers}
-          ${creditVouchers}
-          ${debitVouchers}
-        </TALLYMESSAGE>
-      </REQUESTDATA>
-    </IMPORTDATA>
-  </BODY>
-</ENVELOPE>`;
+  XLSX.writeFile(wb, `mundra_export_${label}.xlsx`);
 }
 
 // ─── Page Component ───────────────────────────────────────────────────────────
@@ -256,10 +167,14 @@ function AdminReportsPage() {
     toDate: new Date().toISOString().split("T")[0],
   });
 
-  const { data: exportData, isLoading, error } = useQuery({
-    queryKey: ["tally-export", queryParams.fromDate, queryParams.toDate],
+  const {
+    data: exportData,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["excel-export", queryParams.fromDate, queryParams.toDate],
     queryFn: () =>
-      getTallyExportData({
+      getExcelExportData({
         data: {
           fromDate: queryParams.fromDate || undefined,
           toDate: queryParams.toDate || undefined,
@@ -283,37 +198,20 @@ function AdminReportsPage() {
   const handleDownload = useCallback(() => {
     if (!exportData) return;
     try {
-      const xml = generateTallyXML(exportData);
-      const blob = new Blob([xml], { type: "application/xml;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
       const label =
         queryParams.fromDate && queryParams.toDate
           ? `${queryParams.fromDate}_to_${queryParams.toDate}`
           : "all_time";
-      a.href = url;
-      a.download = `mundra_tally_export_${label}.xml`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success("Tally XML downloaded!", {
-        description: "Import this file in TallyPrime via Gateway of Tally → Import → Masters, then → Import → Vouchers.",
-      });
+      generateExcelWorkbook(exportData, label);
+      toast.success("Excel downloaded!");
     } catch {
-      toast.error("Failed to generate XML. Please try again.");
+      toast.error("Failed to generate Excel. Please try again.");
     }
   }, [exportData, queryParams]);
 
-  const totalVouchers =
-    (exportData?.invoices?.length || 0) +
-    (exportData?.payments?.length || 0) +
-    (exportData?.creditNotes?.length || 0) +
-    (exportData?.debitNotes?.length || 0);
-
   const summaryCards = [
     {
-      label: "Client Ledgers",
+      label: "Clients",
       value: exportData?.clients?.length ?? "—",
       icon: Users,
       color: "text-blue-500",
@@ -321,20 +219,36 @@ function AdminReportsPage() {
       desc: "Sundry Debtors",
     },
     {
-      label: "Sales Vouchers",
+      label: "Invoices",
       value: exportData?.invoices?.length ?? "—",
       icon: FileText,
       color: "text-violet-500",
       bg: "bg-violet-500/10",
-      desc: "Invoices",
+      desc: "Sales Vouchers",
     },
     {
-      label: "Receipt Vouchers",
+      label: "Purchase Orders",
+      value: exportData?.pos?.length ?? "—",
+      icon: FileText,
+      color: "text-orange-500",
+      bg: "bg-orange-500/10",
+      desc: "PO Generations",
+    },
+    {
+      label: "Dispatches",
+      value: exportData?.dispatches?.length ?? "—",
+      icon: TrendingUp, // fallback icon since Truck might not be imported
+      color: "text-indigo-500",
+      bg: "bg-indigo-500/10",
+      desc: "Dispatch Requests",
+    },
+    {
+      label: "Payments",
       value: exportData?.payments?.length ?? "—",
       icon: Wallet,
       color: "text-emerald-500",
       bg: "bg-emerald-500/10",
-      desc: "Verified payments",
+      desc: "Receipt Vouchers",
     },
     {
       label: "Credit Notes",
@@ -356,23 +270,23 @@ function AdminReportsPage() {
 
   return (
     <AppShell variant="admin">
-      <div className="max-w-5xl mx-auto space-y-6">
-
+      <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
               <FileCode2 className="h-6 w-6 text-primary" />
-              Reports &amp; Tally Export
+              Reports &amp; Excel Export
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Generate a TallyPrime-compatible XML file to import ledger masters and vouchers into your accounting software.
+              Generate an Excel file with detailed records across clients, invoices, payments, and
+              notes.
             </p>
           </div>
           <Button
-            id="btn-download-tally-xml"
+            id="btn-download-excel"
             size="lg"
-            disabled={isLoading || !exportData || totalVouchers === 0}
+            disabled={isLoading || !exportData}
             onClick={handleDownload}
             className="gap-2 shrink-0"
           >
@@ -381,7 +295,7 @@ function AdminReportsPage() {
             ) : (
               <Download className="h-4 w-4" />
             )}
-            Download Tally XML
+            Download Excel Report
           </Button>
         </div>
 
@@ -426,7 +340,9 @@ function AdminReportsPage() {
 
             <div className="flex flex-wrap gap-4 items-end">
               <div className="space-y-1.5 flex-1 min-w-[160px]">
-                <Label htmlFor="from-date" className="text-xs">From Date</Label>
+                <Label htmlFor="from-date" className="text-xs">
+                  From Date
+                </Label>
                 <Input
                   id="from-date"
                   type="date"
@@ -436,7 +352,9 @@ function AdminReportsPage() {
                 />
               </div>
               <div className="space-y-1.5 flex-1 min-w-[160px]">
-                <Label htmlFor="to-date" className="text-xs">To Date</Label>
+                <Label htmlFor="to-date" className="text-xs">
+                  To Date
+                </Label>
                 <Input
                   id="to-date"
                   type="date"
@@ -498,99 +416,319 @@ function AdminReportsPage() {
           </div>
         )}
 
-        {/* What's included */}
-        <Card>
+        {/* Data Preview */}
+        <Card className="mt-6">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">What Gets Exported</CardTitle>
+            <CardTitle className="text-base flex items-center gap-2">
+              <FileText className="h-4 w-4 text-muted-foreground" />
+              Available Records Preview
+            </CardTitle>
             <CardDescription>
-              The XML follows TallyPrime's import envelope format — import Masters first, then Vouchers.
+              A preview of the data that will be included in your Excel export.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid sm:grid-cols-2 gap-3 text-sm">
-              {[
-                {
-                  title: "Ledger Masters",
-                  subtitle: "Active clients as Sundry Debtors with GSTIN/PAN/address.",
-                  ok: true,
-                },
-                {
-                  title: "Sales Vouchers",
-                  subtitle: "All invoices in the period with bill-by-bill references.",
-                  ok: true,
-                },
-                {
-                  title: "Receipt Vouchers",
-                  subtitle: "Verified payments with mode & reference number.",
-                  ok: true,
-                },
-                {
-                  title: "Credit Notes",
-                  subtitle: "Rate corrections, shortages, quality claims and more.",
-                  ok: true,
-                },
-                {
-                  title: "Debit Notes",
-                  subtitle: "Rate escalations, penalties, under-billing corrections.",
-                  ok: true,
-                },
-                {
-                  title: "Dispatch / Workflow Data",
-                  subtitle: "Not exported — operational data with no Tally equivalent.",
-                  ok: false,
-                },
-              ].map((item) => (
-                <div key={item.title} className="flex items-start gap-2.5">
-                  {item.ok ? (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
-                  ) : (
-                    <AlertCircle className="h-4 w-4 text-muted-foreground/50 mt-0.5 shrink-0" />
-                  )}
-                  <div>
-                    <span className={`font-medium ${!item.ok ? "text-muted-foreground" : ""}`}>
-                      {item.title}
-                    </span>
-                    <p className="text-xs text-muted-foreground">{item.subtitle}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+            {isLoading ? (
+              <div className="py-8 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
+                <Loader2 className="h-6 w-6 animate-spin" />
+                Loading preview...
+              </div>
+            ) : !exportData ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                No data available
+              </div>
+            ) : (
+              <Tabs defaultValue="invoices" className="w-full">
+                <TabsList className="mb-4 flex-wrap">
+                  <TabsTrigger value="clients">Clients ({exportData?.clients?.length || 0})</TabsTrigger>
+                  <TabsTrigger value="pos">Purchase Orders ({exportData?.pos?.length || 0})</TabsTrigger>
+                  <TabsTrigger value="dispatches">Dispatches ({exportData?.dispatches?.length || 0})</TabsTrigger>
+                  <TabsTrigger value="invoices">Invoices ({exportData?.invoices?.length || 0})</TabsTrigger>
+                  <TabsTrigger value="payments">Payments ({exportData?.payments?.length || 0})</TabsTrigger>
+                  <TabsTrigger value="notes">
+                    Notes ({(exportData?.creditNotes?.length || 0) + (exportData?.debitNotes?.length || 0)})
+                  </TabsTrigger>
+                </TabsList>
 
-        {/* Import Instructions */}
-        <Card className="border-dashed">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">How to Import in TallyPrime</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ol className="space-y-2.5 text-sm text-muted-foreground list-decimal list-inside">
-              <li>Download the XML file using the <strong className="text-foreground">Download Tally XML</strong> button above.</li>
-              <li>Open TallyPrime and select your company.</li>
-              <li>
-                Go to{" "}
-                <Badge variant="secondary" className="text-[11px]">Gateway of Tally</Badge>
-                {" → "}
-                <Badge variant="secondary" className="text-[11px]">Import</Badge>
-                {" → "}
-                <Badge variant="secondary" className="text-[11px]">Masters</Badge>
-                {" "}and import the XML file <strong className="text-foreground">first</strong> (creates client ledgers).
-              </li>
-              <li>
-                Then go to{" "}
-                <Badge variant="secondary" className="text-[11px]">Import</Badge>
-                {" → "}
-                <Badge variant="secondary" className="text-[11px]">Vouchers</Badge>
-                {" "}and import the same XML file again (creates sales, receipts, notes).
-              </li>
-              <li>Verify the imported entries in <strong className="text-foreground">Day Book</strong> before closing.</li>
-            </ol>
+                <TabsContent value="clients">
+                  <ScrollArea className="h-[300px] border rounded-md">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Client Name</TableHead>
+                          <TableHead>Trade Name</TableHead>
+                          <TableHead>GSTIN</TableHead>
+                          <TableHead>PAN</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {exportData.clients?.length ? (
+                          exportData.clients.map((client: any) => (
+                            <TableRow key={client.id}>
+                              <TableCell className="font-medium">{client.legal_name}</TableCell>
+                              <TableCell>{client.trade_name || "—"}</TableCell>
+                              <TableCell>{client.gst_number || "—"}</TableCell>
+                              <TableCell>{client.pan_number || "—"}</TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center h-24">
+                              No clients found
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                </TabsContent>
+
+                <TabsContent value="pos" className="mt-0">
+                  <Card>
+                    <CardContent className="p-0">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>PO Number</TableHead>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Client</TableHead>
+                            <TableHead className="text-right">Total Value</TableHead>
+                            <TableHead>Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {isLoading ? (
+                            <TableRow>
+                              <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                                Loading...
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            exportData?.pos?.length ? (
+                              exportData.pos.map((po: any) => (
+                                <TableRow key={po.id}>
+                                  <TableCell className="font-medium">{po.po_number || "—"}</TableCell>
+                                  <TableCell>{formatExcelDate(po.created_at)}</TableCell>
+                                  <TableCell>
+                                    {po.organizations?.trade_name || po.organizations?.legal_name || "—"}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    ₹{Number(po.total_value || 0).toLocaleString("en-IN")}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant="secondary" className="capitalize">{po.status}</Badge>
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            ) : (
+                              <TableRow>
+                                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                                  No purchase orders found
+                                </TableCell>
+                              </TableRow>
+                            )
+                          )}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="dispatches" className="mt-0">
+                  <Card>
+                    <CardContent className="p-0">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>PO Number</TableHead>
+                            <TableHead>Req. Date</TableHead>
+                            <TableHead>Client</TableHead>
+                            <TableHead className="text-right">Quantity</TableHead>
+                            <TableHead>Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {isLoading ? (
+                            <TableRow>
+                              <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                                Loading...
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            exportData?.dispatches?.length ? (
+                              exportData.dispatches.map((dr: any) => (
+                                <TableRow key={dr.id}>
+                                  <TableCell className="font-medium">{dr.purchase_orders?.po_number || "—"}</TableCell>
+                                  <TableCell>{formatExcelDate(dr.requested_date)}</TableCell>
+                                  <TableCell>
+                                    {dr.organizations?.trade_name || dr.organizations?.legal_name || "—"}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    {dr.quantity}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline" className="capitalize">{dr.status}</Badge>
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            ) : (
+                              <TableRow>
+                                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                                  No dispatch requests found
+                                </TableCell>
+                              </TableRow>
+                            )
+                          )}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="invoices">
+                  <ScrollArea className="h-[300px] border rounded-md">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Invoice #</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Client</TableHead>
+                          <TableHead className="text-right">Amount</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {exportData.invoices?.length ? (
+                          exportData.invoices.map((inv: any) => (
+                            <TableRow key={inv.id}>
+                              <TableCell className="font-medium">{inv.invoice_number}</TableCell>
+                              <TableCell>{formatExcelDate(inv.invoice_date)}</TableCell>
+                              <TableCell>
+                                {inv.organizations?.trade_name || inv.organizations?.legal_name || "—"}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                ₹{Number(inv.amount || 0).toLocaleString("en-IN")}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{inv.status}</Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center h-24">
+                              No invoices found
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                </TabsContent>
+
+                <TabsContent value="payments">
+                  <ScrollArea className="h-[300px] border rounded-md">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Reference</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Client</TableHead>
+                          <TableHead className="text-right">Amount</TableHead>
+                          <TableHead>Mode</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {exportData.payments?.length ? (
+                          exportData.payments.map((p: any) => (
+                            <TableRow key={p.id}>
+                              <TableCell className="font-medium">
+                                {p.reference_number || "—"}
+                              </TableCell>
+                              <TableCell>{formatExcelDate(p.payment_date)}</TableCell>
+                              <TableCell>
+                                {p.organizations?.trade_name || p.organizations?.legal_name || "—"}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                ₹{Number(p.amount || 0).toLocaleString("en-IN")}
+                              </TableCell>
+                              <TableCell>{p.payment_mode || "—"}</TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center h-24">
+                              No payments found
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                </TabsContent>
+
+                <TabsContent value="notes" className="mt-0">
+                  <ScrollArea className="h-[300px] border rounded-md">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Number</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Client</TableHead>
+                          <TableHead className="text-right">Amount</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {exportData.creditNotes?.map((cn: any) => (
+                          <TableRow key={cn.id}>
+                            <TableCell>
+                              <Badge variant="secondary">Credit Note</Badge>
+                            </TableCell>
+                            <TableCell className="font-medium">{cn.credit_note_number}</TableCell>
+                            <TableCell>{formatExcelDate(cn.issue_date)}</TableCell>
+                            <TableCell>
+                              {cn.issued_to?.trade_name || cn.issued_to?.legal_name || "—"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              ₹{Number(cn.amount || 0).toLocaleString("en-IN")}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {exportData.debitNotes?.map((dn: any) => (
+                          <TableRow key={dn.id}>
+                            <TableCell>
+                              <Badge variant="outline">Debit Note</Badge>
+                            </TableCell>
+                            <TableCell className="font-medium">{dn.debit_note_number}</TableCell>
+                            <TableCell>{formatExcelDate(dn.issue_date)}</TableCell>
+                            <TableCell>
+                              {dn.issued_to?.trade_name || dn.issued_to?.legal_name || "—"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              ₹{Number(dn.amount || 0).toLocaleString("en-IN")}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {!exportData.creditNotes?.length && !exportData.debitNotes?.length && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center h-24">
+                              No notes found
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                </TabsContent>
+              </Tabs>
+            )}
           </CardContent>
         </Card>
 
         {/* Footer timestamp */}
         {exportData && (
-          <p className="text-[11px] text-muted-foreground text-right">
+          <p className="text-[11px] text-muted-foreground text-right mt-4">
             Data fetched at {new Date(exportData.exportedAt).toLocaleString("en-IN")}
             {" · "}
             {exportData.fromDate && exportData.toDate

@@ -1,12 +1,6 @@
 import type { Database as GeneratedDatabase } from "./types";
 
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[];
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type ProductRow = {
   id: string;
@@ -239,7 +233,13 @@ export type AuditLogRow = {
 };
 
 export type CreditNoteStatus = "draft" | "issued" | "applied" | "cancelled";
-export type CreditNoteReason = "Rate Correction" | "Shortage" | "Quality Claim" | "Discount" | "Goods Return" | "Other";
+export type CreditNoteReason =
+  | "Rate Correction"
+  | "Shortage"
+  | "Quality Claim"
+  | "Discount"
+  | "Goods Return"
+  | "Other";
 export type NoteOriginType = "PO" | "Dispatch" | "Payment";
 
 export type CreditNoteRow = {
@@ -260,7 +260,12 @@ export type CreditNoteRow = {
 };
 
 export type DebitNoteStatus = "draft" | "issued" | "applied" | "cancelled";
-export type DebitNoteReason = "Rate Escalation" | "Excess Dispatch" | "Interest-Penalty" | "Under-billing Correction" | "Other";
+export type DebitNoteReason =
+  | "Rate Escalation"
+  | "Excess Dispatch"
+  | "Interest-Penalty"
+  | "Under-billing Correction"
+  | "Other";
 
 export type DebitNoteRow = {
   id: string;
@@ -386,7 +391,10 @@ export interface Database extends Omit<GeneratedDatabase, "public"> {
       };
       profiles: {
         Row: ProfileRow;
-        Insert: Omit<ProfileRow, "id" | "created_at" | "updated_at" | "approval_status" | "status_reason"> & {
+        Insert: Omit<
+          ProfileRow,
+          "id" | "created_at" | "updated_at" | "approval_status" | "status_reason"
+        > & {
           id?: string;
           approval_status?: UserApprovalStatus;
           status_reason?: string | null;

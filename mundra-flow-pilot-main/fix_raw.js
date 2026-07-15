@@ -1,11 +1,11 @@
-import fs from 'fs';
+import fs from "fs";
 
-const envFile = fs.readFileSync('.env', 'utf-8');
+const envFile = fs.readFileSync(".env", "utf-8");
 const env = {};
-envFile.split('\n').forEach(line => {
-  const [key, ...val] = line.split('=');
-  if (key && val.length > 0 && !key.startsWith('#')) {
-    env[key.trim()] = val.join('=').trim();
+envFile.split("\n").forEach((line) => {
+  const [key, ...val] = line.split("=");
+  if (key && val.length > 0 && !key.startsWith("#")) {
+    env[key.trim()] = val.join("=").trim();
   }
 });
 
@@ -19,9 +19,9 @@ async function fix() {
   // List users
   const res = await fetch(`${URL}/auth/v1/admin/users`, {
     headers: {
-      "apikey": KEY,
-      "Authorization": `Bearer ${KEY}`
-    }
+      apikey: KEY,
+      Authorization: `Bearer ${KEY}`,
+    },
   });
 
   if (!res.ok) {
@@ -31,21 +31,21 @@ async function fix() {
 
   const usersRes = await res.json();
   const users = usersRes.users;
-  const user = users.find(u => u.email === email);
+  const user = users.find((u) => u.email === email);
 
   if (!user) {
     console.log("User not found in auth.users.");
     return;
   }
-  
+
   console.log("Found user ID:", user.id);
 
   const delRes = await fetch(`${URL}/auth/v1/admin/users/${user.id}`, {
-    method: 'DELETE',
+    method: "DELETE",
     headers: {
-      "apikey": KEY,
-      "Authorization": `Bearer ${KEY}`
-    }
+      apikey: KEY,
+      Authorization: `Bearer ${KEY}`,
+    },
   });
 
   if (!delRes.ok) {
