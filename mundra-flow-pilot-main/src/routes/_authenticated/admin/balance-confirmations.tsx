@@ -97,7 +97,19 @@ function RefundLetterPage() {
   };
 
   const updatePayment = (id: string, field: string, value: string) => {
-    setPayments(payments.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
+    setPayments(
+      payments.map((p) => {
+        if (p.id === id) {
+          const updated = { ...p, [field]: value };
+          if (field === "type1" && value === "TDS") {
+            const totalPaid = invoices.reduce((sum, inv) => sum + (Number(inv.amountPaid) || 0), 0);
+            updated.amount = (totalPaid * 0.008).toFixed(2);
+          }
+          return updated;
+        }
+        return p;
+      })
+    );
   };
 
   const formatDate = (dateStr: string) => {
@@ -192,7 +204,16 @@ function RefundLetterPage() {
                       <Label>Party Name</Label>
                       <Select
                         value={partyName}
-                        onValueChange={setPartyName}
+                        onValueChange={(val) => {
+                          setPartyName(val);
+                          const client = clients?.find(
+                            (c: any) => (c.trade_name || c.legal_name) === val,
+                          );
+                          if (client) {
+                            setPartyCode(client.party_code || "");
+                            setTpcCode(client.tp_code || "");
+                          }
+                        }}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select or type party name" />

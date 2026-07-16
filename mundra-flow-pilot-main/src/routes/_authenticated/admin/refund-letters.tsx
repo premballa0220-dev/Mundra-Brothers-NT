@@ -205,19 +205,26 @@ function BalanceConfirmationLetterPage() {
                             (c: any) => (c.trade_name || c.legal_name) === val,
                           );
                           if (client) {
+                            console.log("Selected Client Data:", client);
                             setPartyCode(client.party_code || "");
                             setTpCode(client.tp_code || "");
                             if (client.billing_address) {
-                              const addr = [
-                                client.billing_address.street1,
-                                client.billing_address.street2,
-                                client.billing_address.city,
-                                client.billing_address.state,
-                                client.billing_address.zip,
-                              ]
-                                .filter(Boolean)
-                                .join(", ");
-                              setClientAddress(addr);
+                              if (typeof client.billing_address === "string") {
+                                setClientAddress(client.billing_address);
+                              } else {
+                                const addr = [
+                                  client.billing_address.street1,
+                                  client.billing_address.street2,
+                                  client.billing_address.city,
+                                  client.billing_address.state,
+                                  client.billing_address.zip,
+                                ]
+                                  .filter(Boolean)
+                                  .join(", ");
+                                setClientAddress(addr);
+                              }
+                            } else {
+                              setClientAddress("");
                             }
                           }
                         }}
@@ -334,6 +341,16 @@ function BalanceConfirmationLetterPage() {
                       <div className="space-y-1 mt-4">
                         <p>To,</p>
                         <p className="font-semibold">{clientName || "____________________"}</p>
+                        {partyCode && (
+                          <p className="text-sm">
+                            <strong>Party Code:</strong> {partyCode}
+                          </p>
+                        )}
+                        {tpCode && (
+                          <p className="text-sm">
+                            <strong>TP Code:</strong> {tpCode}
+                          </p>
+                        )}
                         <p className="whitespace-pre-wrap text-sm">
                           {clientAddress || "____________________"}
                         </p>
