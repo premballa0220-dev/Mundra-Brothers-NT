@@ -199,6 +199,8 @@ function AdminClientsPage() {
   const [legalName, setLegalName] = useState("");
   const [shortName, setShortName] = useState("");
   const [tradeName, setTradeName] = useState("");
+  const [partyCode, setPartyCode] = useState("");
+  const [tpCode, setTpCode] = useState("");
   const [gstNumber, setGstNumber] = useState("");
   const [panNumber, setPanNumber] = useState("");
   const [billingAddress, setBillingAddress] = useState("");
@@ -285,6 +287,8 @@ function AdminClientsPage() {
     setLegalName("");
     setShortName("");
     setTradeName("");
+    setPartyCode("");
+    setTpCode("");
     setGstNumber("");
     setPanNumber("");
     setBillingAddress("");
@@ -310,6 +314,8 @@ function AdminClientsPage() {
       legalName,
       shortName,
       tradeName,
+      partyCode,
+      tpCode,
       gstNumber,
       panNumber,
       billingAddress,
@@ -396,6 +402,14 @@ function AdminClientsPage() {
                       <div className="space-y-2">
                         <Label>PAN Number</Label>
                         <Input value={panNumber} onChange={(e) => setPanNumber(e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Party Code</Label>
+                        <Input value={partyCode} onChange={(e) => setPartyCode(e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>TP Code</Label>
+                        <Input value={tpCode} onChange={(e) => setTpCode(e.target.value)} />
                       </div>
                     </div>
                   </div>
@@ -750,6 +764,8 @@ function ClientDetailsForm({
   const [mLegal, setMLegal] = useState(client.legal_name || "");
   const [mShort, setMShort] = useState(client.short_name || "");
   const [mTrade, setMTrade] = useState(client.trade_name || "");
+  const [mPartyCode, setMPartyCode] = useState(client.party_code || "");
+  const [mTpCode, setMTpCode] = useState(client.tp_code || "");
   const [mGst, setMGst] = useState(client.gst_number || "");
   const [mPan, setMPan] = useState(client.pan_number || "");
   const [mBilling, setMBilling] = useState(client.billing_address || "");
@@ -778,6 +794,8 @@ function ClientDetailsForm({
     setMLegal(client.legal_name || "");
     setMShort(client.short_name || "");
     setMTrade(client.trade_name || "");
+    setMPartyCode(client.party_code || "");
+    setMTpCode(client.tp_code || "");
     setMGst(client.gst_number || "");
     setMPan(client.pan_number || "");
     setMBilling(client.billing_address || "");
@@ -815,6 +833,8 @@ function ClientDetailsForm({
         legalName: mLegal,
         shortName: mShort,
         tradeName: mTrade,
+        partyCode: mPartyCode,
+        tpCode: mTpCode,
         gstNumber: mGst,
         panNumber: mPan,
         billingAddress: mBilling,
@@ -874,6 +894,14 @@ function ClientDetailsForm({
                 <div className="space-y-2">
                   <Label>Short Name</Label>
                   <Input value={mShort} onChange={(e) => setMShort(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Party Code</Label>
+                  <Input value={mPartyCode} onChange={(e) => setMPartyCode(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>TP Code</Label>
+                  <Input value={mTpCode} onChange={(e) => setMTpCode(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label>GST Number</Label>
@@ -937,6 +965,14 @@ function ClientDetailsForm({
               <div>
                 <p className="font-semibold text-muted-foreground">Trade Name</p>
                 <p>{client.trade_name || "—"}</p>
+              </div>
+              <div>
+                <p className="font-semibold text-muted-foreground">Party Code</p>
+                <p>{client.party_code || "—"}</p>
+              </div>
+              <div>
+                <p className="font-semibold text-muted-foreground">TP Code</p>
+                <p>{client.tp_code || "—"}</p>
               </div>
               <div>
                 <p className="font-semibold text-muted-foreground">PAN</p>

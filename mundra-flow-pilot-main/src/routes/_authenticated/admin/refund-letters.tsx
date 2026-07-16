@@ -48,13 +48,31 @@ function BalanceConfirmationLetterPage() {
   const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [clientName, setClientName] = useState("");
   const [clientAddress, setClientAddress] = useState("");
+  const [partyCode, setPartyCode] = useState("");
+  const [tpCode, setTpCode] = useState("");
   const [outstandingAmount, setOutstandingAmount] = useState("");
   const [periodFrom, setPeriodFrom] = useState("");
   const [periodTo, setPeriodTo] = useState(() => new Date().toISOString().split("T")[0]);
   const [refNo, setRefNo] = useState("");
 
+  const incrementRefNo = () => {
+    setRefNo((prev) => {
+      if (!prev) return prev;
+      const match = prev.match(/(\d+)(?!.*\d)/);
+      if (!match) return prev;
+      const numStr = match[1];
+      const nextNum = (parseInt(numStr, 10) + 1).toString();
+      return (
+        prev.substring(0, match.index) +
+        nextNum.padStart(numStr.length, "0") +
+        prev.substring(match.index! + numStr.length)
+      );
+    });
+  };
+
   const handlePrint = () => {
     window.print();
+    incrementRefNo();
   };
 
   const sendMutation = useMutation({
@@ -62,6 +80,7 @@ function BalanceConfirmationLetterPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-balance-confirmations"] });
       toast.success("Balance confirmation sent to client successfully");
+      incrementRefNo();
     },
     onError: (err: any) => {
       toast.error(err?.message || "Failed to send balance confirmation");
@@ -185,17 +204,21 @@ function BalanceConfirmationLetterPage() {
                           const client = clients?.find(
                             (c: any) => (c.trade_name || c.legal_name) === val,
                           );
-                          if (client && client.billing_address) {
-                            const addr = [
-                              client.billing_address.street1,
-                              client.billing_address.street2,
-                              client.billing_address.city,
-                              client.billing_address.state,
-                              client.billing_address.zip,
-                            ]
-                              .filter(Boolean)
-                              .join(", ");
-                            setClientAddress(addr);
+                          if (client) {
+                            setPartyCode(client.party_code || "");
+                            setTpCode(client.tp_code || "");
+                            if (client.billing_address) {
+                              const addr = [
+                                client.billing_address.street1,
+                                client.billing_address.street2,
+                                client.billing_address.city,
+                                client.billing_address.state,
+                                client.billing_address.zip,
+                              ]
+                                .filter(Boolean)
+                                .join(", ");
+                              setClientAddress(addr);
+                            }
                           }
                         }}
                       >
@@ -222,6 +245,24 @@ function BalanceConfirmationLetterPage() {
                         placeholder="Full address of the client..."
                         rows={3}
                       />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label>Party Code</Label>
+                        <Input
+                          value={partyCode}
+                          onChange={(e) => setPartyCode(e.target.value)}
+                          placeholder="Party Code"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>TP Code</Label>
+                        <Input
+                          value={tpCode}
+                          onChange={(e) => setTpCode(e.target.value)}
+                          placeholder="TP Code"
+                        />
+                      </div>
                     </div>
                     <div className="space-y-1">
                       <Label>Balance As of Date</Label>
