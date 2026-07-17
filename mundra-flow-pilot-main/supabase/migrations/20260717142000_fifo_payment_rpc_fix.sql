@@ -1,27 +1,3 @@
--- Drop the old record_payment_admin to replace it with the new comprehensive one
-DROP FUNCTION IF EXISTS record_payment_admin(UUID, UUID, UUID[], NUMERIC, DATE, TEXT, TEXT, BOOLEAN, BOOLEAN, BOOLEAN, UUID);
-
-CREATE OR REPLACE FUNCTION update_invoice_status(p_invoice_id UUID)
-RETURNS VOID AS $$
-DECLARE
-  v_original_amount NUMERIC;
-  v_allocated_amount NUMERIC;
-BEGIN
-  SELECT amount INTO v_original_amount FROM invoices WHERE id = p_invoice_id;
-  SELECT COALESCE(SUM(allocated_amount), 0) INTO v_allocated_amount 
-  FROM invoice_allocations 
-  WHERE invoice_id = p_invoice_id;
-
-  IF v_allocated_amount >= v_original_amount THEN
-    UPDATE invoices SET status = 'paid', updated_at = NOW() WHERE id = p_invoice_id;
-  ELSIF v_allocated_amount > 0 THEN
-    UPDATE invoices SET status = 'partially_paid', updated_at = NOW() WHERE id = p_invoice_id;
-  ELSE
-    UPDATE invoices SET status = 'unpaid', updated_at = NOW() WHERE id = p_invoice_id;
-  END IF;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
 CREATE OR REPLACE FUNCTION record_payment_with_allocations(
   p_org_id UUID,
   p_po_id UUID,
@@ -158,7 +134,8 @@ BEGIN
       'is_client_to_utcl', p_is_client_to_utcl,
       'allocations_total', v_total_allocated,
       'unallocated', v_remaining_payment,
-      'fifo_generated_allocations', v_inserted_allocations
+      'fifo_generated_allocations', v_inserted_allocations,
+      'status', p_status
     ),
     p_user_id
   );

@@ -7,6 +7,8 @@ import {
   updateClientStatus,
   updateClientCommercials,
   updateClient,
+  createOpeningBalance,
+  cancelOpeningBalanceAction
 } from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -760,6 +762,35 @@ function ClientDetailsForm({
   const [rest, setRest] = useState(comm.restrictions || "");
   const [commPerc, setCommPerc] = useState<number | "">(comm.commission_percentage ?? "");
 
+  const [obAmount, setObAmount] = useState<number | "">("");
+  const [obDate, setObDate] = useState(new Date().toISOString().split("T")[0]);
+  const [obReference, setObReference] = useState("");
+  const queryClient = useQueryClient();
+
+  const obMutation = useMutation({
+    mutationFn: (data: any) => createOpeningBalance({ data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-clients"] });
+      toast.success("Opening balance recorded successfully!");
+      setObAmount("");
+      setObReference("");
+    },
+    onError: (err: any) => {
+      toast.error(err?.message ?? "Failed to record opening balance");
+    },
+  });
+
+  const cancelObMutation = useMutation({
+    mutationFn: (data: any) => cancelOpeningBalanceAction({ data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-clients"] });
+      toast.success("Opening balance cancelled successfully!");
+    },
+    onError: (err: any) => {
+      toast.error(err?.message ?? "Failed to cancel opening balance");
+    },
+  });
+
   const [isEditingMaster, setIsEditingMaster] = useState(false);
   const [mLegal, setMLegal] = useState(client.legal_name || "");
   const [mShort, setMShort] = useState(client.short_name || "");
@@ -869,6 +900,9 @@ function ClientDetailsForm({
           </TabsTrigger>
           <TabsTrigger value="history" className="flex-1">
             Credit History
+          </TabsTrigger>
+          <TabsTrigger value="opening-balance" className="flex-1">
+            Opening Balance
           </TabsTrigger>
         </TabsList>
 
@@ -1139,6 +1173,95 @@ function ClientDetailsForm({
               )}
             </TableBody>
           </Table>
+        </TabsContent>
+
+        <TabsContent value="opening-balance" className="space-y-6">
+          <div className="border rounded-lg p-4 space-y-4">
+            <h4 className="font-semibold text-sm">Add Opening Balance</h4>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Amount (₹) *</Label>
+                <Input 
+                  type="number" 
+                  value={obAmount}
+                  onChange={e => setObAmount(e.target.value === "" ? "" : Number(e.target.value))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Date *</Label>
+                <Input 
+                  type="date"
+                  value={obDate}
+                  onChange={e => setObDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Reference</Label>
+                <Input 
+                  value={obReference}
+                  onChange={e => setObReference(e.target.value)}
+                  placeholder="Optional reference"
+                />
+              </div>
+            </div>
+            <Button 
+              onClick={() => obMutation.mutate({ 
+                organizationId: client.id,
+                amount: obAmount,
+                invoiceDate: obDate,
+                reference: obReference
+              })}
+              disabled={obMutation.isPending || obAmount === ""}
+            >
+              {obMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Record Opening Balance
+            </Button>
+          </div>
+
+          <div className="border rounded-lg p-4 space-y-4 mt-6">
+            <h4 className="font-semibold text-sm">Existing Opening Balances</h4>
+            {client.invoices?.filter((inv: any) => inv.is_opening_balance && inv.status !== 'cancelled').length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Reference</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {client.invoices
+                    .filter((inv: any) => inv.is_opening_balance && inv.status !== 'cancelled')
+                    .map((inv: any) => (
+                      <TableRow key={inv.id}>
+                        <TableCell className="font-mono text-xs">{inv.invoice_number}</TableCell>
+                        <TableCell>{new Date(inv.invoice_date).toLocaleDateString()}</TableCell>
+                        <TableCell>₹{inv.amount.toLocaleString()}</TableCell>
+                        <TableCell>
+                          <Badge variant={inv.status === 'paid' ? 'default' : 'secondary'}>
+                            {inv.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Button 
+                            variant="destructive" 
+                            size="sm"
+                            disabled={cancelObMutation.isPending || inv.status === 'paid' || inv.status === 'partially_paid'}
+                            onClick={() => cancelObMutation.mutate({ invoiceId: inv.id })}
+                          >
+                            Cancel
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <p className="text-sm text-muted-foreground italic">No opening balances recorded.</p>
+            )}
+          </div>
         </TabsContent>
       </Tabs>
     </>

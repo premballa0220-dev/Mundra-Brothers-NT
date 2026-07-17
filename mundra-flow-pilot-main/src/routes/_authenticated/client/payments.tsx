@@ -65,7 +65,9 @@ function ClientPaymentsPage() {
     queryFn: () => getInvoices(),
   });
 
-  const unpaidInvoices = invoices?.filter((inv: any) => inv.status !== "paid") ?? [];
+  const unpaidInvoices = (invoices?.filter((inv: any) => inv.status !== "paid" && inv.status !== "cancelled") ?? []).sort(
+    (a: any, b: any) => new Date(a.invoice_date).getTime() - new Date(b.invoice_date).getTime(),
+  );
 
   const createMutation = useMutation({
     mutationFn: (newPayment: any) => submitPayment({ data: newPayment }),
@@ -337,7 +339,11 @@ function ClientPaymentsPage() {
                               return (
                                 <TableRow key={inv.id}>
                                   <TableCell className="font-semibold text-xs">
-                                    {inv.invoice_number}
+                                    {inv.is_opening_balance ? (
+                                      <span className="text-primary italic">Opening Balance</span>
+                                    ) : (
+                                      inv.invoice_number
+                                    )}
                                   </TableCell>
                                   <TableCell className="text-xs">
                                     {new Date(inv.invoice_date).toLocaleDateString()}

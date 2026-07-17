@@ -260,7 +260,11 @@ function ClientLedgersPage() {
                     invoices.map((inv: any) => (
                       <TableRow key={inv.id}>
                         <TableCell className="font-mono text-xs font-semibold">
-                          {inv.invoice_number}
+                          {inv.is_opening_balance ? (
+                            <span className="text-primary italic">Opening Balance</span>
+                          ) : (
+                            inv.invoice_number
+                          )}
                         </TableCell>
                         <TableCell>{new Date(inv.invoice_date).toLocaleDateString()}</TableCell>
                         <TableCell className="font-bold text-success">

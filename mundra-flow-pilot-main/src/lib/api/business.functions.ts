@@ -98,9 +98,10 @@ export const getDashboardStats = createServerFn({ method: "GET" })
 
       const { data: allInvoices } = await supabase
         .from("invoices")
-        .select("amount, due_date, organization_id, status");
+        .select("amount, due_date, organization_id, status, is_opening_balance")
+        .neq("status", "cancelled");
       const invoiceDebits = (allInvoices || []).reduce(
-        (sum: number, invoice: any) => sum + Number(invoice.amount || 0),
+        (sum: number, invoice: any) => sum + (invoice.is_opening_balance ? Number(invoice.amount || 0) : 0),
         0,
       );
 
@@ -205,10 +206,11 @@ export const getDashboardStats = createServerFn({ method: "GET" })
 
     const { data: allInvoices } = await supabase
       .from("invoices")
-      .select("amount, due_date, status")
-      .eq("organization_id", organizationId);
+      .select("amount, due_date, status, is_opening_balance")
+      .eq("organization_id", organizationId)
+      .neq("status", "cancelled");
     const invoiceDebits = (allInvoices || []).reduce(
-      (sum: number, invoice: any) => sum + Number(invoice.amount || 0),
+      (sum: number, invoice: any) => sum + (invoice.is_opening_balance ? Number(invoice.amount || 0) : 0),
       0,
     );
 
@@ -1058,9 +1060,10 @@ async function runDispatchEligibilityCheck(dispatchRequestId: string, userId: st
     .from("invoices")
     .select("*")
     .eq("organization_id", orgId)
-    .neq("status", "paid");
+    .neq("status", "paid")
+    .neq("status", "cancelled");
   const totalOutstanding = (invoices || []).reduce(
-    (sum: number, invoice: any) => sum + Number(invoice.amount || 0),
+    (sum: number, invoice: any) => sum + (invoice.is_opening_balance ? Number(invoice.amount || 0) : 0),
     0,
   );
 
@@ -1895,32 +1898,33 @@ export const submitPayment = createServerFn({ method: "POST" })
       verified_at: null,
     };
 
-    const { error: paymentError } = await supabase.from("payments").insert(payment);
+    const { data: paymentResult, error: paymentError } = await supabase.rpc("record_payment_with_allocations", {
+      p_org_id: context.organizationId,
+      p_po_id: null,
+      p_dispatch_ids: [],
+      p_amount: data.amount,
+      p_payment_date: data.paymentDate,
+      p_payment_mode: data.paymentMode,
+      p_ref_no: data.referenceNumber,
+      p_is_utcl: data.isUtclPayment ?? false,
+      p_is_client_to_utcl: true,
+      p_is_advance: data.isAdvance ?? false,
+      p_user_id: context.userId,
+      p_manual_allocations: data.allocations || [],
+      p_status: "submitted",
+      p_verified_by: null
+    });
+    
     if (paymentError) throw new Error("Failed to insert payment: " + paymentError.message);
 
-    if (data.allocations?.length) {
-      const allocations = data.allocations
-        .filter((allocation) => allocation.allocatedAmount > 0 || allocation.tdsAmount > 0)
-        .map((allocation) => ({
-          id: crypto.randomUUID(),
-          payment_id: payment.id,
-          invoice_id: allocation.invoiceId,
-          allocated_amount: allocation.allocatedAmount,
-          tds_amount: allocation.tdsAmount,
-        }));
-      if (allocations.length) {
-        const { error: allocError } = await supabase
-          .from("invoice_allocations")
-          .insert(allocations);
-        if (allocError) console.error("Failed to insert invoice allocations:", allocError);
-      }
-    }
+    // Fetch the inserted payment to return it to the client
+    const { data: insertedPayment } = await supabase
+      .from("payments")
+      .select("*")
+      .eq("id", paymentResult.payment_id)
+      .single();
 
-    await createAuditLog(context.userId, "SUBMIT_PAYMENT", "payments", payment.id, null, {
-      payment,
-      allocations: data.allocations,
-    });
-    return payment;
+    return insertedPayment;
   });
 
 export const editPayment = createServerFn({ method: "POST" })
@@ -2053,6 +2057,86 @@ export const getInvoices = createServerFn({ method: "GET" })
       withNestedOrganization(invoice, organizationsMap),
     );
   });
+
+export const createOpeningBalance = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      organizationId: z.string().uuid(),
+      amount: z.number().positive(),
+      invoiceDate: z.string(),
+      reference: z.string().optional(),
+    }),
+  )
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+    
+    // Check if organization exists to generate the prefix
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("trade_name, legal_name")
+      .eq("id", data.organizationId)
+      .single();
+      
+    if (!org) {
+      throw new Error("Organization not found");
+    }
+    
+    const orgCode = org.trade_name ? org.trade_name.substring(0, 3).toUpperCase() : "ORG";
+    const ref = data.reference || `OB-${Date.now().toString().slice(-4)}`;
+    const invoiceNumber = `OB-${orgCode}-${ref}`;
+
+    const { data: inserted, error } = await supabase.from("invoices").insert({
+      id: crypto.randomUUID(),
+      organization_id: data.organizationId,
+      invoice_number: invoiceNumber,
+      amount: data.amount,
+      invoice_date: data.invoiceDate,
+      due_date: data.invoiceDate,
+      status: "unpaid",
+      is_opening_balance: true,
+    }).select().single();
+
+    if (error) {
+      if (error.code === '23505') {
+        throw new Error("Duplicate opening balance reference found.");
+      }
+      console.error(error);
+      throw new Error("Failed to create opening balance");
+    }
+
+    await createAuditLog(
+      supabase,
+      "CREATE_OPENING_BALANCE",
+      "invoices",
+      inserted.id,
+      inserted,
+      context.userId,
+    );
+
+    return inserted;
+  });
+
+export const cancelOpeningBalanceAction = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(z.object({ invoiceId: z.string().uuid() }))
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+    
+    const { data: result, error } = await supabase.rpc('cancel_opening_balance', {
+      p_invoice_id: data.invoiceId,
+      p_user_id: context.userId
+    });
+    
+    if (error) {
+      console.error("Cancel OB error:", error);
+      throw new Error(error.message || "Failed to cancel opening balance");
+    }
+    return result;
+  });
+
 
 export const getBalanceConfirmations = createServerFn({ method: "GET" })
   .middleware([requireAuth])
@@ -2827,6 +2911,14 @@ export const getJournalEntries = createServerFn({ method: "GET" })
       .select("*")
       .order("issue_date", { ascending: false });
 
+    // Fetch Opening Balances
+    const { data: openingBalances } = await supabase
+      .from("invoices")
+      .select("*")
+      .eq("is_opening_balance", true)
+      .neq("status", "cancelled")
+      .order("invoice_date", { ascending: false });
+
     const entries: any[] = [];
 
     // 1. PO creation = Mundra -> UTCL
@@ -2977,6 +3069,22 @@ export const getJournalEntries = createServerFn({ method: "GET" })
       });
     }
 
+    // 7. Opening Balances
+    for (const ob of openingBalances || []) {
+      const org = organizationsMap.get(ob.organization_id);
+      entries.push({
+        id: `ob_${ob.id}`,
+        type: "opening_balance",
+        timestamp: ob.invoice_date,
+        title: "Opening Balance",
+        meta: {
+          amount: ob.amount,
+          invoice_number: ob.invoice_number,
+          client_name: (org as any)?.legal_name || null,
+        },
+      });
+    }
+
     // Sort by timestamp descending
     entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
@@ -3041,7 +3149,7 @@ export const recordPaymentAdmin = createServerFn({ method: "POST" })
     ensureMundraOrg(context.orgType);
     const supabase = createSupabaseAdminClient();
 
-    const { data: paymentId, error } = await supabase.rpc("record_payment_admin", {
+    const { data: paymentResult, error } = await supabase.rpc("record_payment_with_allocations", {
       p_org_id: data.organizationId,
       p_po_id: data.purchaseOrderId || null,
       p_dispatch_ids: data.dispatchRequestIds || [],
@@ -3053,6 +3161,7 @@ export const recordPaymentAdmin = createServerFn({ method: "POST" })
       p_is_client_to_utcl: data.isClientToUtcl ?? false,
       p_is_advance: data.isAdvance ?? false,
       p_user_id: context.userId,
+      p_manual_allocations: [],
     });
 
     if (error) throw new Error("Failed to record payment via RPC: " + error.message);
@@ -3061,7 +3170,7 @@ export const recordPaymentAdmin = createServerFn({ method: "POST" })
     const { data: payment } = await supabase
       .from("payments")
       .select("*")
-      .eq("id", paymentId)
+      .eq("id", paymentResult.payment_id)
       .single();
 
     return { success: true, payment };
