@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -85,7 +86,7 @@ function AdminPaymentsPage() {
   );
   const [clientPaymentMode, setClientPaymentMode] = useState("RTGS");
   const [clientReferenceNumber, setClientReferenceNumber] = useState("");
-  const [clientSelectedReference, setClientSelectedReference] = useState<string>("none");
+  const [clientSelectedReferences, setClientSelectedReferences] = useState<string[]>([]);
 
   const { data: pastPayments, isLoading: historyLoading } = useQuery({
     queryKey: ["admin-utcl-payments"],
@@ -162,7 +163,7 @@ function AdminPaymentsPage() {
     setClientPaymentDate(new Date().toISOString().split("T")[0]);
     setClientPaymentMode("RTGS");
     setClientReferenceNumber("");
-    setClientSelectedReference("none");
+    setClientSelectedReferences([]);
   }
 
   function handleRecordLumpsumPayment(e: React.FormEvent) {
@@ -188,25 +189,25 @@ function AdminPaymentsPage() {
       return;
     }
 
-    if (clientPaymentType === "against_reference" && clientSelectedReference === "none") {
-      toast.error("Please select a Dispatch or PO reference");
+    if (clientPaymentType === "against_reference" && clientSelectedReferences.length === 0) {
+      toast.error("Please select at least one Dispatch or PO reference");
       return;
     }
 
     let dispatchRequestIds: string[] | undefined = undefined;
     let purchaseOrderId: string | undefined = undefined;
 
-    if (clientSelectedReference !== "none") {
-      if (clientSelectedReference.startsWith("dr_")) {
-        const drId = clientSelectedReference.replace("dr_", "");
-        dispatchRequestIds = [drId];
-        const dr = dispatches?.find((d: any) => d.id === drId);
-        if (dr && dr.purchase_order_id) {
-          purchaseOrderId = dr.purchase_order_id;
-        }
-      } else if (clientSelectedReference.startsWith("po_")) {
-        purchaseOrderId = clientSelectedReference.replace("po_", "");
+    const selectedDrs = clientSelectedReferences.filter(r => r.startsWith("dr_")).map(r => r.replace("dr_", ""));
+    const selectedPos = clientSelectedReferences.filter(r => r.startsWith("po_")).map(r => r.replace("po_", ""));
+
+    if (selectedDrs.length > 0) {
+      dispatchRequestIds = selectedDrs;
+      const dr = dispatches?.find((d: any) => d.id === selectedDrs[0]);
+      if (dr && dr.purchase_order_id) {
+        purchaseOrderId = dr.purchase_order_id;
       }
+    } else if (selectedPos.length > 0) {
+      purchaseOrderId = selectedPos[0];
     }
 
     recordMutation.mutate({
@@ -602,14 +603,14 @@ function AdminPaymentsPage() {
                         mundraUtclPayments.map((p: any) => {
                           const dispatches = p.dispatch_requests || [];
 
-                          let clientName = "Unknown Client";
+                          let clientName = p.organizations?.legal_name || "Unknown Client";
                           let poNumber = "N/A";
                           let dispatchQtyText = "N/A";
 
                           if (dispatches.length === 1) {
                             const d = dispatches[0];
                             clientName =
-                              d.purchase_orders?.organizations?.legal_name || "Unknown Client";
+                              clientName !== "Unknown Client" ? clientName : (d.purchase_orders?.organizations?.legal_name || "Unknown Client");
                             poNumber = d.purchase_orders?.po_number || "N/A";
                             dispatchQtyText = d.quantity ? `${d.quantity} MT` : "N/A";
                           } else if (dispatches.length > 1) {
@@ -889,7 +890,7 @@ function AdminPaymentsPage() {
                           onValueChange={(val: any) => {
                             setClientPaymentType(val);
                             if (val === "on_account") {
-                              setClientSelectedReference("none");
+                              setClientSelectedReferences([]);
                             }
                           }}
                         >
@@ -931,46 +932,57 @@ function AdminPaymentsPage() {
                             ) || [];
 
                           return (
-                            <div className="space-y-1">
-                              <Label>Dispatch or PO *</Label>
-                              <Select
-                                value={clientSelectedReference}
-                                onValueChange={setClientSelectedReference}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select Dispatch or PO" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="none" disabled>
-                                    Select Dispatch / PO
-                                  </SelectItem>
-
-                                  {openClientDispatches.length > 0 && (
-                                    <SelectGroup>
-                                      <SelectLabel>Dispatches (Preferred)</SelectLabel>
-                                      {openClientDispatches.map((d: any) => (
-                                        <SelectItem key={d.id} value={`dr_${d.id}`}>
-                                          Dispatch: Qty {d.quantity} MT{" "}
-                                          {d.purchase_order?.po_number
-                                            ? `(PO: ${d.purchase_order.po_number})`
-                                            : ""}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectGroup>
-                                  )}
-
-                                  {openClientPos.length > 0 && (
-                                    <SelectGroup>
-                                      <SelectLabel>Purchase Orders</SelectLabel>
-                                      {openClientPos.map((po: any) => (
-                                        <SelectItem key={po.id} value={`po_${po.id}`}>
+                            <div className="space-y-3">
+                              <Label>Select Dispatches or PO *</Label>
+                              <div className="border rounded-md p-4 space-y-4 max-h-60 overflow-y-auto bg-muted/10">
+                                {openClientDispatches.length > 0 && (
+                                  <div className="space-y-3">
+                                    <h4 className="font-medium text-sm text-muted-foreground">Dispatches (Preferred)</h4>
+                                    {openClientDispatches.map((d: any) => (
+                                      <div key={d.id} className="flex items-center space-x-3">
+                                        <Checkbox
+                                          id={`ref_${d.id}`}
+                                          checked={clientSelectedReferences.includes(`dr_${d.id}`)}
+                                          onCheckedChange={(checked) => {
+                                            if (checked) {
+                                              setClientSelectedReferences((prev) => [...prev.filter(r => !r.startsWith('po_')), `dr_${d.id}`]);
+                                            } else {
+                                              setClientSelectedReferences((prev) => prev.filter(r => r !== `dr_${d.id}`));
+                                            }
+                                          }}
+                                        />
+                                        <Label htmlFor={`ref_${d.id}`} className="font-normal cursor-pointer text-sm leading-snug">
+                                          Dispatch: Qty {d.quantity} MT {d.invoice_number ? `(Inv: ${d.invoice_number})` : ""} {d.purchase_order?.po_number ? `(PO: ${d.purchase_order.po_number})` : ""}
+                                        </Label>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                
+                                {openClientPos.length > 0 && (
+                                  <div className="space-y-3">
+                                    <h4 className="font-medium text-sm text-muted-foreground">Purchase Orders</h4>
+                                    {openClientPos.map((po: any) => (
+                                      <div key={po.id} className="flex items-center space-x-3">
+                                        <Checkbox
+                                          id={`ref_${po.id}`}
+                                          checked={clientSelectedReferences.includes(`po_${po.id}`)}
+                                          onCheckedChange={(checked) => {
+                                            if (checked) {
+                                              setClientSelectedReferences([`po_${po.id}`]);
+                                            } else {
+                                              setClientSelectedReferences((prev) => prev.filter(r => r !== `po_${po.id}`));
+                                            }
+                                          }}
+                                        />
+                                        <Label htmlFor={`ref_${po.id}`} className="font-normal cursor-pointer text-sm leading-snug">
                                           PO: {po.po_number || "Unnamed PO"} (Pay against PO)
-                                        </SelectItem>
-                                      ))}
-                                    </SelectGroup>
-                                  )}
-                                </SelectContent>
-                              </Select>
+                                        </Label>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           );
                         })()}

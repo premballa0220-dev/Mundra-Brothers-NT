@@ -1750,6 +1750,7 @@ export const createDispatchRequest = createServerFn({ method: "POST" })
       requestedDate: z.string(),
       siteAddress: z.string().min(1),
       deliveryContact: z.string().optional(),
+      invoiceNumber: z.string().optional(),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -1765,6 +1766,7 @@ export const createDispatchRequest = createServerFn({ method: "POST" })
       requested_date: data.requestedDate,
       site_address: data.siteAddress,
       delivery_contact: data.deliveryContact || null,
+      invoice_number: data.invoiceNumber || null,
       status: "submitted",
       eligibility_result: null,
       approved_by: null,
@@ -2640,6 +2642,7 @@ export const createDispatchRequestAdmin = createServerFn({ method: "POST" })
       requestedDate: z.string(),
       siteAddress: z.string().min(1),
       deliveryContact: z.string().optional(),
+      invoiceNumber: z.string().optional(),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -2654,6 +2657,7 @@ export const createDispatchRequestAdmin = createServerFn({ method: "POST" })
       requested_date: data.requestedDate,
       site_address: data.siteAddress,
       delivery_contact: data.deliveryContact || null,
+      invoice_number: data.invoiceNumber || null,
       status: "submitted",
       eligibility_result: null,
       approved_by: null,
@@ -2681,6 +2685,7 @@ export const editDispatchRequestAdmin = createServerFn({ method: "POST" })
       requestedDate: z.string(),
       siteAddress: z.string().min(1),
       deliveryContact: z.string().optional(),
+      invoiceNumber: z.string().optional(),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -2699,6 +2704,7 @@ export const editDispatchRequestAdmin = createServerFn({ method: "POST" })
       requested_date: data.requestedDate,
       site_address: data.siteAddress,
       delivery_contact: data.deliveryContact || null,
+      invoice_number: data.invoiceNumber || null,
     };
 
     const { error } = await supabase.from("dispatch_requests").update(updateData).eq("id", data.id);
@@ -2988,6 +2994,9 @@ export const getAdminUTCLPayments = createServerFn({ method: "GET" })
       .select(
         `
         *,
+        organizations (
+          legal_name
+        ),
         dispatch_requests!utcl_payment_id (
           id,
           quantity,

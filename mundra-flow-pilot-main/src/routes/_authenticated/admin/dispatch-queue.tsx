@@ -82,6 +82,7 @@ function AdminDispatchQueuePage() {
   const [requestedDate, setRequestedDate] = useState(new Date().toISOString().split("T")[0]);
   const [siteAddress, setSiteAddress] = useState("");
   const [deliveryContact, setDeliveryContact] = useState("");
+  const [invoiceNumber, setInvoiceNumber] = useState("");
 
   // Edit Dispatch states
   const [editOpen, setEditOpen] = useState(false);
@@ -92,6 +93,7 @@ function AdminDispatchQueuePage() {
   );
   const [editSiteAddress, setEditSiteAddress] = useState("");
   const [editDeliveryContact, setEditDeliveryContact] = useState("");
+  const [editInvoiceNumber, setEditInvoiceNumber] = useState("");
 
   // View Details states
   const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
@@ -191,6 +193,7 @@ function AdminDispatchQueuePage() {
       setEditRequestedDate(selectedEditDr.requested_date.split("T")[0]);
       setEditSiteAddress(selectedEditDr.site_address);
       setEditDeliveryContact(selectedEditDr.delivery_contact || "");
+      setEditInvoiceNumber(selectedEditDr.invoice_number || "");
     }
   }, [editOpen, selectedEditDr]);
 
@@ -241,6 +244,7 @@ function AdminDispatchQueuePage() {
     setRequestedDate(new Date().toISOString().split("T")[0]);
     setSiteAddress("");
     setDeliveryContact("");
+    setInvoiceNumber("");
   }
 
   function handleCreateSubmit(e: React.FormEvent) {
@@ -262,6 +266,7 @@ function AdminDispatchQueuePage() {
       requestedDate,
       siteAddress,
       deliveryContact,
+      invoiceNumber,
     });
   }
 
@@ -283,6 +288,7 @@ function AdminDispatchQueuePage() {
       requestedDate: editRequestedDate,
       siteAddress: editSiteAddress,
       deliveryContact: editDeliveryContact,
+      invoiceNumber: editInvoiceNumber,
     });
   }
 
@@ -527,6 +533,15 @@ function AdminDispatchQueuePage() {
                       id="contact"
                       value={deliveryContact}
                       onChange={(e) => setDeliveryContact(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="invoice">Invoice Number</Label>
+                    <Input
+                      id="invoice"
+                      placeholder="Optional"
+                      value={invoiceNumber}
+                      onChange={(e) => setInvoiceNumber(e.target.value)}
                     />
                   </div>
                 </div>
@@ -782,6 +797,15 @@ function AdminDispatchQueuePage() {
                     id="edit-contact"
                     value={editDeliveryContact}
                     onChange={(e) => setEditDeliveryContact(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit-invoice">Invoice Number</Label>
+                  <Input
+                    id="edit-invoice"
+                    placeholder="Optional"
+                    value={editInvoiceNumber}
+                    onChange={(e) => setEditInvoiceNumber(e.target.value)}
                   />
                 </div>
               </div>

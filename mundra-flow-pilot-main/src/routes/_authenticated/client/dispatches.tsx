@@ -76,6 +76,7 @@ function ClientDispatchesPage() {
   const [requestedDate, setRequestedDate] = useState(new Date().toISOString().split("T")[0]); //Requested date is different than what was entered in Dispatch
   const [siteAddress, setSiteAddress] = useState("");
   const [deliveryContact, setDeliveryContact] = useState("");
+  const [invoiceNumber, setInvoiceNumber] = useState("");
 
   const { data: deliveryLocations } = useQuery({
     queryKey: ["client-delivery-locations"],
@@ -134,6 +135,7 @@ function ClientDispatchesPage() {
     setRequestedDate(new Date().toISOString().split("T")[0]);
     setSiteAddress("");
     setDeliveryContact("");
+    setInvoiceNumber("");
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -154,6 +156,7 @@ function ClientDispatchesPage() {
       requestedDate,
       siteAddress,
       deliveryContact,
+      invoiceNumber,
     }); //po
   }
 
@@ -331,6 +334,15 @@ function ClientDispatchesPage() {
                       id="contact"
                       value={deliveryContact}
                       onChange={(e) => setDeliveryContact(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="invoice">Invoice Number</Label>
+                    <Input
+                      id="invoice"
+                      placeholder="Optional"
+                      value={invoiceNumber}
+                      onChange={(e) => setInvoiceNumber(e.target.value)}
                     />
                   </div>
                   {deliveryLocations && deliveryLocations.length > 0 && (

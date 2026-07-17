@@ -368,13 +368,11 @@ function RefundLetterPage() {
                 <tbody>
                   <tr>
                     <td className="border border-black p-2 w-[150px] text-center align-middle">
-                      {/* Logo placeholder mimicking the provided image */}
-                      <div className="w-16 h-16 mx-auto bg-yellow-400 rounded-sm flex items-center justify-center flex-col shadow-sm border border-orange-500 relative overflow-hidden">
-                        <span className="text-3xl font-bold text-red-600 font-serif leading-none mt-1 z-10 drop-shadow-md">M</span>
-                        <div className="absolute bottom-0 w-full bg-yellow-300 h-4 flex justify-between px-1 text-[8px] font-bold text-red-600 tracking-tighter">
-                          <span>L</span><span>N</span><span>S</span>
-                        </div>
-                      </div>
+                      <img 
+                        src="/logo.png" 
+                        alt="Mundra Brothers Logo" 
+                        className="w-24 h-auto mx-auto object-contain" 
+                      />
                     </td>
                     <td className="border border-black p-2 align-middle text-center" colSpan={3}>
                       <h1 className="text-4xl font-normal text-red-600 m-0">Mundra Brothers</h1>
