@@ -239,7 +239,7 @@ function AdminPaymentsPage() {
       const search = searchQuery.toLowerCase();
       return (
         d.organization?.legal_name?.toLowerCase().includes(search) ||
-        d.purchase_order?.po_number?.toLowerCase().includes(search) ||
+        (d.purchase_order || d.purchase_orders)?.po_number?.toLowerCase().includes(search) ||
         d.id.toLowerCase().includes(search)
       );
     }) || [];
@@ -345,7 +345,7 @@ function AdminPaymentsPage() {
                                   {d.organization?.legal_name || "Unknown Client"}
                                 </TableCell>
                                 <TableCell className="font-mono text-xs">
-                                  {d.purchase_order?.po_number || "N/A"}
+                                  {(d.purchase_order || d.purchase_orders)?.po_number || "N/A"}
                                 </TableCell>
                                 <TableCell>{d.quantity} MT</TableCell>
                                 <TableCell>
@@ -604,15 +604,15 @@ function AdminPaymentsPage() {
                           const dispatches = p.dispatch_requests || [];
 
                           let clientName = p.organizations?.legal_name || "Unknown Client";
-                          let poNumber = "N/A";
-                          let dispatchQtyText = "N/A";
+                          let poNumber = p.purchase_orders?.po_number || (p.is_advance ? "Advance" : "On Account");
+                          let dispatchQtyText = p.is_advance ? "Advance" : (dispatches.length > 0 ? "—" : "—");
 
                           if (dispatches.length === 1) {
                             const d = dispatches[0];
                             clientName =
                               clientName !== "Unknown Client" ? clientName : (d.purchase_orders?.organizations?.legal_name || "Unknown Client");
-                            poNumber = d.purchase_orders?.po_number || "N/A";
-                            dispatchQtyText = d.quantity ? `${d.quantity} MT` : "N/A";
+                            poNumber = d.purchase_orders?.po_number || poNumber;
+                            dispatchQtyText = d.quantity ? `${d.quantity} MT` : dispatchQtyText;
                           } else if (dispatches.length > 1) {
                             clientName = "Multiple Clients";
 
@@ -669,10 +669,10 @@ function AdminPaymentsPage() {
                                           >
                                             <div>
                                               <div className="font-medium">
-                                                {d.purchase_orders?.po_number || "N/A"}
+                                                {(d.purchase_order || d.purchase_orders)?.po_number || "N/A"}
                                               </div>
                                               <div className="text-muted-foreground text-xs">
-                                                {d.purchase_orders?.organizations?.legal_name}
+                                                {(d.purchase_order || d.purchase_orders)?.organizations?.legal_name}
                                               </div>
                                             </div>
                                             <div className="font-mono">{d.quantity} MT</div>
@@ -938,48 +938,74 @@ function AdminPaymentsPage() {
                                 {openClientDispatches.length > 0 && (
                                   <div className="space-y-3">
                                     <h4 className="font-medium text-sm text-muted-foreground">Dispatches (Preferred)</h4>
-                                    {openClientDispatches.map((d: any) => (
+                                    {openClientDispatches.map((d: any) => {
+                                      const hasPoSelected = clientSelectedReferences.some(r => r.startsWith('po_'));
+                                      return (
                                       <div key={d.id} className="flex items-center space-x-3">
                                         <Checkbox
                                           id={`ref_${d.id}`}
+                                          disabled={hasPoSelected}
                                           checked={clientSelectedReferences.includes(`dr_${d.id}`)}
                                           onCheckedChange={(checked) => {
+                                            let newRefs = [...clientSelectedReferences];
                                             if (checked) {
-                                              setClientSelectedReferences((prev) => [...prev.filter(r => !r.startsWith('po_')), `dr_${d.id}`]);
+                                              newRefs = [...newRefs.filter(r => !r.startsWith('po_')), `dr_${d.id}`];
                                             } else {
-                                              setClientSelectedReferences((prev) => prev.filter(r => r !== `dr_${d.id}`));
+                                              newRefs = newRefs.filter(r => r !== `dr_${d.id}`);
+                                            }
+                                            setClientSelectedReferences(newRefs);
+
+                                            // Calculate total amount for selected dispatches
+                                            const totalAmount = newRefs.reduce((acc, ref) => {
+                                              if (ref.startsWith('dr_')) {
+                                                const drId = ref.replace('dr_', '');
+                                                const dr = openClientDispatches.find((od: any) => od.id === drId);
+                                                if (dr) {
+                                                  return acc + (dr.quantity || 0) * ((dr.purchase_order || dr.purchase_orders)?.locked_rate || 0);
+                                                }
+                                              }
+                                              return acc;
+                                            }, 0);
+                                            if (totalAmount > 0 || newRefs.length === 0) {
+                                              setClientAmount(totalAmount);
                                             }
                                           }}
                                         />
-                                        <Label htmlFor={`ref_${d.id}`} className="font-normal cursor-pointer text-sm leading-snug">
-                                          Dispatch: Qty {d.quantity} MT {d.invoice_number ? `(Inv: ${d.invoice_number})` : ""} {d.purchase_order?.po_number ? `(PO: ${d.purchase_order.po_number})` : ""}
+                                        <Label htmlFor={`ref_${d.id}`} className={`font-normal cursor-pointer text-sm leading-snug ${hasPoSelected ? 'opacity-50' : ''}`}>
+                                          Dispatch: Qty {d.quantity} MT {d.invoice_number ? `(Inv: ${d.invoice_number})` : ""} {(d.purchase_order || d.purchase_orders)?.po_number ? `(PO: ${(d.purchase_order || d.purchase_orders).po_number})` : ""}
                                         </Label>
                                       </div>
-                                    ))}
+                                    )})}
                                   </div>
                                 )}
                                 
                                 {openClientPos.length > 0 && (
                                   <div className="space-y-3">
                                     <h4 className="font-medium text-sm text-muted-foreground">Purchase Orders</h4>
-                                    {openClientPos.map((po: any) => (
+                                    {openClientPos.map((po: any) => {
+                                      const hasDrSelected = clientSelectedReferences.some(r => r.startsWith('dr_'));
+                                      return (
                                       <div key={po.id} className="flex items-center space-x-3">
                                         <Checkbox
                                           id={`ref_${po.id}`}
+                                          disabled={hasDrSelected}
                                           checked={clientSelectedReferences.includes(`po_${po.id}`)}
                                           onCheckedChange={(checked) => {
                                             if (checked) {
                                               setClientSelectedReferences([`po_${po.id}`]);
+                                              const poAmount = (po.original_quantity || 0) * (po.locked_rate || 0);
+                                              setClientAmount(poAmount);
                                             } else {
                                               setClientSelectedReferences((prev) => prev.filter(r => r !== `po_${po.id}`));
+                                              setClientAmount(0);
                                             }
                                           }}
                                         />
-                                        <Label htmlFor={`ref_${po.id}`} className="font-normal cursor-pointer text-sm leading-snug">
+                                        <Label htmlFor={`ref_${po.id}`} className={`font-normal cursor-pointer text-sm leading-snug ${hasDrSelected ? 'opacity-50' : ''}`}>
                                           PO: {po.po_number || "Unnamed PO"} (Pay against PO)
                                         </Label>
                                       </div>
-                                    ))}
+                                    )})}
                                   </div>
                                 )}
                               </div>

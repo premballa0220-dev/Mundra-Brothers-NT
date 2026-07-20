@@ -210,6 +210,9 @@ function AdminClientsPage() {
   const [primaryContactEmail, setPrimaryContactEmail] = useState("");
   const [primaryContactPhone, setPrimaryContactPhone] = useState("");
 
+  const [initialOpeningBalance, setInitialOpeningBalance] = useState<number | "">("");
+  const [initialOpeningBalanceDate, setInitialOpeningBalanceDate] = useState("");
+
   const [creditLimit, setCreditLimit] = useState<number | "">("");
   const [paymentTermsDays, setPaymentTermsDays] = useState<number | "">("");
   const [gracePeriodDays, setGracePeriodDays] = useState<number | "">("");
@@ -297,6 +300,8 @@ function AdminClientsPage() {
     setPrimaryContactName("");
     setPrimaryContactEmail("");
     setPrimaryContactPhone("");
+    setInitialOpeningBalance("");
+    setInitialOpeningBalanceDate("");
     setCreditLimit(0);
     setPaymentTermsDays(30);
     setGracePeriodDays(0);
@@ -333,6 +338,8 @@ function AdminClientsPage() {
       restrictions,
       commissionPercentage: commissionPercentage === "" ? null : Number(commissionPercentage),
       deliveryLocations: deliveryLocations.map((l) => ({ ...l, isDefault: !!l.isDefault })),
+      initialOpeningBalance: initialOpeningBalance === "" ? undefined : Number(initialOpeningBalance),
+      initialOpeningBalanceDate: initialOpeningBalanceDate === "" ? undefined : initialOpeningBalanceDate,
     });
   }
 
@@ -478,7 +485,29 @@ function AdminClientsPage() {
 
                   {/* Commercials */}
                   <div className="space-y-4">
-                    <h4 className="text-sm font-medium">Commercial Terms</h4>
+                    <h4 className="text-sm font-medium">Commercial Terms & Balances</h4>
+                    <div className="grid grid-cols-2 gap-4 bg-muted/30 p-3 rounded-md border border-dashed">
+                      <div className="space-y-2">
+                        <Label>Initial Opening Balance (₹)</Label>
+                        <Input
+                          type="number"
+                          placeholder="e.g. 50000"
+                          value={initialOpeningBalance}
+                          onChange={(e) =>
+                            setInitialOpeningBalance(e.target.value === "" ? "" : Number(e.target.value))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>As Of Date</Label>
+                        <Input
+                          type="date"
+                          value={initialOpeningBalanceDate}
+                          onChange={(e) => setInitialOpeningBalanceDate(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="space-y-2">
                         <Label>Credit Limit *</Label>

@@ -150,7 +150,7 @@ BEGIN
   INSERT INTO audit_logs (
     action, table_name, record_id, new_values, user_id
   ) VALUES (
-    'RECORD_PAYMENT', 'payments', v_payment_id::TEXT, 
+    'RECORD_PAYMENT', 'payments', v_payment_id, 
     jsonb_build_object(
       'id', v_payment_id,
       'amount', p_amount,

@@ -5,8 +5,10 @@ import {
   getBalanceConfirmations,
   uploadBalanceConfirmation,
   getInvoices,
+  getClientStatement
 } from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,6 +54,21 @@ function ClientLedgersPage() {
   const { data: invoices, isLoading: invoicesLoading } = useQuery({
     queryKey: ["client-invoices"],
     queryFn: () => getInvoices(),
+  });
+
+  const [statementStart, setStatementStart] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1); // default to last 1 month for demo
+    return d.toISOString().split("T")[0];
+  });
+  
+  const [statementEnd, setStatementEnd] = useState(() => {
+    return new Date().toISOString().split("T")[0];
+  });
+
+  const { data: statementData, isLoading: statementLoading } = useQuery({
+    queryKey: ["client-statement", statementStart, statementEnd],
+    queryFn: () => getClientStatement({ data: { startDate: statementStart, endDate: statementEnd } }),
   });
 
   const uploadMutation = useMutation({
@@ -239,65 +256,168 @@ function ClientLedgersPage() {
             </CardContent>
           </Card>
 
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle className="text-base font-semibold">Outstanding Invoices Ledger</CardTitle>
-              <CardDescription>Real-time log of unpaid billings.</CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Invoice No</TableHead>
-                    <TableHead>Invoice Date</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Due Date</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {invoices && invoices.length > 0 ? (
-                    invoices.map((inv: any) => (
-                      <TableRow key={inv.id}>
-                        <TableCell className="font-mono text-xs font-semibold">
-                          {inv.is_opening_balance ? (
-                            <span className="text-primary italic">Opening Balance</span>
+          <div className="md:col-span-2">
+            <Tabs defaultValue="statement" className="w-full">
+              <div className="flex items-center justify-between mb-4">
+                <TabsList>
+                  <TabsTrigger value="statement">Statement of Account</TabsTrigger>
+                  <TabsTrigger value="outstanding">Outstanding Invoices</TabsTrigger>
+                </TabsList>
+              </div>
+
+              <TabsContent value="statement">
+                <Card>
+                  <CardHeader className="pb-3 border-b flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle className="text-base font-semibold">Statement of Account</CardTitle>
+                      <CardDescription>Chronological ledger of your account balance.</CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="date"
+                        className="h-8 w-36 text-xs"
+                        value={statementStart}
+                        onChange={(e) => setStatementStart(e.target.value)}
+                      />
+                      <span className="text-muted-foreground text-xs">to</span>
+                      <Input
+                        type="date"
+                        className="h-8 w-36 text-xs"
+                        value={statementEnd}
+                        onChange={(e) => setStatementEnd(e.target.value)}
+                      />
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {statementLoading ? (
+                      <div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin" /></div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Particulars</TableHead>
+                            <TableHead>Ref No.</TableHead>
+                            <TableHead className="text-right text-destructive">Debit (₹)</TableHead>
+                            <TableHead className="text-right text-success">Credit (₹)</TableHead>
+                            <TableHead className="text-right font-bold">Balance (₹)</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          <TableRow className="bg-muted/30">
+                            <TableCell colSpan={5} className="font-semibold text-right">
+                              Opening Balance as of {new Date(statementStart).toLocaleDateString()}:
+                            </TableCell>
+                            <TableCell className="text-right font-bold text-primary">
+                              {formatCurrency(statementData?.historicalBalance || 0)}
+                            </TableCell>
+                          </TableRow>
+                          
+                          {statementData?.statement && statementData.statement.length > 0 ? (
+                            statementData.statement.map((entry: any) => (
+                              <TableRow key={entry.id}>
+                                <TableCell className="text-xs">
+                                  {new Date(entry.date).toLocaleDateString()}
+                                </TableCell>
+                                <TableCell className="text-xs">{entry.particulars}</TableCell>
+                                <TableCell className="text-xs font-mono">{entry.reference}</TableCell>
+                                <TableCell className="text-right text-xs text-destructive">
+                                  {entry.debit > 0 ? formatCurrency(entry.debit) : "-"}
+                                </TableCell>
+                                <TableCell className="text-right text-xs text-success">
+                                  {entry.credit > 0 ? formatCurrency(entry.credit) : "-"}
+                                </TableCell>
+                                <TableCell className="text-right text-xs font-semibold">
+                                  {formatCurrency(entry.runningBalance)}
+                                </TableCell>
+                              </TableRow>
+                            ))
                           ) : (
-                            inv.invoice_number
+                            <TableRow>
+                              <TableCell colSpan={6} className="text-center py-6 text-muted-foreground text-xs">
+                                No transactions found in this period.
+                              </TableCell>
+                            </TableRow>
                           )}
-                        </TableCell>
-                        <TableCell>{new Date(inv.invoice_date).toLocaleDateString()}</TableCell>
-                        <TableCell className="font-bold text-success">
-                          {formatCurrency(inv.amount)}
-                        </TableCell>
-                        <TableCell>{new Date(inv.due_date).toLocaleDateString()}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              inv.status === "paid"
-                                ? "default"
-                                : inv.status === "partially_paid"
-                                  ? "secondary"
-                                  : "destructive"
-                            }
-                            className="capitalize"
-                          >
-                            {inv.status === "partially_paid" ? "Partially Paid" : inv.status}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
-                        No outstanding invoices found.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+
+                          <TableRow className="bg-muted/50 border-t-2">
+                            <TableCell colSpan={5} className="font-bold text-right text-sm">
+                              Closing Balance as of {new Date(statementEnd).toLocaleDateString()}:
+                            </TableCell>
+                            <TableCell className="text-right font-bold text-sm text-primary">
+                              {formatCurrency(statementData?.closingBalance || 0)}
+                            </TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="outstanding">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base font-semibold">Outstanding Invoices Ledger</CardTitle>
+                    <CardDescription>Open items pending payment.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Invoice No</TableHead>
+                          <TableHead>Invoice Date</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Due Date</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {invoices && invoices.length > 0 ? (
+                          invoices.map((inv: any) => (
+                            <TableRow key={inv.id}>
+                              <TableCell className="font-mono text-xs font-semibold">
+                                {inv.is_opening_balance ? (
+                                  <span className="text-primary italic">Opening Balance</span>
+                                ) : (
+                                  inv.invoice_number
+                                )}
+                              </TableCell>
+                              <TableCell>{new Date(inv.invoice_date).toLocaleDateString()}</TableCell>
+                              <TableCell className="font-bold text-success">
+                                {formatCurrency(inv.amount)}
+                              </TableCell>
+                              <TableCell>{new Date(inv.due_date).toLocaleDateString()}</TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={
+                                    inv.status === "paid"
+                                      ? "default"
+                                      : inv.status === "partially_paid"
+                                        ? "secondary"
+                                        : "destructive"
+                                  }
+                                  className="capitalize"
+                                >
+                                  {inv.status === "partially_paid" ? "Partially Paid" : inv.status}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
+                              No outstanding invoices found.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </div>
         </div>
       </div>
     </AppShell>

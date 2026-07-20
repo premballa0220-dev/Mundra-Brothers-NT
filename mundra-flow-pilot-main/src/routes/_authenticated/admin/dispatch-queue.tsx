@@ -284,6 +284,7 @@ function AdminDispatchQueuePage() {
     }
     editMutation.mutate({
       id: selectedEditDr.id,
+      purchaseOrderId: selectedEditDr.purchase_order_id,
       quantity: editQuantity,
       requestedDate: editRequestedDate,
       siteAddress: editSiteAddress,
@@ -598,7 +599,7 @@ function AdminDispatchQueuePage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Request ID</TableHead>
+                    <TableHead>Invoice No</TableHead>
                     <TableHead>Client</TableHead>
                     <TableHead>PO Ref</TableHead>
                     <TableHead>Rate</TableHead>
@@ -614,7 +615,7 @@ function AdminDispatchQueuePage() {
                     filteredDispatches.map((dr: any) => (
                       <TableRow key={dr.id}>
                         <TableCell className="font-mono text-xs font-medium">
-                          #{dr.id.slice(0, 8)}
+                          {dr.invoice_number || "—"}
                         </TableCell>
                         <TableCell className="font-medium truncate max-w-[150px]">
                           {dr.organization?.trade_name || dr.organization?.legal_name}
@@ -839,8 +840,8 @@ function AdminDispatchQueuePage() {
                   <h4 className="text-sm font-semibold mb-3 pb-1 border-b">Dispatch Information</h4>
                   <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
                     <div>
-                      <span className="text-muted-foreground block text-xs">Request ID</span>
-                      <span className="font-mono">{selectedViewDr.id}</span>
+                      <span className="text-muted-foreground block text-xs">Invoice Number</span>
+                      <span className="font-mono">{selectedViewDr.invoice_number || "—"}</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground block text-xs">Status</span>

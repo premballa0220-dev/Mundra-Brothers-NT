@@ -27,11 +27,18 @@ async function checkSync() {
       .eq("organization_id", client.id)
       .in("status", ["approved", "auto_approved", "pending_mundra", "submitted"]);
 
+    const { data: invoices } = await supabase
+      .from("invoices")
+      .select("amount")
+      .eq("organization_id", client.id)
+      .eq("is_opening_balance", true)
+      .neq("status", "cancelled");
+
     const totalDebits = (dispatches || []).reduce(
       (sum, dr: any) =>
         sum + Number(dr.quantity || 0) * Number(dr.purchase_orders?.locked_rate || 0),
       0,
-    );
+    ) + (invoices || []).reduce((sum, inv: any) => sum + Number(inv.amount || 0), 0);
 
     const { data: payments } = await supabase
       .from("payments")

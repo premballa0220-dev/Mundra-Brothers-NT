@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery } from "@tanstack/react-query";
 import { getJournalEntries } from "@/lib/api/business.functions";
+import { calculateLedgerBalances } from "@/lib/ledger";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -306,110 +307,74 @@ function AuditJournalPage() {
   }
 
   // --- LEDGER LOGIC ---
-  const clientSummaries = useMemo(() => {
+  const calculatedAllRows = useMemo(() => {
     if (!entries) return [];
+    return calculateLedgerBalances(entries);
+  }, [entries]);
+
+  const clientSummaries = useMemo(() => {
+    if (calculatedAllRows.length === 0) return [];
+    
     const map = new Map<string, { debits: number; credits: number; balance: number }>();
-
-    const sortedAsc = [...entries].sort(
-      (a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-    );
-
-    for (const e of sortedAsc) {
-      const clientName = e.meta?.client_name;
-      if (!clientName) continue;
-      if (e.type === "utcl_to_mundra") continue;
-
+    
+    for (const e of calculatedAllRows) {
+      if (!e.meta?.client_name) continue;
+      const clientName = e.meta.client_name;
+      
       if (!map.has(clientName)) {
         map.set(clientName, { debits: 0, credits: 0, balance: 0 });
       }
       const acct = map.get(clientName)!;
-
-      let debit = 0;
-      let credit = 0;
-
-      if (e.type === "utcl_to_client") {
-        debit = (e.meta.quantity || 0) * (e.meta.locked_rate || 0);
-      } else if (e.type === "client_to_utcl") {
-        credit = e.meta.amount || 0;
-      } else if (
-        e.type === "credit_note" &&
-        (e.meta.status === "issued" || e.meta.status === "applied")
-      ) {
-        credit = e.meta.amount || 0;
-      } else if (
-        e.type === "debit_note" &&
-        (e.meta.status === "issued" || e.meta.status === "applied")
-      ) {
-        debit = e.meta.amount || 0;
+      acct.debits += e.debit;
+      acct.credits += e.credit;
+      if (e.isPosting) {
+        acct.balance = e.runningBalance;
       }
-
-      acct.debits += debit;
-      acct.credits += credit;
-      acct.balance = acct.debits - acct.credits;
     }
 
     return Array.from(map.entries())
       .map(([name, data]) => ({ name, ...data }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [entries]);
+  }, [calculatedAllRows]);
 
   const clientLedgerRows = useMemo(() => {
-    if (!entries) return [];
+    const rows = calculatedAllRows.filter(e => {
+      if (clientFilter !== "all" && e.meta?.client_name !== clientFilter) return false;
+      if (e.type === "utcl_to_mundra") return false;
+      if (!e.isPosting && !showNonPosting) return false;
+      return true;
+    });
 
-    const sortedAsc = [...entries].sort(
-      (a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-    );
-    const balancesByClient = new Map<string, number>();
-    const rows = [];
+    // Reverse only the copied array for latest-first admin display.
+    return [...rows].reverse();
+  }, [calculatedAllRows, clientFilter, showNonPosting]);
 
-    for (const e of sortedAsc) {
-      if (clientFilter !== "all" && e.meta?.client_name !== clientFilter) continue;
-      if (e.type === "utcl_to_mundra") continue;
-
-      const clientName = e.meta?.client_name || "Unknown";
-
-      let debit = 0;
-      let credit = 0;
-      let isPosting = false;
-
-      if (e.type === "utcl_to_client") {
-        debit = (e.meta.quantity || 0) * (e.meta.locked_rate || 0);
-        isPosting = true;
-      } else if (e.type === "client_to_utcl") {
-        credit = e.meta.amount || 0;
-        isPosting = true;
-      } else if (
-        e.type === "credit_note" &&
-        (e.meta.status === "issued" || e.meta.status === "applied")
-      ) {
-        credit = e.meta.amount || 0;
-        isPosting = true;
-      } else if (
-        e.type === "debit_note" &&
-        (e.meta.status === "issued" || e.meta.status === "applied")
-      ) {
-        debit = e.meta.amount || 0;
-        isPosting = true;
-      }
-
-      if (isPosting) {
-        const currentBal = balancesByClient.get(clientName) || 0;
-        balancesByClient.set(clientName, currentBal + debit - credit);
-      }
-
-      if (!isPosting && !showNonPosting) continue;
-
-      rows.push({
-        ...e,
-        debit,
-        credit,
-        runningBalance: balancesByClient.get(clientName) || 0,
-        isPosting,
-      });
+  const hasLateOpeningBalance = useMemo(() => {
+    if (!entries) return false;
+    const clientFirstPostings = new Map<string, number>();
+    
+    for (const e of entries) {
+       if (e.type !== "opening_balance" && ["utcl_to_client", "client_to_utcl", "debit_note", "credit_note"].includes(e.type)) {
+         const date = new Date(e.timestamp).getTime();
+         const clientName = e.meta?.client_name || "Unknown";
+         const current = clientFirstPostings.get(clientName);
+         if (!current || date < current) {
+           clientFirstPostings.set(clientName, date);
+         }
+       }
     }
 
-    return rows.reverse();
-  }, [entries, clientFilter, showNonPosting]);
+    for (const e of entries) {
+      if (e.type === "opening_balance") {
+        const clientName = e.meta?.client_name || "Unknown";
+        const firstPosting = clientFirstPostings.get(clientName);
+        if (firstPosting && new Date(e.timestamp).getTime() > firstPosting) {
+           return true;
+        }
+      }
+    }
+    return false;
+  }, [entries]);
 
   const selectedClientSummary = useMemo(() => {
     if (clientFilter === "all") {
@@ -541,7 +506,16 @@ function AuditJournalPage() {
             )}
 
             {viewTab === "ledger" && (
-              <div className="space-y-6 mt-4">
+              <div className="space-y-4">
+                {hasLateOpeningBalance && (
+                  <Alert variant="default" className="border-warning/50 bg-warning/5 mb-4">
+                    <AlertTitle className="font-semibold text-warning">Warning: Late Opening Balances Detected</AlertTitle>
+                    <AlertDescription>
+                      One or more Opening Balances have an effective date later than existing posting transactions. 
+                      This may cause historical running balances to appear incorrectly during the period prior to the Opening Balance.
+                    </AlertDescription>
+                  </Alert>
+                )}
                 {clientFilter === "all" && (
                   <Card>
                     <CardHeader>
@@ -631,7 +605,7 @@ function AuditJournalPage() {
                     <Card className="bg-muted/30">
                       <CardHeader className="py-4">
                         <CardTitle className="text-sm font-medium text-muted-foreground">
-                          Total Debits (Dispatched)
+                          Total Debits
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
@@ -762,7 +736,8 @@ function AuditJournalPage() {
                                   </TableCell>
                                 )}
                                 <TableCell className="font-mono text-xs">
-                                  {row.meta?.reference_number ||
+                                  {row.meta?.invoice_number || 
+                                    row.meta?.reference_number ||
                                     row.meta?.po_number ||
                                     (row.meta?.dispatch_id
                                       ? `DR-${row.meta.dispatch_id.substring(0, 6)}`

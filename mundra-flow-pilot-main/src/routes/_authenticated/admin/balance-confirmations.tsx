@@ -1,13 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Printer, Plus, Trash2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { getClients } from "@/lib/api/business.functions";
+import { getClients, getDispatchRequests, getAdminUTCLPayments } from "@/lib/api/business.functions";
 import {
   Select,
   SelectContent,
@@ -24,6 +24,8 @@ export const Route = createFileRoute("/_authenticated/admin/balance-confirmation
 
 function RefundLetterPage() {
   const { data: clients } = useQuery({ queryKey: ["admin-clients"], queryFn: () => getClients() });
+  const { data: dispatches } = useQuery({ queryKey: ["admin-dispatch-requests"], queryFn: () => getDispatchRequests() });
+  const { data: utclPayments } = useQuery({ queryKey: ["admin-utcl-payments"], queryFn: () => getAdminUTCLPayments() });
 
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [refNo, setRefNo] = useState("Refund\\25-26\\0059");
@@ -43,22 +45,13 @@ function RefundLetterPage() {
       dateOfPayment: new Date("2026-02-18").toISOString().split("T")[0],
       amountPaid: "23800",
     },
-    {
-      id: crypto.randomUUID(),
-      date: new Date("2025-03-04").toISOString().split("T")[0],
-      invoiceNumber: "2533",
-      amount: "50000",
-      paymentDetails: "RTGS",
-      dateOfPayment: new Date("2026-04-05").toISOString().split("T")[0],
-      amountPaid: "25000",
-    },
   ]);
 
   const [payments, setPayments] = useState([
-    { id: crypto.randomUUID(), type1: "RTGS", date: new Date("2026-01-15").toISOString().split("T")[0], amount: "19409.60", type2: "RTGS" },
-    { id: crypto.randomUUID(), type1: "TDS", date: "", amount: "390.40", type2: "TDS" },
-    { id: crypto.randomUUID(), type1: "ADVANCE", date: "", amount: "3000.00", type2: "TDS" },
-    { id: crypto.randomUUID(), type1: "Credit Note", date: "", amount: "26000.00", type2: "none" },
+    { id: crypto.randomUUID(), type1: "RTGS", date: "", amount: "", type2: "none" },
+    { id: crypto.randomUUID(), type1: "TDS", date: "", amount: "", type2: "none" },
+    { id: crypto.randomUUID(), type1: "ADVANCE", date: "", amount: "", type2: "none" },
+    { id: crypto.randomUUID(), type1: "Credit Note", date: "", amount: "", type2: "none" },
   ]);
 
   const handlePrint = () => {
@@ -138,6 +131,20 @@ function RefundLetterPage() {
     return invoices.reduce((sum, inv) => sum + (Number(inv.amountPaid) || 0), 0);
   }, [invoices]);
 
+  useEffect(() => {
+    setPayments((prev) => 
+      prev.map(p => {
+        if (p.type1 === "TDS") {
+          const newAmount = totalAmountPaid > 0 ? (totalAmountPaid * 0.008).toFixed(2) : "";
+          if (p.amount !== newAmount) {
+            return { ...p, amount: newAmount };
+          }
+        }
+        return p;
+      })
+    );
+  }, [totalAmountPaid]);
+
   const totalPaymentAmount = useMemo(() => {
     return payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
   }, [payments]);
@@ -182,60 +189,6 @@ function RefundLetterPage() {
                         <Input value={refNo} onChange={(e) => setRefNo(e.target.value)} />
                       </div>
                     </div>
-                    <div className="space-y-1">
-                      <Label>To Name</Label>
-                      <Input value={toName} onChange={(e) => setToName(e.target.value)} />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>Subject</Label>
-                      <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <Label>TPC Code</Label>
-                        <Input value={tpcCode} onChange={(e) => setTpcCode(e.target.value)} />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Party Code</Label>
-                        <Input value={partyCode} onChange={(e) => setPartyCode(e.target.value)} />
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <Label>Party Name</Label>
-                      <Select
-                        value={partyName}
-                        onValueChange={(val) => {
-                          setPartyName(val);
-                          const client = clients?.find(
-                            (c: any) => (c.trade_name || c.legal_name) === val,
-                          );
-                          if (client) {
-                            setPartyCode(client.party_code || "");
-                            setTpcCode(client.tp_code || "");
-                          }
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select or type party name" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {clients?.map((c: any) => {
-                            const name = c.trade_name || c.legal_name;
-                            return (
-                              <SelectItem key={c.id} value={name}>
-                                {name}
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
-                      <Input
-                        className="mt-2"
-                        value={partyName}
-                        onChange={(e) => setPartyName(e.target.value)}
-                        placeholder="Or type party name manually"
-                      />
-                    </div>
                   </CardContent>
                 </Card>
 
@@ -265,7 +218,57 @@ function RefundLetterPage() {
                           </div>
                           <div className="space-y-1">
                             <Label className="text-xs">Invoice No.</Label>
-                            <Input className="h-8 text-sm" value={inv.invoiceNumber} onChange={(e) => updateInvoice(inv.id, "invoiceNumber", e.target.value)} />
+                            {(() => {
+                              const invoicedDispatches = dispatches?.filter(
+                                (d: any) => d.invoice_number
+                              ) || [];
+                              return (
+                                <>
+                                  {invoicedDispatches.length > 0 && (
+                                    <Select
+                                      value={inv.invoiceNumber}
+                                      onValueChange={(val) => {
+                                        const dispatch = invoicedDispatches.find((d: any) => d.invoice_number === val);
+                                        if (dispatch) {
+                                          const payment = utclPayments?.find((p: any) => p.id === dispatch.utcl_payment_id);
+                                          
+                                          // Automatically update party details when an invoice is selected
+                                          if (dispatch.organization) {
+                                            setPartyName(dispatch.organization.trade_name || dispatch.organization.legal_name || "");
+                                            setPartyCode(dispatch.organization.party_code || "");
+                                            setTpcCode(dispatch.organization.tp_code || "");
+                                          }
+
+                                          setInvoices(invoices.map((i) => i.id === inv.id ? {
+                                            ...i,
+                                            invoiceNumber: val,
+                                            date: new Date(dispatch.requested_date).toISOString().split("T")[0],
+                                            amount: ((Number(dispatch.quantity) || 0) * (Number(dispatch.purchase_order?.locked_rate) || 0)).toFixed(2),
+                                            paymentDetails: payment?.payment_mode || "none",
+                                            dateOfPayment: payment ? new Date(payment.payment_date).toISOString().split("T")[0] : "",
+                                            amountPaid: payment?.amount ? String(payment.amount) : "",
+                                          } : i));
+                                        } else {
+                                          updateInvoice(inv.id, "invoiceNumber", val);
+                                        }
+                                      }}
+                                    >
+                                      <SelectTrigger className="h-8 text-sm">
+                                        <SelectValue placeholder="Select Invoice" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {invoicedDispatches.map((d: any) => (
+                                          <SelectItem key={d.id} value={d.invoice_number}>
+                                            {d.invoice_number} - {(d.organization?.trade_name || d.organization?.legal_name)} ({d.quantity} MT)
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  )}
+                                  <Input className={`h-8 text-sm ${invoicedDispatches.length > 0 ? 'mt-2' : ''}`} value={inv.invoiceNumber} onChange={(e) => updateInvoice(inv.id, "invoiceNumber", e.target.value)} placeholder="Or type invoice no" />
+                                </>
+                              );
+                            })()}
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
@@ -504,7 +507,7 @@ function RefundLetterPage() {
                   ))}
                   <tr className="bg-white">
                     <td className="border border-black p-1.5" colSpan={2}></td>
-                    <td className="border border-black p-1.5 text-right font-bold">{formatAmount(totalPaymentAmount.toString())}</td>
+                    <td className="border border-black p-1.5 text-right font-bold">{formatAmount(totalAmountPaid.toString())}</td>
                     <td className="border border-black p-1.5"></td>
                   </tr>
                 </tbody>
@@ -513,7 +516,7 @@ function RefundLetterPage() {
               {/* Footer Box */}
               <div className="w-[300px] border-2 border-black bg-[#f4ebb1] p-3 text-center mb-8">
                 <p className="mb-2 text-[14px]">Kindly refund the amount<br/>mentioned below</p>
-                <p className="font-bold text-[15px] mb-3">{formatAmount(totalPaymentAmount.toString())}</p>
+                <p className="font-bold text-[15px] mb-3">{formatAmount(totalAmountPaid.toString())}</p>
                 <p className="font-bold text-[14px]">Happy doing business with<br/>you!</p>
               </div>
 

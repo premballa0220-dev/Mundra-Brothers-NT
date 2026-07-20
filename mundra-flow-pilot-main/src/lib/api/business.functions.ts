@@ -344,9 +344,10 @@ export const getClients = createServerFn({ method: "GET" })
     let creditHistory: any[] = [];
     let allDispatches: any[] = [];
     let allPayments: any[] = [];
+    let allInvoices: any[] = [];
 
     if (orgIds.length > 0) {
-      const [{ data: p }, { data: l }, { data: pr }, { data: c }, { data: dr }, { data: pay }] =
+      const [{ data: p }, { data: l }, { data: pr }, { data: c }, { data: dr }, { data: pay }, { data: inv }] =
         await Promise.all([
           supabase.from("client_commercial_profiles").select("*").in("organization_id", orgIds),
           supabase.from("client_delivery_locations").select("*").in("organization_id", orgIds),
@@ -366,6 +367,11 @@ export const getClients = createServerFn({ method: "GET" })
             .select("organization_id, amount")
             .in("organization_id", orgIds)
             .eq("is_client_to_utcl", true),
+          supabase
+            .from("invoices")
+            .select("*")
+            .in("organization_id", orgIds)
+            .eq("is_opening_balance", true),
         ]);
       profiles = p || [];
       locations = l || [];
@@ -373,6 +379,7 @@ export const getClients = createServerFn({ method: "GET" })
       creditHistory = c || [];
       allDispatches = dr || [];
       allPayments = pay || [];
+      allInvoices = inv || [];
     }
 
     const profilesByOrg = new Map(
@@ -385,6 +392,15 @@ export const getClients = createServerFn({ method: "GET" })
       const val = Number(dr.quantity || 0) * Number((dr.purchase_orders as any)?.locked_rate || 0);
       debitsByOrg.set(dr.organization_id, (debitsByOrg.get(dr.organization_id) || 0) + val);
     }
+    
+    // Add opening balances to debits
+    for (const inv of allInvoices) {
+      debitsByOrg.set(
+        inv.organization_id,
+        (debitsByOrg.get(inv.organization_id) || 0) + Number(inv.amount || 0),
+      );
+    }
+
     const creditsByOrg = new Map<string, number>();
     for (const pay of allPayments) {
       creditsByOrg.set(
@@ -409,6 +425,7 @@ export const getClients = createServerFn({ method: "GET" })
         delivery_locations: locations.filter((loc) => loc.organization_id === org.id),
         approved_products: products.filter((prod) => prod.organization_id === org.id),
         credit_history: creditHistory.filter((hist) => hist.organization_id === org.id),
+        invoices: allInvoices.filter((inv) => inv.organization_id === org.id),
       };
     });
   });
@@ -463,6 +480,8 @@ export const createClient = createServerFn({ method: "POST" })
           }),
         )
         .optional(),
+      initialOpeningBalance: z.number().optional(),
+      initialOpeningBalanceDate: z.string().optional(),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -533,11 +552,32 @@ export const createClient = createServerFn({ method: "POST" })
       }));
       await supabase.from("client_delivery_locations").insert(locations);
     }
-
     await createAuditLog(context.userId, "CREATE_CLIENT", "organizations", org.id, null, {
       org,
       profile,
     });
+
+    if (data.initialOpeningBalance !== undefined && data.initialOpeningBalanceDate) {
+      const invId = crypto.randomUUID();
+      const inv = {
+        id: invId,
+        organization_id: orgId,
+        invoice_number: `OB-${Date.now()}`,
+        amount: data.initialOpeningBalance,
+        invoice_date: data.initialOpeningBalanceDate,
+        due_date: data.initialOpeningBalanceDate,
+        status: "unpaid",
+        is_opening_balance: true,
+      };
+
+      const { error: invError } = await supabase.from("invoices").insert(inv);
+      if (invError) {
+        console.error("Failed to create initial opening balance", invError);
+      } else {
+        await createAuditLog(context.userId, "CREATE_OPENING_BALANCE", "invoices", invId, null, inv);
+      }
+    }
+
     return { org, profile };
   });
 
@@ -1060,10 +1100,10 @@ async function runDispatchEligibilityCheck(dispatchRequestId: string, userId: st
     .from("invoices")
     .select("*")
     .eq("organization_id", orgId)
-    .neq("status", "paid")
-    .neq("status", "cancelled");
+    .neq("status", "cancelled")
+    .eq("is_opening_balance", true);
   const totalOutstanding = (invoices || []).reduce(
-    (sum: number, invoice: any) => sum + (invoice.is_opening_balance ? Number(invoice.amount || 0) : 0),
+    (sum: number, invoice: any) => sum + Number(invoice.amount || 0),
     0,
   );
 
@@ -1074,6 +1114,7 @@ async function runDispatchEligibilityCheck(dispatchRequestId: string, userId: st
     return dueDate;
   });
   const overdueInvoices = (invoices || []).filter((invoice: any, index: number) => {
+    if (invoice.status === "paid") return false;
     const dueDate = dueDateFns[index];
     return dueDate ? dueDate < new Date() : false;
   });
@@ -1467,7 +1508,7 @@ export const createPurchaseOrder = createServerFn({ method: "POST" })
       poNumber: z.string().min(1),
       productId: z.string().uuid(),
       originalQuantity: z.number().positive(),
-      lockedRate: z.number().positive(),
+      lockedRate: z.number().nonnegative(),
       isExceptionRate: z.boolean().default(false),
       siteAddress: z.string().min(1),
       deliveryContact: z.string().optional(),
@@ -1555,7 +1596,7 @@ export const createPurchaseOrderAdmin = createServerFn({ method: "POST" })
       organizationId: z.string().uuid(),
       productId: z.string().uuid(),
       originalQuantity: z.number().positive(),
-      lockedRate: z.number().positive().optional(),
+      lockedRate: z.number().nonnegative().optional(),
       isExceptionRate: z.boolean().default(false),
       siteAddress: z.string().min(1),
       deliveryContact: z.string().optional(),
@@ -1865,6 +1906,8 @@ export const submitPayment = createServerFn({ method: "POST" })
       proofUrl: z.string().optional(),
       isUtclPayment: z.boolean().optional(),
       isAdvance: z.boolean().optional(),
+      purchaseOrderId: z.string().uuid().optional(),
+      dispatchRequestIds: z.array(z.string().uuid()).optional(),
       allocations: z
         .array(
           z.object({
@@ -1874,7 +1917,12 @@ export const submitPayment = createServerFn({ method: "POST" })
           }),
         )
         .optional(),
-    }),
+    }).refine((data) => {
+      if (data.isUtclPayment) {
+        return !!data.purchaseOrderId || (data.dispatchRequestIds && data.dispatchRequestIds.length > 0);
+      }
+      return true;
+    }, { message: "UTCL payments strictly require a linked PO or Dispatch Request." })
   )
   .handler(async ({ data, context }) => {
     ensureClientOrg(context.orgType);
@@ -1884,7 +1932,7 @@ export const submitPayment = createServerFn({ method: "POST" })
     const payment = {
       id: paymentId,
       organization_id: context.organizationId,
-      purchase_order_id: null,
+      purchase_order_id: data.purchaseOrderId || null,
       amount: data.amount,
       payment_date: data.paymentDate,
       payment_mode: data.paymentMode,
@@ -1900,8 +1948,8 @@ export const submitPayment = createServerFn({ method: "POST" })
 
     const { data: paymentResult, error: paymentError } = await supabase.rpc("record_payment_with_allocations", {
       p_org_id: context.organizationId,
-      p_po_id: null,
-      p_dispatch_ids: [],
+      p_po_id: data.purchaseOrderId || null,
+      p_dispatch_ids: data.dispatchRequestIds || [],
       p_amount: data.amount,
       p_payment_date: data.paymentDate,
       p_payment_mode: data.paymentMode,
@@ -2056,6 +2104,179 @@ export const getInvoices = createServerFn({ method: "GET" })
     return (invoices || []).map((invoice: any) =>
       withNestedOrganization(invoice, organizationsMap),
     );
+  });
+
+export const getClientStatement = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      organizationId: z.string().uuid().optional(),
+      startDate: z.string(),
+      endDate: z.string(),
+    }),
+  )
+  .handler(async ({ data, context }) => {
+    const supabase = createSupabaseAdminClient();
+    const targetOrgId = context.orgType === "client" ? context.organizationId : data.organizationId;
+    if (!targetOrgId) throw new Error("Organization ID is required");
+
+    // Fetch opening balances
+    const { data: obInvoices } = await supabase
+      .from("invoices")
+      .select("id, invoice_number, invoice_date, amount, created_at")
+      .eq("organization_id", targetOrgId)
+      .eq("is_opening_balance", true)
+      .neq("status", "cancelled");
+
+    // Fetch dispatches
+    const { data: dispatches } = await supabase
+      .from("dispatch_requests")
+      .select("id, requested_date, quantity, created_at, updated_at, status, purchase_orders(locked_rate, po_number)")
+      .eq("organization_id", targetOrgId)
+      .in("status", ["approved", "auto_approved"]);
+
+    // Fetch payments
+    const { data: payments } = await supabase
+      .from("payments")
+      .select("id, payment_date, amount, payment_mode, reference_number, is_client_to_utcl, is_utcl_payment, created_at")
+      .eq("organization_id", targetOrgId);
+
+    // Fetch Credit Notes
+    const { data: creditNotes } = await supabase
+      .from("credit_notes")
+      .select("id, issue_date, amount, credit_note_number, created_at, status, issued_to_org_id, issued_by_org_id")
+      .or(`issued_to_org_id.eq.${targetOrgId},issued_by_org_id.eq.${targetOrgId}`)
+      .in("status", ["issued", "applied"]);
+
+    // Fetch Debit Notes
+    const { data: debitNotes } = await supabase
+      .from("debit_notes")
+      .select("id, issue_date, amount, debit_note_number, created_at, status, issued_to_org_id, issued_by_org_id")
+      .or(`issued_to_org_id.eq.${targetOrgId},issued_by_org_id.eq.${targetOrgId}`)
+      .in("status", ["issued", "applied"]);
+
+    const rawEntries: any[] = [];
+
+    for (const ob of obInvoices || []) {
+      rawEntries.push({
+        id: `ob_${ob.id}`,
+        type: "opening_balance",
+        timestamp: ob.invoice_date,
+        created_at: ob.created_at,
+        title: "Opening Balance",
+        meta: { amount: ob.amount, invoice_number: ob.invoice_number, client_name: targetOrgId },
+      });
+    }
+
+    for (const dr of dispatches || []) {
+      rawEntries.push({
+        id: `dr_${dr.id}`,
+        type: "utcl_to_client",
+        timestamp: dr.requested_date || dr.created_at.split("T")[0],
+        created_at: dr.created_at,
+        title: "Material Dispatch",
+        meta: { quantity: dr.quantity, locked_rate: dr.purchase_orders?.locked_rate, po_number: dr.purchase_orders?.po_number, client_name: targetOrgId },
+      });
+    }
+
+    for (const p of payments || []) {
+      if (p.is_client_to_utcl) {
+        rawEntries.push({
+          id: `pay_${p.id}`,
+          type: "client_to_utcl",
+          timestamp: p.payment_date,
+          created_at: p.created_at,
+          title: `Payment Received (${p.payment_mode})`,
+          meta: { amount: p.amount, reference_number: p.reference_number, client_name: targetOrgId },
+        });
+      }
+    }
+
+    for (const cn of creditNotes || []) {
+      // Check if it belongs to this client (they might be issued by or issued to)
+      // Usually issued_to is client for CN if Mundra issues it. If they are in either, we count it.
+      rawEntries.push({
+        id: `cn_${cn.id}`,
+        type: "credit_note",
+        timestamp: cn.issue_date,
+        created_at: cn.created_at,
+        title: `Credit Note — ${cn.credit_note_number}`,
+        meta: { amount: cn.amount, status: cn.status, client_name: targetOrgId },
+      });
+    }
+
+    for (const dn of debitNotes || []) {
+      rawEntries.push({
+        id: `dn_${dn.id}`,
+        type: "debit_note",
+        timestamp: dn.issue_date,
+        created_at: dn.created_at,
+        title: `Debit Note — ${dn.debit_note_number}`,
+        meta: { amount: dn.amount, status: dn.status, client_name: targetOrgId },
+      });
+    }
+
+    const { calculateLedgerBalances } = await import("../ledger");
+    const calculatedRows = calculateLedgerBalances(rawEntries);
+
+    // Filter into historical and period
+    const historicalRows = calculatedRows.filter((r) => r.timestamp < data.startDate && r.isPosting);
+    const periodRows = calculatedRows.filter((r) => r.timestamp >= data.startDate && r.timestamp <= data.endDate && r.isPosting);
+
+    let historicalBalance = 0;
+    if (historicalRows.length > 0) {
+      historicalBalance = historicalRows[historicalRows.length - 1].runningBalance;
+    }
+
+    const statement = [];
+    if (historicalRows.length > 0 || periodRows.length > 0) {
+      statement.push({
+        id: "bbf",
+        date: data.startDate,
+        particulars: "Balance Brought Forward",
+        reference: "—",
+        debit: historicalBalance > 0 ? historicalBalance : 0,
+        credit: historicalBalance < 0 ? Math.abs(historicalBalance) : 0,
+        runningBalance: historicalBalance,
+        isSynthetic: true,
+      });
+    }
+
+    for (const row of periodRows) {
+      statement.push({
+        id: row.id,
+        date: row.timestamp,
+        particulars: row.title,
+        reference: row.meta.invoice_number || row.meta.po_number || row.meta.reference_number || "—",
+        debit: row.debit,
+        credit: row.credit,
+        runningBalance: row.runningBalance,
+      });
+    }
+
+    let closingBalance = historicalBalance;
+    if (periodRows.length > 0) {
+      closingBalance = periodRows[periodRows.length - 1].runningBalance;
+    }
+
+    if (historicalRows.length > 0 || periodRows.length > 0) {
+      statement.push({
+        id: "cb",
+        date: data.endDate,
+        particulars: "Closing Balance",
+        reference: "—",
+        debit: closingBalance > 0 ? closingBalance : 0,
+        credit: closingBalance < 0 ? Math.abs(closingBalance) : 0,
+        runningBalance: closingBalance,
+        isSynthetic: true,
+      });
+    }
+
+    return {
+      historicalBalance,
+      closingBalance,
+      statement,
+    };
   });
 
 export const createOpeningBalance = createServerFn({ method: "POST" })
@@ -2902,19 +3123,19 @@ export const getJournalEntries = createServerFn({ method: "GET" })
     // Fetch Credit Notes
     const { data: creditNotes } = await supabase
       .from("credit_notes")
-      .select("*")
+      .select("*, created_at")
       .order("issue_date", { ascending: false });
 
     // Fetch Debit Notes
     const { data: debitNotes } = await supabase
       .from("debit_notes")
-      .select("*")
+      .select("*, created_at")
       .order("issue_date", { ascending: false });
 
     // Fetch Opening Balances
     const { data: openingBalances } = await supabase
       .from("invoices")
-      .select("*")
+      .select("*, created_at")
       .eq("is_opening_balance", true)
       .neq("status", "cancelled")
       .order("invoice_date", { ascending: false });
@@ -2928,6 +3149,7 @@ export const getJournalEntries = createServerFn({ method: "GET" })
         id: `po_${po.id}`,
         type: "mundra_to_utcl",
         timestamp: po.created_at,
+        created_at: po.created_at,
         title: "PO Created — Mundra → UTCL",
         meta: {
           po_number: po.po_number,
@@ -2948,6 +3170,7 @@ export const getJournalEntries = createServerFn({ method: "GET" })
           id: `dr_${dr.id}`,
           type: "utcl_to_client",
           timestamp: dr.updated_at || dr.created_at,
+          created_at: dr.created_at,
           title: "Dispatch Approved — UTCL → Client",
           meta: {
             dispatch_id: dr.id,
@@ -2970,6 +3193,7 @@ export const getJournalEntries = createServerFn({ method: "GET" })
           id: `pay_ctu_${p.id}`,
           type: "client_to_utcl",
           timestamp: p.payment_date,
+          created_at: p.created_at,
           title: "Payment — Client → UTCL",
           meta: {
             amount: p.amount,
@@ -2992,6 +3216,7 @@ export const getJournalEntries = createServerFn({ method: "GET" })
           id: `pay_mtu_${p.id}`,
           type: "utcl_to_mundra",
           timestamp: p.payment_date,
+          created_at: p.created_at,
           title: "Refund Due — UTCL → Mundra",
           meta: {
             amount: p.amount,
@@ -3020,6 +3245,7 @@ export const getJournalEntries = createServerFn({ method: "GET" })
         id: `cn_${cn.id}`,
         type: "credit_note",
         timestamp: cn.issue_date,
+        created_at: cn.created_at,
         title: `Credit Note — ${cn.credit_note_number}`,
         meta: {
           credit_note_number: cn.credit_note_number,
@@ -3052,6 +3278,7 @@ export const getJournalEntries = createServerFn({ method: "GET" })
         id: `dn_${dn.id}`,
         type: "debit_note",
         timestamp: dn.issue_date,
+        created_at: dn.created_at,
         title: `Debit Note — ${dn.debit_note_number}`,
         meta: {
           debit_note_number: dn.debit_note_number,
@@ -3076,6 +3303,7 @@ export const getJournalEntries = createServerFn({ method: "GET" })
         id: `ob_${ob.id}`,
         type: "opening_balance",
         timestamp: ob.invoice_date,
+        created_at: ob.created_at,
         title: "Opening Balance",
         meta: {
           amount: ob.amount,
@@ -3104,6 +3332,9 @@ export const getAdminUTCLPayments = createServerFn({ method: "GET" })
         *,
         organizations (
           legal_name
+        ),
+        purchase_orders (
+          po_number
         ),
         dispatch_requests!utcl_payment_id (
           id,
@@ -3143,7 +3374,12 @@ export const recordPaymentAdmin = createServerFn({ method: "POST" })
       isUtclPayment: z.boolean().optional(),
       isAdvance: z.boolean().optional(),
       isClientToUtcl: z.boolean().optional(),
-    }),
+    }).refine((data) => {
+      if (data.isUtclPayment) {
+        return !!data.purchaseOrderId || (data.dispatchRequestIds && data.dispatchRequestIds.length > 0);
+      }
+      return true;
+    }, { message: "UTCL payments strictly require a linked PO or Dispatch Request." })
   )
   .handler(async ({ data, context }) => {
     ensureMundraOrg(context.orgType);
@@ -3162,6 +3398,8 @@ export const recordPaymentAdmin = createServerFn({ method: "POST" })
       p_is_advance: data.isAdvance ?? false,
       p_user_id: context.userId,
       p_manual_allocations: [],
+      p_status: "approved",
+      p_verified_by: context.userId,
     });
 
     if (error) throw new Error("Failed to record payment via RPC: " + error.message);
