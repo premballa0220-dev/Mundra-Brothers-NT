@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { getDashboardStats } from "@/lib/api/business.functions";
+import { getDashboardStats, getJournalFeed } from "@/lib/api/business.functions";
 import { Loader2 } from "lucide-react";
 import {
   Building2,
@@ -17,6 +17,7 @@ import {
   ArrowRight,
   Activity,
   CheckCircle2,
+  Clock,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/admin/")({
@@ -33,7 +34,12 @@ function AdminDashboard() {
     queryFn: () => getDashboardStats(),
   });
 
-  if (isLoading) {
+  const { data: feedData, isLoading: isFeedLoading } = useQuery({
+    queryKey: ["admin-journal-feed"],
+    queryFn: () => getJournalFeed(),
+  });
+
+  if (isLoading || isFeedLoading) {
     return (
       <AppShell variant="admin">
         <div className="flex justify-center items-center py-20">
@@ -190,6 +196,38 @@ function AdminDashboard() {
               href="/admin/balance-confirmations"
             />
           </div>
+        </section>
+
+        {/* Today's Activity (Journal Feed) */}
+        <section>
+          <SectionTitle>Today's Activity</SectionTitle>
+          <Card>
+            <CardContent className="p-0">
+              <div className="divide-y max-h-[300px] overflow-y-auto">
+                {feedData && feedData.length > 0 ? (
+                  feedData.map((log: any) => (
+                    <div key={log.id} className="flex items-start gap-4 px-5 py-4">
+                      <div className="mt-0.5 rounded-full bg-accent p-1.5">
+                        <Clock className="h-4 w-4 text-primary" />
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <p className="text-sm font-medium leading-none">
+                          {log.action.replace(/_/g, ' ')}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {log.user_name} • {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="px-5 py-10 text-center text-sm text-muted-foreground">
+                    No activity recorded today yet.
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </section>
 
         {/* Alerts + exceptions */}

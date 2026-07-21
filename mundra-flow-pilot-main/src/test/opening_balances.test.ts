@@ -2,6 +2,9 @@ import { config } from 'dotenv';
 config();
 import { createSupabaseAdminClient } from '../lib/auth.server';
 
+// The RPCs' SQL params are nullable UUIDs, but supabase gen types them as non-null strings.
+const nullUuid = null as unknown as string;
+
 async function runTests() {
   const supabase = createSupabaseAdminClient();
   let testOrgId: string;
@@ -93,7 +96,7 @@ async function runTests() {
 
   const { data: paymentResult, error: paymentError } = await supabase.rpc('record_payment_with_allocations', {
     p_org_id: testOrgId,
-    p_po_id: null,
+    p_po_id: nullUuid,
     p_dispatch_ids: [],
     p_amount: 30000,
     p_payment_date: new Date().toISOString().split('T')[0],
@@ -102,14 +105,16 @@ async function runTests() {
     p_is_utcl: false,
     p_is_client_to_utcl: true,
     p_is_advance: false,
-    p_user_id: null,
+    p_user_id: nullUuid,
     p_manual_allocations: [],
     p_status: 'approved',
-    p_verified_by: null
+    p_verified_by: nullUuid
   });
 
   if (paymentError) throw paymentError;
-  paymentId = paymentResult.payment_id;
+  const rpcResult = paymentResult as { payment_id: string } | null;
+  if (!rpcResult?.payment_id) throw new Error('Payment RPC returned no payment_id');
+  paymentId = rpcResult.payment_id;
   console.log('✅ Scenario 2b: Payment Recorded via FIFO. ID:', paymentId);
 
   const { data: allocations } = await supabase
@@ -119,7 +124,7 @@ async function runTests() {
   
   console.log('Allocations created:', allocations);
   
-  const obAllocation = allocations.find((a: any) => a.invoice_id === obInvoiceId);
+  const obAllocation = (allocations ?? []).find((a: any) => a.invoice_id === obInvoiceId);
   if (!obAllocation) throw new Error('OB was not allocated first in FIFO!');
   if (obAllocation.allocated_amount !== 30000) throw new Error('Incorrect amount allocated to OB!');
   console.log('✅ Scenario 2c: FIFO correctly prioritized OB allocation.');
@@ -140,9 +145,11 @@ async function runTests() {
     .select()
     .single();
 
-  const { data: cancelResult, error: cancelError } = await supabase.rpc('cancel_opening_balance', {
+  if (obCancelError || !obToCancel) throw obCancelError ?? new Error('Failed to create OB to cancel');
+
+  const { error: cancelError } = await supabase.rpc('cancel_opening_balance', {
     p_invoice_id: obToCancel.id,
-    p_user_id: null
+    p_user_id: nullUuid
   });
 
   if (cancelError) throw cancelError;
@@ -153,7 +160,7 @@ async function runTests() {
     .eq('id', obToCancel.id)
     .single();
 
-  if (obInvoiceAfter.status !== 'cancelled') throw new Error('OB not cancelled successfully!');
+  if (obInvoiceAfter?.status !== 'cancelled') throw new Error('OB not cancelled successfully!');
   console.log('✅ Scenario 3: OB Cancellation successful.');
 
   console.log('--- All tests passed! ---');

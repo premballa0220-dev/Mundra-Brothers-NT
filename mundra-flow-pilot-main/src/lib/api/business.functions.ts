@@ -5,6 +5,17 @@ import { createSupabaseAdminClient } from "@/lib/auth.server";
 import { requireAuth } from "@/integrations/auth/auth-middleware";
 import type { AppRole, OrgType } from "@/lib/auth-types";
 
+// Shape of the JSONB returned by the record_payment_with_allocations RPC.
+type RecordPaymentRpcResult = {
+  payment_id: string;
+  total_allocated?: number;
+  allocations?: unknown;
+};
+
+// The RPC's SQL params are nullable UUIDs, but supabase gen types them as
+// non-null strings — allow null explicitly here.
+const nullableUuid = (v: string | null | undefined) => (v ?? null) as unknown as string;
+
 async function createAuditLog(
   userId: string | null,
   action: string,
@@ -27,6 +38,32 @@ async function createAuditLog(
   } catch (err) {
     console.error("Failed to write audit log:", err);
   }
+}
+
+export function calculateClientExposure(
+  profile: any,
+  totalInvoicesValue: number,
+  totalPaymentsValue: number,
+  activeDispatchesValue: number,
+  undispatchedPOsValue: number = 0
+) {
+  const includeInvoices = profile?.include_unpaid_invoices ?? true;
+  const includeDispatched = profile?.include_dispatched_unbilled ?? true;
+  const includeUndispatched = profile?.include_undispatched_pos ?? false;
+
+  const invoiceBalance = totalInvoicesValue - totalPaymentsValue;
+  let exposure = 0;
+
+  if (invoiceBalance > 0) {
+    if (includeInvoices) exposure += invoiceBalance;
+  } else {
+    exposure += invoiceBalance;
+  }
+
+  if (includeDispatched) exposure += activeDispatchesValue;
+  if (includeUndispatched) exposure += undispatchedPOsValue;
+
+  return Math.max(0, exposure);
 }
 
 function isSuperAdmin(roles: AppRole[]) {
@@ -90,7 +127,9 @@ export const getDashboardStats = createServerFn({ method: "GET" })
 
       const { data: profiles } = await supabase
         .from("client_commercial_profiles")
-        .select("credit_limit");
+        .select("*");
+      const profilesByOrg = new Map((profiles || []).map((p: any) => [p.organization_id, p]));
+      
       const sanctionedCredit = (profiles || []).reduce(
         (sum: number, profile: any) => sum + Number(profile.credit_limit || 0),
         0,
@@ -100,40 +139,79 @@ export const getDashboardStats = createServerFn({ method: "GET" })
         .from("invoices")
         .select("amount, due_date, organization_id, status, is_opening_balance")
         .neq("status", "cancelled");
-      const invoiceDebits = (allInvoices || []).reduce(
-        (sum: number, invoice: any) => sum + (invoice.is_opening_balance ? Number(invoice.amount || 0) : 0),
-        0,
-      );
+
+      const invoicesByOrg = new Map<string, number>();
+      const totalInvoicesByOrg = new Map<string, number>();
+      for (const inv of allInvoices || []) {
+        totalInvoicesByOrg.set(inv.organization_id, (totalInvoicesByOrg.get(inv.organization_id) || 0) + Number(inv.amount || 0));
+        if (!inv.is_opening_balance) {
+          invoicesByOrg.set(inv.organization_id, (invoicesByOrg.get(inv.organization_id) || 0) + Number(inv.amount || 0));
+        }
+      }
+
+      const { data: obAllocations } = await supabase
+        .from("invoice_allocations")
+        .select("allocated_amount, invoices!inner(organization_id, is_opening_balance)")
+        .eq("invoices.is_opening_balance", true);
+
+      const obAllocationsByOrg = new Map<string, number>();
+      for (const alloc of obAllocations || []) {
+        const orgId = (alloc.invoices as any)?.organization_id;
+        if (orgId) {
+          obAllocationsByOrg.set(orgId, (obAllocationsByOrg.get(orgId) || 0) + Number(alloc.allocated_amount || 0));
+        }
+      }
 
       const { data: dispatches } = await supabase
         .from("dispatch_requests")
-        .select("quantity, purchase_orders(locked_rate)")
+        .select("organization_id, quantity, purchase_orders(locked_rate)")
         .in("status", ["approved", "auto_approved", "pending_mundra", "submitted"]);
-      const dispatchDebits = (dispatches || []).reduce(
-        (sum: number, dr: any) =>
-          sum + Number(dr.quantity || 0) * Number(dr.purchase_orders?.locked_rate || 0),
-        0,
-      );
-      const totalDebits = dispatchDebits + invoiceDebits;
+      
+      const dispatchesByOrg = new Map<string, number>();
+      for (const dr of dispatches || []) {
+        const val = Number(dr.quantity || 0) * Number((dr.purchase_orders as any)?.locked_rate || 0);
+        dispatchesByOrg.set(dr.organization_id, (dispatchesByOrg.get(dr.organization_id) || 0) + val);
+      }
 
       const { data: payments } = await supabase
         .from("payments")
-        .select("amount, is_client_to_utcl, is_utcl_payment, status");
+        .select("organization_id, amount, is_client_to_utcl, is_utcl_payment, status")
+        .eq("status", "approved");
+      
       const validClientPayments = (payments || []).filter(
         (p: any) => p.is_client_to_utcl || !p.is_utcl_payment,
       );
-      const totalCredits = validClientPayments.reduce(
-        (sum: number, p: any) => sum + Number(p.amount || 0),
-        0,
-      );
+      const paymentsByOrg = new Map<string, number>();
+      for (const p of validClientPayments) {
+        paymentsByOrg.set(p.organization_id, (paymentsByOrg.get(p.organization_id) || 0) + Number(p.amount || 0));
+      }
 
-      const outstanding = Math.max(0, totalDebits - totalCredits);
+      let outstanding = 0;
+      let operationalOutstanding = 0;
+      const allOrgIds = new Set([
+        ...totalInvoicesByOrg.keys(),
+        ...dispatchesByOrg.keys(),
+        ...paymentsByOrg.keys()
+      ]);
+      
+      for (const orgId of allOrgIds) {
+        const profile = profilesByOrg.get(orgId);
+        const invTotal = invoicesByOrg.get(orgId) || 0;
+        const totalInvTotal = totalInvoicesByOrg.get(orgId) || 0;
+        const obAllocations = obAllocationsByOrg.get(orgId) || 0;
+        const totalPayTotal = paymentsByOrg.get(orgId) || 0;
+        const payTotal = totalPayTotal - obAllocations;
+        const dispTotal = dispatchesByOrg.get(orgId) || 0;
+        
+        operationalOutstanding += calculateClientExposure(profile, invTotal, payTotal, dispTotal, 0);
+        outstanding += calculateClientExposure(profile, totalInvTotal, totalPayTotal, dispTotal, 0);
+      }
 
       const unpaidInvoices = (allInvoices || []).filter(
         (invoice: any) => invoice.status !== "paid",
       );
       const overdueInvoices = unpaidInvoices.filter(
-        (invoice: any) => invoice.due_date && invoice.due_date < todayStr,
+        (invoice: any) => invoice.is_opening_balance || (invoice.due_date && invoice.due_date < todayStr),
       );
       const overdue = overdueInvoices.reduce(
         (sum: number, invoice: any) => sum + Number(invoice.amount || 0),
@@ -180,7 +258,7 @@ export const getDashboardStats = createServerFn({ method: "GET" })
           activeClients: activeClients || 0,
           sanctionedCredit,
           recognizedExposure: outstanding,
-          availableCredit: Math.max(0, sanctionedCredit - outstanding),
+          availableCredit: Math.max(0, sanctionedCredit - operationalOutstanding),
           overdueClients,
           overdue90Plus: overdue,
         },
@@ -199,7 +277,7 @@ export const getDashboardStats = createServerFn({ method: "GET" })
 
     const { data: commProfile } = await supabase
       .from("client_commercial_profiles")
-      .select("credit_limit")
+      .select("*")
       .eq("organization_id", organizationId)
       .single();
     const creditLimit = commProfile ? Number(commProfile.credit_limit || 0) : 0;
@@ -210,7 +288,7 @@ export const getDashboardStats = createServerFn({ method: "GET" })
       .eq("organization_id", organizationId)
       .neq("status", "cancelled");
     const invoiceDebits = (allInvoices || []).reduce(
-      (sum: number, invoice: any) => sum + (invoice.is_opening_balance ? Number(invoice.amount || 0) : 0),
+      (sum: number, invoice: any) => sum + Number(invoice.amount || 0),
       0,
     );
 
@@ -224,12 +302,12 @@ export const getDashboardStats = createServerFn({ method: "GET" })
         sum + Number(dr.quantity || 0) * Number(dr.purchase_orders?.locked_rate || 0),
       0,
     );
-    const totalDebits = dispatchDebits + invoiceDebits;
 
     const { data: payments } = await supabase
       .from("payments")
       .select("amount, is_client_to_utcl, is_utcl_payment, status")
-      .eq("organization_id", organizationId);
+      .eq("organization_id", organizationId)
+      .eq("status", "approved");
     const validClientPayments = (payments || []).filter(
       (p: any) => p.is_client_to_utcl || !p.is_utcl_payment,
     );
@@ -238,11 +316,11 @@ export const getDashboardStats = createServerFn({ method: "GET" })
       0,
     );
 
-    const outstanding = Math.max(0, totalDebits - totalCredits);
+    const outstanding = calculateClientExposure(commProfile, invoiceDebits, totalCredits, dispatchDebits, 0);
 
     const unpaidInvoices = (allInvoices || []).filter((invoice: any) => invoice.status !== "paid");
     const overdueInvoices = unpaidInvoices.filter(
-      (invoice: any) => invoice.due_date && invoice.due_date < todayStr,
+      (invoice: any) => invoice.is_opening_balance || (invoice.due_date && invoice.due_date < todayStr),
     );
     const overdue = overdueInvoices.reduce(
       (sum: number, invoice: any) => sum + Number(invoice.amount || 0),
@@ -345,9 +423,10 @@ export const getClients = createServerFn({ method: "GET" })
     let allDispatches: any[] = [];
     let allPayments: any[] = [];
     let allInvoices: any[] = [];
+    let obAllocationsByOrg = new Map<string, number>();
 
     if (orgIds.length > 0) {
-      const [{ data: p }, { data: l }, { data: pr }, { data: c }, { data: dr }, { data: pay }, { data: inv }] =
+      const [{ data: p }, { data: l }, { data: pr }, { data: c }, { data: dr }, { data: pay }, { data: inv }, { data: obAlloc }] =
         await Promise.all([
           supabase.from("client_commercial_profiles").select("*").in("organization_id", orgIds),
           supabase.from("client_delivery_locations").select("*").in("organization_id", orgIds),
@@ -366,12 +445,18 @@ export const getClients = createServerFn({ method: "GET" })
             .from("payments")
             .select("organization_id, amount")
             .in("organization_id", orgIds)
-            .eq("is_client_to_utcl", true),
+            .eq("is_client_to_utcl", true)
+            .eq("status", "approved"),
           supabase
             .from("invoices")
             .select("*")
             .in("organization_id", orgIds)
-            .eq("is_opening_balance", true),
+            .neq("status", "cancelled"),
+          supabase
+            .from("invoice_allocations")
+            .select("allocated_amount, invoices!inner(organization_id, is_opening_balance)")
+            .in("invoices.organization_id", orgIds)
+            .eq("invoices.is_opening_balance", true),
         ]);
       profiles = p || [];
       locations = l || [];
@@ -380,25 +465,38 @@ export const getClients = createServerFn({ method: "GET" })
       allDispatches = dr || [];
       allPayments = pay || [];
       allInvoices = inv || [];
+      
+      for (const alloc of obAlloc || []) {
+        const orgId = (alloc.invoices as any)?.organization_id;
+        if (orgId) {
+          obAllocationsByOrg.set(orgId, (obAllocationsByOrg.get(orgId) || 0) + Number(alloc.allocated_amount || 0));
+        }
+      }
     }
 
     const profilesByOrg = new Map(
       profiles.map((profile: any) => [profile.organization_id, profile]),
     );
 
-    // Compute exposure per org
-    const debitsByOrg = new Map<string, number>();
+    const dispatchDebitsByOrg = new Map<string, number>();
     for (const dr of allDispatches) {
       const val = Number(dr.quantity || 0) * Number((dr.purchase_orders as any)?.locked_rate || 0);
-      debitsByOrg.set(dr.organization_id, (debitsByOrg.get(dr.organization_id) || 0) + val);
+      dispatchDebitsByOrg.set(dr.organization_id, (dispatchDebitsByOrg.get(dr.organization_id) || 0) + val);
     }
     
-    // Add opening balances to debits
+    const invoiceDebitsByOrg = new Map<string, number>();
+    const totalInvoiceDebitsByOrg = new Map<string, number>();
     for (const inv of allInvoices) {
-      debitsByOrg.set(
+      totalInvoiceDebitsByOrg.set(
         inv.organization_id,
-        (debitsByOrg.get(inv.organization_id) || 0) + Number(inv.amount || 0),
+        (totalInvoiceDebitsByOrg.get(inv.organization_id) || 0) + Number(inv.amount || 0),
       );
+      if (!inv.is_opening_balance) {
+        invoiceDebitsByOrg.set(
+          inv.organization_id,
+          (invoiceDebitsByOrg.get(inv.organization_id) || 0) + Number(inv.amount || 0),
+        );
+      }
     }
 
     const creditsByOrg = new Map<string, number>();
@@ -411,16 +509,23 @@ export const getClients = createServerFn({ method: "GET" })
 
     return (organizations || []).map((org: any) => {
       const profile = profilesByOrg.get(org.id) ?? null;
-      const totalDebits = debitsByOrg.get(org.id) || 0;
-      const totalCredits = creditsByOrg.get(org.id) || 0;
-      const exposure = Math.max(0, totalDebits - totalCredits);
+      const invTotal = invoiceDebitsByOrg.get(org.id) || 0;
+      const totalInvTotal = totalInvoiceDebitsByOrg.get(org.id) || 0;
+      const obAllocations = obAllocationsByOrg.get(org.id) || 0;
+      const totalPayTotal = creditsByOrg.get(org.id) || 0;
+      const payTotal = totalPayTotal - obAllocations;
+      const dispTotal = dispatchDebitsByOrg.get(org.id) || 0;
+      
+      const operational_exposure = calculateClientExposure(profile, invTotal, payTotal, dispTotal, 0);
+      const total_exposure = calculateClientExposure(profile, totalInvTotal, totalPayTotal, dispTotal, 0);
+      
       const creditLimit = profile ? Number(profile.credit_limit || 0) : 0;
-      const availableCredit = Math.max(0, creditLimit - exposure);
+      const availableCredit = Math.max(0, creditLimit - operational_exposure);
 
       return {
         ...org,
         client_commercial_profile: profile
-          ? { ...profile, available_credit: availableCredit, current_exposure: exposure }
+          ? { ...profile, available_credit: availableCredit, current_exposure: total_exposure }
           : null,
         delivery_locations: locations.filter((loc) => loc.organization_id === org.id),
         approved_products: products.filter((prod) => prod.organization_id === org.id),
@@ -1100,9 +1205,9 @@ async function runDispatchEligibilityCheck(dispatchRequestId: string, userId: st
     .from("invoices")
     .select("*")
     .eq("organization_id", orgId)
-    .neq("status", "cancelled")
-    .eq("is_opening_balance", true);
-  const totalOutstanding = (invoices || []).reduce(
+    .neq("status", "cancelled");
+  const nonObInvoices = (invoices || []).filter((inv: any) => !inv.is_opening_balance);
+  const totalOutstanding = nonObInvoices.reduce(
     (sum: number, invoice: any) => sum + Number(invoice.amount || 0),
     0,
   );
@@ -1115,6 +1220,7 @@ async function runDispatchEligibilityCheck(dispatchRequestId: string, userId: st
   });
   const overdueInvoices = (invoices || []).filter((invoice: any, index: number) => {
     if (invoice.status === "paid") return false;
+    if (invoice.is_opening_balance) return true;
     const dueDate = dueDateFns[index];
     return dueDate ? dueDate < new Date() : false;
   });
@@ -1148,27 +1254,18 @@ async function runDispatchEligibilityCheck(dispatchRequestId: string, userId: st
 
   const includeUndispatched = commProfile?.include_undispatched_pos ?? false;
   const includeDispatched = commProfile?.include_dispatched_unbilled ?? true;
-  const includeInvoices = commProfile?.include_unpaid_invoices ?? true;
 
   const currentVal = Number(dr.quantity || 0) * Number(po.locked_rate || 0);
 
-  let totalExposure = 0;
-  if (includeInvoices) totalExposure += totalOutstanding;
-  if (includeDispatched) totalExposure += activeDispatchesValue;
-  // Always include the current DR's value as it's the one we're checking, unless we include undispatched POs (in which case the PO value is already in exposure)
-  totalExposure += currentVal;
-
+  let undispatchedValue = 0;
   if (includeUndispatched) {
-    // Fetch all approved POs and sum their remaining value
     const { data: approvedPOs } = await supabase
       .from("purchase_orders")
       .select("id, original_quantity, locked_rate")
       .eq("organization_id", orgId)
       .eq("status", "approved");
 
-    let undispatchedValue = 0;
     if (approvedPOs && approvedPOs.length > 0) {
-      // Get all approved dispatches for these POs to subtract from original_quantity
       const { data: allDispatches } = await supabase
         .from("dispatch_requests")
         .select("purchase_order_id, quantity")
@@ -1190,25 +1287,44 @@ async function runDispatchEligibilityCheck(dispatchRequestId: string, userId: st
         undispatchedValue += remainingQty * Number(apo.locked_rate || 0);
       }
     }
-    totalExposure += undispatchedValue;
-    // If undispatched value is included, the currentVal is technically already part of undispatchedValue because the PO quantity hasn't been reduced by the currently checking DR yet (since the DR is just being evaluated).
-    // Wait, the currently evaluating DR is already in `allDispatches` because it was just inserted before this function is called.
-    // If it's already in `allDispatches`, then `dispatchedQty` includes it. So `undispatchedValue` is reduced by `currentVal`.
-    // Thus `totalExposure += currentVal + undispatchedValue` is perfectly correct!
   }
 
-  // Deduct Client payments from exposure
   const { data: payments } = await supabase
     .from("payments")
     .select("amount")
     .eq("organization_id", orgId)
-    .eq("is_client_to_utcl", true);
+    .eq("is_client_to_utcl", true)
+    .eq("status", "approved");
 
   const totalPayments = (payments || []).reduce(
     (sum: number, p: any) => sum + Number(p.amount || 0),
     0,
   );
-  totalExposure = Math.max(0, totalExposure - totalPayments);
+
+  const { data: obAllocations } = await supabase
+    .from("invoice_allocations")
+    .select("allocated_amount, invoices!inner(organization_id, is_opening_balance)")
+    .eq("invoices.organization_id", orgId)
+    .eq("invoices.is_opening_balance", true);
+
+  const totalObAllocations = (obAllocations || []).reduce(
+    (sum: number, alloc: any) => sum + Number(alloc.allocated_amount || 0),
+    0,
+  );
+
+  const operationalPayments = totalPayments - totalObAllocations;
+
+  let totalExposure = calculateClientExposure(
+    commProfile,
+    totalOutstanding,
+    operationalPayments,
+    activeDispatchesValue,
+    undispatchedValue
+  );
+
+  if (!includeDispatched && !includeUndispatched) {
+    totalExposure += currentVal;
+  }
 
   const todayStr = new Date().toISOString().split("T")[0];
   const { data: overdueConfirmations } = await supabase
@@ -1948,7 +2064,7 @@ export const submitPayment = createServerFn({ method: "POST" })
 
     const { data: paymentResult, error: paymentError } = await supabase.rpc("record_payment_with_allocations", {
       p_org_id: context.organizationId,
-      p_po_id: data.purchaseOrderId || null,
+      p_po_id: nullableUuid(data.purchaseOrderId),
       p_dispatch_ids: data.dispatchRequestIds || [],
       p_amount: data.amount,
       p_payment_date: data.paymentDate,
@@ -1960,16 +2076,18 @@ export const submitPayment = createServerFn({ method: "POST" })
       p_user_id: context.userId,
       p_manual_allocations: data.allocations || [],
       p_status: "submitted",
-      p_verified_by: null
+      p_verified_by: nullableUuid(null)
     });
-    
+
     if (paymentError) throw new Error("Failed to insert payment: " + paymentError.message);
+    const rpcResult = paymentResult as RecordPaymentRpcResult | null;
+    if (!rpcResult?.payment_id) throw new Error("Payment RPC returned no payment_id");
 
     // Fetch the inserted payment to return it to the client
     const { data: insertedPayment } = await supabase
       .from("payments")
       .select("*")
-      .eq("id", paymentResult.payment_id)
+      .eq("id", rpcResult.payment_id)
       .single();
 
     return insertedPayment;
@@ -2328,12 +2446,12 @@ export const createOpeningBalance = createServerFn({ method: "POST" })
     }
 
     await createAuditLog(
-      supabase,
+      context.userId,
       "CREATE_OPENING_BALANCE",
       "invoices",
       inserted.id,
+      null,
       inserted,
-      context.userId,
     );
 
     return inserted;
@@ -3387,7 +3505,7 @@ export const recordPaymentAdmin = createServerFn({ method: "POST" })
 
     const { data: paymentResult, error } = await supabase.rpc("record_payment_with_allocations", {
       p_org_id: data.organizationId,
-      p_po_id: data.purchaseOrderId || null,
+      p_po_id: nullableUuid(data.purchaseOrderId),
       p_dispatch_ids: data.dispatchRequestIds || [],
       p_amount: data.amount,
       p_payment_date: data.paymentDate,
@@ -3403,12 +3521,14 @@ export const recordPaymentAdmin = createServerFn({ method: "POST" })
     });
 
     if (error) throw new Error("Failed to record payment via RPC: " + error.message);
+    const rpcResult = paymentResult as RecordPaymentRpcResult | null;
+    if (!rpcResult?.payment_id) throw new Error("Payment RPC returned no payment_id");
 
     // Fetch the inserted payment to return it to the client
     const { data: payment } = await supabase
       .from("payments")
       .select("*")
-      .eq("id", paymentResult.payment_id)
+      .eq("id", rpcResult.payment_id)
       .single();
 
     return { success: true, payment };
@@ -3612,4 +3732,43 @@ export const getExcelExportData = createServerFn({ method: "GET" })
       fromDate: fromDate || null,
       toDate: toDate || null,
     };
+  });
+
+export const getJournalFeed = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .handler(async ({ context }) => {
+    if (context.orgType !== "mundra") {
+      throw new Error("Unauthorized: Only mundra admin can view journal feed.");
+    }
+    const supabase = createSupabaseAdminClient();
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    const { data: logs, error } = await supabase
+      .from("audit_logs")
+      .select("id, action, table_name, created_at, user_id")
+      .gte("created_at", `${todayStr}T00:00:00Z`)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      throw new Error("Failed to fetch journal feed: " + error.message);
+    }
+
+    const userIds = Array.from(new Set((logs || []).map((l: any) => l.user_id).filter(Boolean)));
+    
+    let profilesMap = new Map();
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", userIds as string[]);
+      profilesMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+    }
+
+    return (logs || []).map((log: any) => {
+      const profile = profilesMap.get(log.user_id);
+      return {
+        ...log,
+        user_name: profile?.full_name || profile?.email || "System/Unknown",
+      };
+    });
   });
