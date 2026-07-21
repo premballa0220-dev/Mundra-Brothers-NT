@@ -178,12 +178,29 @@ export const getDashboardStats = createServerFn({ method: "GET" })
         .select("organization_id, amount, is_client_to_utcl, is_utcl_payment, status")
         .eq("status", "approved");
       
-      const validClientPayments = (payments || []).filter(
-        (p: any) => p.is_client_to_utcl || !p.is_utcl_payment,
-      );
       const paymentsByOrg = new Map<string, number>();
-      for (const p of validClientPayments) {
-        paymentsByOrg.set(p.organization_id, (paymentsByOrg.get(p.organization_id) || 0) + Number(p.amount || 0));
+      const mundraUtclPaymentsByOrg = new Map<string, number>();
+      
+      for (const p of payments || []) {
+        if (p.is_client_to_utcl || !p.is_utcl_payment) {
+          paymentsByOrg.set(p.organization_id, (paymentsByOrg.get(p.organization_id) || 0) + Number(p.amount || 0));
+        } else if (p.is_utcl_payment && !p.is_client_to_utcl) {
+          mundraUtclPaymentsByOrg.set(p.organization_id, (mundraUtclPaymentsByOrg.get(p.organization_id) || 0) + Number(p.amount || 0));
+        }
+      }
+
+      const { data: allAllocations } = await supabase
+        .from("invoice_allocations")
+        .select("invoice_id, allocated_amount, invoices!inner(organization_id)");
+
+      const allocationsByOrg = new Map<string, number>();
+      const allocationsByInvoice = new Map<string, number>();
+      for (const alloc of allAllocations || []) {
+        const orgId = (alloc.invoices as any)?.organization_id;
+        if (orgId) {
+          allocationsByOrg.set(orgId, (allocationsByOrg.get(orgId) || 0) + Number(alloc.allocated_amount || 0));
+          allocationsByInvoice.set(alloc.invoice_id, (allocationsByInvoice.get(alloc.invoice_id) || 0) + Number(alloc.allocated_amount || 0));
+        }
       }
 
       let outstanding = 0;
@@ -191,7 +208,8 @@ export const getDashboardStats = createServerFn({ method: "GET" })
       const allOrgIds = new Set([
         ...totalInvoicesByOrg.keys(),
         ...dispatchesByOrg.keys(),
-        ...paymentsByOrg.keys()
+        ...paymentsByOrg.keys(),
+        ...mundraUtclPaymentsByOrg.keys()
       ]);
       
       for (const orgId of allOrgIds) {
@@ -202,9 +220,10 @@ export const getDashboardStats = createServerFn({ method: "GET" })
         const totalPayTotal = paymentsByOrg.get(orgId) || 0;
         const payTotal = totalPayTotal - obAllocations;
         const dispTotal = dispatchesByOrg.get(orgId) || 0;
+        const mundraUtclTotal = mundraUtclPaymentsByOrg.get(orgId) || 0;
         
-        operationalOutstanding += calculateClientExposure(profile, invTotal, payTotal, dispTotal, 0);
-        outstanding += calculateClientExposure(profile, totalInvTotal, totalPayTotal, dispTotal, 0);
+        operationalOutstanding += calculateClientExposure(profile, invTotal + mundraUtclTotal, payTotal, dispTotal, 0);
+        outstanding += calculateClientExposure(profile, totalInvTotal + mundraUtclTotal, totalPayTotal, dispTotal, 0);
       }
 
       const unpaidInvoices = (allInvoices || []).filter(
@@ -213,11 +232,31 @@ export const getDashboardStats = createServerFn({ method: "GET" })
       const overdueInvoices = unpaidInvoices.filter(
         (invoice: any) => invoice.is_opening_balance || (invoice.due_date && invoice.due_date < todayStr),
       );
-      const overdue = overdueInvoices.reduce(
-        (sum: number, invoice: any) => sum + Number(invoice.amount || 0),
-        0,
-      );
-      const overdueClients = new Set(overdueInvoices.map((inv: any) => inv.organization_id)).size;
+      let overdue = 0;
+      let overdueClientsSet = new Set<string>();
+      
+      for (const orgId of allOrgIds) {
+        const orgOverdueInvoices = overdueInvoices.filter((i: any) => i.organization_id === orgId);
+        let orgOverdueInvoicesTotal = 0;
+        
+        for (const inv of orgOverdueInvoices) {
+          const alloc = allocationsByInvoice.get(inv.id) || 0;
+          orgOverdueInvoicesTotal += Math.max(0, Number(inv.amount || 0) - alloc);
+        }
+        
+        const mundraUtclTotal = mundraUtclPaymentsByOrg.get(orgId) || 0;
+        const clientPayments = paymentsByOrg.get(orgId) || 0;
+        const clientAllocations = allocationsByOrg.get(orgId) || 0;
+        const unallocatedClientPayments = Math.max(0, clientPayments - clientAllocations);
+        
+        const orgOverdue = Math.max(0, orgOverdueInvoicesTotal + mundraUtclTotal - unallocatedClientPayments);
+        
+        overdue += orgOverdue;
+        if (orgOverdue > 0) {
+          overdueClientsSet.add(orgId);
+        }
+      }
+      const overdueClients = overdueClientsSet.size;
 
       const { count: posPending } = await supabase
         .from("purchase_orders")
@@ -315,17 +354,42 @@ export const getDashboardStats = createServerFn({ method: "GET" })
       (sum: number, p: any) => sum + Number(p.amount || 0),
       0,
     );
+    
+    const mundraUtclPayments = (payments || []).filter(
+      (p: any) => p.is_utcl_payment && !p.is_client_to_utcl,
+    );
+    const mundraUtclTotal = mundraUtclPayments.reduce(
+      (sum: number, p: any) => sum + Number(p.amount || 0),
+      0,
+    );
 
-    const outstanding = calculateClientExposure(commProfile, invoiceDebits, totalCredits, dispatchDebits, 0);
+    const outstanding = calculateClientExposure(commProfile, invoiceDebits + mundraUtclTotal, totalCredits, dispatchDebits, 0);
+
+    const { data: allAllocations } = await supabase
+      .from("invoice_allocations")
+      .select("invoice_id, allocated_amount, invoices!inner(organization_id)")
+      .eq("invoices.organization_id", organizationId);
+
+    const allocationsByInvoice = new Map<string, number>();
+    const totalClientAllocations = (allAllocations || []).reduce((sum, alloc) => {
+      allocationsByInvoice.set(alloc.invoice_id, (allocationsByInvoice.get(alloc.invoice_id) || 0) + Number(alloc.allocated_amount || 0));
+      return sum + Number(alloc.allocated_amount || 0);
+    }, 0);
+
+    const unallocatedClientPayments = Math.max(0, totalCredits - totalClientAllocations);
 
     const unpaidInvoices = (allInvoices || []).filter((invoice: any) => invoice.status !== "paid");
     const overdueInvoices = unpaidInvoices.filter(
       (invoice: any) => invoice.is_opening_balance || (invoice.due_date && invoice.due_date < todayStr),
     );
-    const overdue = overdueInvoices.reduce(
-      (sum: number, invoice: any) => sum + Number(invoice.amount || 0),
-      0,
-    );
+    
+    let orgOverdueInvoicesTotal = 0;
+    for (const inv of overdueInvoices) {
+      const alloc = allocationsByInvoice.get(inv.id) || 0;
+      orgOverdueInvoicesTotal += Math.max(0, Number(inv.amount || 0) - alloc);
+    }
+    
+    const overdue = Math.max(0, orgOverdueInvoicesTotal + mundraUtclTotal - unallocatedClientPayments);
     const oldestOverdueDays = overdueInvoices.length
       ? Math.round(
           (today.getTime() - new Date(overdueInvoices[0].due_date).getTime()) /
@@ -1206,11 +1270,24 @@ async function runDispatchEligibilityCheck(dispatchRequestId: string, userId: st
     .select("*")
     .eq("organization_id", orgId)
     .neq("status", "cancelled");
+    
+  const { data: payments } = await supabase
+    .from("payments")
+    .select("amount, is_client_to_utcl, is_utcl_payment")
+    .eq("organization_id", orgId)
+    .eq("status", "approved");
+    
+  const clientPayments = (payments || []).filter((p: any) => p.is_client_to_utcl || !p.is_utcl_payment);
+  const totalPayments = clientPayments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+  
+  const mundraUtclPayments = (payments || []).filter((p: any) => p.is_utcl_payment && !p.is_client_to_utcl);
+  const mundraUtclTotal = mundraUtclPayments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+
   const nonObInvoices = (invoices || []).filter((inv: any) => !inv.is_opening_balance);
   const totalOutstanding = nonObInvoices.reduce(
     (sum: number, invoice: any) => sum + Number(invoice.amount || 0),
     0,
-  );
+  ) + mundraUtclTotal;
 
   const dueDateFns = (invoices || []).map((invoice: any) => {
     const dueDate = invoice.invoice_date ? new Date(invoice.invoice_date) : null;
@@ -1224,10 +1301,25 @@ async function runDispatchEligibilityCheck(dispatchRequestId: string, userId: st
     const dueDate = dueDateFns[index];
     return dueDate ? dueDate < new Date() : false;
   });
-  const totalOverdue = overdueInvoices.reduce(
-    (sum: number, invoice: any) => sum + Number(invoice.amount || 0),
-    0,
-  );
+
+  const { data: allAllocations } = await supabase
+    .from("invoice_allocations")
+    .select("invoice_id, allocated_amount, invoices!inner(organization_id)")
+    .eq("invoices.organization_id", orgId);
+    
+  const allocationsByInvoice = new Map<string, number>();
+  const totalClientAllocations = (allAllocations || []).reduce((sum, alloc) => {
+    allocationsByInvoice.set(alloc.invoice_id, (allocationsByInvoice.get(alloc.invoice_id) || 0) + Number(alloc.allocated_amount || 0));
+    return sum + Number(alloc.allocated_amount || 0);
+  }, 0);
+  const unallocatedClientPayments = Math.max(0, totalPayments - totalClientAllocations);
+
+  let orgOverdueInvoicesTotal = 0;
+  for (const inv of overdueInvoices) {
+    const alloc = allocationsByInvoice.get(inv.id) || 0;
+    orgOverdueInvoicesTotal += Math.max(0, Number(inv.amount || 0) - alloc);
+  }
+  const totalOverdue = Math.max(0, orgOverdueInvoicesTotal + mundraUtclTotal - unallocatedClientPayments);
 
   const { data: activeDRs } = await supabase
     .from("dispatch_requests")
@@ -1288,18 +1380,6 @@ async function runDispatchEligibilityCheck(dispatchRequestId: string, userId: st
       }
     }
   }
-
-  const { data: payments } = await supabase
-    .from("payments")
-    .select("amount")
-    .eq("organization_id", orgId)
-    .eq("is_client_to_utcl", true)
-    .eq("status", "approved");
-
-  const totalPayments = (payments || []).reduce(
-    (sum: number, p: any) => sum + Number(p.amount || 0),
-    0,
-  );
 
   const { data: obAllocations } = await supabase
     .from("invoice_allocations")
