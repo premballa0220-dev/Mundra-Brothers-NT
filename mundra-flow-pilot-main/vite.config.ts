@@ -14,5 +14,11 @@ export default defineConfig({
   },
   nitro: {
     preset: "vercel",
+    vercel: {
+      functions: {
+        maxDuration: 30,
+      },
+    },
+    compatibilityDate: "2025-01-01",
   },
 });
