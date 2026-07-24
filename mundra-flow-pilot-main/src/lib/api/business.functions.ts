@@ -631,6 +631,7 @@ export const createClient = createServerFn({ method: "POST" })
         .optional()
         .or(z.literal("")),
       creditLimit: z.number().nonnegative(),
+      annualInterestRate: z.number().nonnegative().default(0),
       paymentTermsDays: z.number().nonnegative(),
       gracePeriodDays: z.number().nonnegative(),
       includeUndispatchedPos: z.boolean().default(false),
@@ -687,6 +688,7 @@ export const createClient = createServerFn({ method: "POST" })
       id: profileId,
       organization_id: orgId,
       credit_limit: data.creditLimit,
+      annual_interest_rate: data.annualInterestRate,
       payment_terms_days: data.paymentTermsDays,
       grace_period_days: data.gracePeriodDays,
       include_undispatched_pos: data.includeUndispatchedPos,
@@ -937,6 +939,7 @@ export const updateClientCommercials = createServerFn({ method: "POST" })
     z.object({
       organizationId: z.string().min(1),
       creditLimit: z.number().nonnegative(),
+      annualInterestRate: z.number().nonnegative().default(0),
       paymentTermsDays: z.number().nonnegative(),
       gracePeriodDays: z.number().nonnegative(),
       includeUndispatchedPos: z.boolean(),
@@ -967,6 +970,7 @@ export const updateClientCommercials = createServerFn({ method: "POST" })
         id: crypto.randomUUID(),
         organization_id: data.organizationId,
         credit_limit: data.creditLimit,
+        annual_interest_rate: data.annualInterestRate,
         payment_terms_days: data.paymentTermsDays,
         grace_period_days: data.gracePeriodDays,
         include_undispatched_pos: data.includeUndispatchedPos,
@@ -981,6 +985,7 @@ export const updateClientCommercials = createServerFn({ method: "POST" })
         .from("client_commercial_profiles")
         .update({
           credit_limit: data.creditLimit,
+          annual_interest_rate: data.annualInterestRate,
           payment_terms_days: data.paymentTermsDays,
           grace_period_days: data.gracePeriodDays,
           include_undispatched_pos: data.includeUndispatchedPos,
@@ -3851,4 +3856,215 @@ export const getJournalFeed = createServerFn({ method: "GET" })
         user_name: profile?.full_name || profile?.email || "System/Unknown",
       };
     });
+  });
+
+export const getInterestSummary = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .handler(async ({ context }) => {
+    if (context.orgType !== "client") throw new Error("Unauthorized");
+    const supabase = createSupabaseAdminClient();
+    const today = new Date();
+    
+    // Fetch profile for terms and interest rate
+    const { data: profile } = await supabase
+      .from("client_commercial_profiles")
+      .select("annual_interest_rate, payment_terms_days, grace_period_days")
+      .eq("organization_id", context.organizationId)
+      .single();
+      
+    if (!profile) return [];
+
+    const rate = Number(profile.annual_interest_rate || 0);
+    const graceDays = Number(profile.grace_period_days || 0);
+    
+    // Fetch invoices and their allocations
+    const { data: invoices } = await supabase
+      .from("invoices")
+      .select(`
+        id,
+        invoice_number,
+        invoice_date,
+        due_date,
+        amount,
+        status,
+        is_opening_balance,
+        invoice_allocations (
+          allocated_amount,
+          payments (
+            payment_date,
+            status
+          )
+        )
+      `)
+      .eq("organization_id", context.organizationId)
+      .neq("status", "cancelled");
+
+    if (!invoices) return [];
+
+    const summaries: any[] = [];
+
+    for (const inv of invoices) {
+      if (inv.is_opening_balance) continue; // Skip opening balance for now unless instructed otherwise
+      const dueDate = new Date(inv.due_date);
+      const graceCutoff = new Date(dueDate);
+      graceCutoff.setDate(graceCutoff.getDate() + graceDays);
+
+      let totalInterest = 0;
+      let totalAllocated = 0;
+      const amount = Number(inv.amount || 0);
+
+      // Calculate interest on paid portions (allocations)
+      const allocations = Array.isArray(inv.invoice_allocations) ? inv.invoice_allocations : [];
+      for (const alloc of allocations) {
+        const payment = alloc.payments;
+        if (!payment || Array.isArray(payment) || payment.status !== "approved") continue; // only count approved payments
+
+        const allocAmount = Number(alloc.allocated_amount || 0);
+        totalAllocated += allocAmount;
+        
+        const payDate = new Date(payment.payment_date);
+        if (payDate > graceCutoff) {
+          const overdueDays = Math.max(0, Math.ceil((payDate.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)));
+          const interest = allocAmount * (rate / 100) * (overdueDays / 365);
+          totalInterest += interest;
+        }
+      }
+
+      // Calculate interest on unpaid portion
+      const unallocated = Math.max(0, amount - totalAllocated);
+      if (unallocated > 0 && today > graceCutoff) {
+        const overdueDays = Math.max(0, Math.ceil((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)));
+        const interest = unallocated * (rate / 100) * (overdueDays / 365);
+        totalInterest += interest;
+      }
+
+      let status = "Settled";
+      if (unallocated > 0) status = "Pending";
+      
+      // Determine max overdue days to display
+      let maxOverdueDays = 0;
+      if (unallocated > 0 && today > dueDate) {
+        maxOverdueDays = Math.max(0, Math.ceil((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)));
+      } else {
+        for (const alloc of allocations) {
+           const payment = alloc.payments;
+           if (payment && !Array.isArray(payment) && payment.status === "approved") {
+             const payDate = new Date(payment.payment_date);
+             if (payDate > dueDate) {
+                const days = Math.max(0, Math.ceil((payDate.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)));
+                if (days > maxOverdueDays) maxOverdueDays = days;
+             }
+           }
+        }
+      }
+
+      // Only push rows that actually accrued interest (or could accrue)
+      if (totalInterest > 0) {
+        summaries.push({
+          id: inv.id,
+          reference: inv.invoice_number,
+          date: inv.invoice_date,
+          principal: amount,
+          dueDate: inv.due_date,
+          actualPaymentDate: status === "Settled" ? "Fully Paid" : "Unpaid/Partial", // Simplified for table
+          overdueDays: maxOverdueDays,
+          rate,
+          interest: totalInterest,
+          status
+        });
+      }
+    }
+
+    return summaries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  });
+
+export const getAdminOverdueReport = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      clientId: z.string().optional().or(z.literal("all")),
+    })
+  )
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    if (!isSuperAdmin(context.roles)) throw new Error("Unauthorized");
+    
+    const supabase = createSupabaseAdminClient();
+    const today = new Date();
+
+    let query = supabase
+      .from("invoices")
+      .select(`
+        id,
+        invoice_number,
+        invoice_date,
+        due_date,
+        amount,
+        status,
+        is_opening_balance,
+        organization_id,
+        organizations (
+          legal_name,
+          trade_name
+        ),
+        invoice_allocations (
+          allocated_amount
+        )
+      `)
+      .in("status", ["pending", "partially_paid"])
+      .neq("is_opening_balance", true);
+
+    if (data.clientId && data.clientId !== "all") {
+      query = query.eq("organization_id", data.clientId);
+    }
+
+    const { data: invoices, error } = await query;
+    if (error || !invoices) return [];
+
+    const orgIds = Array.from(new Set(invoices.map((i: any) => i.organization_id)));
+    const { data: profiles } = await supabase
+      .from("client_commercial_profiles")
+      .select("organization_id, grace_period_days")
+      .in("organization_id", orgIds);
+
+    const profileMap = new Map((profiles || []).map((p: any) => [p.organization_id, p]));
+
+    const report = invoices.map((inv: any) => {
+      const amount = Number(inv.amount || 0);
+      const allocations = Array.isArray(inv.invoice_allocations) ? inv.invoice_allocations : [];
+      const totalAllocated = allocations.reduce((sum: number, alloc: any) => sum + Number(alloc.allocated_amount || 0), 0);
+      const unpaidAmount = Math.max(0, amount - totalAllocated);
+
+      const dueDate = new Date(inv.due_date);
+      const profile = profileMap.get(inv.organization_id);
+      const graceDays = Number(profile?.grace_period_days || 0);
+      
+      const graceCutoff = new Date(dueDate);
+      graceCutoff.setDate(graceCutoff.getDate() + graceDays);
+
+      let overdueDays = 0;
+      let isInGracePeriod = false;
+
+      if (today > dueDate) {
+        overdueDays = Math.max(0, Math.ceil((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)));
+        if (today <= graceCutoff) {
+          isInGracePeriod = true;
+        }
+      }
+
+      return {
+        id: inv.id,
+        invoice_number: inv.invoice_number,
+        client_name: inv.organizations?.trade_name || inv.organizations?.legal_name || "Unknown Client",
+        invoice_date: inv.invoice_date,
+        due_date: inv.due_date,
+        amount,
+        unpaid_amount: unpaidAmount,
+        overdue_days: overdueDays,
+        is_in_grace_period: isInGracePeriod,
+        status: inv.status
+      };
+    }).filter((r: any) => r.unpaid_amount > 0);
+
+    return report.sort((a, b) => b.overdue_days - a.overdue_days);
   });

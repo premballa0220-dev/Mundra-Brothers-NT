@@ -5,7 +5,8 @@ import {
   getBalanceConfirmations,
   uploadBalanceConfirmation,
   getInvoices,
-  getClientStatement
+  getClientStatement,
+  getInterestSummary
 } from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -69,6 +70,11 @@ function ClientLedgersPage() {
   const { data: statementData, isLoading: statementLoading } = useQuery({
     queryKey: ["client-statement", statementStart, statementEnd],
     queryFn: () => getClientStatement({ data: { startDate: statementStart, endDate: statementEnd } }),
+  });
+
+  const { data: interestSummary, isLoading: interestLoading } = useQuery({
+    queryKey: ["client-interest-summary"],
+    queryFn: () => getInterestSummary(),
   });
 
   const uploadMutation = useMutation({
@@ -262,6 +268,7 @@ function ClientLedgersPage() {
                 <TabsList>
                   <TabsTrigger value="statement">Statement of Account</TabsTrigger>
                   <TabsTrigger value="outstanding">Outstanding Invoices</TabsTrigger>
+                  <TabsTrigger value="interest">Interest Summary</TabsTrigger>
                 </TabsList>
               </div>
 
@@ -408,6 +415,89 @@ function ClientLedgersPage() {
                           <TableRow>
                             <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
                               No outstanding invoices found.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="interest">
+                <div className="grid gap-4 md:grid-cols-2 mb-6">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Overdue Interest Accrued</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-destructive">
+                        {formatCurrency(interestSummary?.reduce((sum: number, item: any) => sum + item.interest, 0) || 0)}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Outstanding Interest</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-destructive">
+                        {formatCurrency(interestSummary?.filter((i: any) => i.status === "Pending").reduce((sum: number, item: any) => sum + item.interest, 0) || 0)}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base font-semibold">Detailed Overdue Interest Breakdown</CardTitle>
+                    <CardDescription>Itemized calculation of late payment penalties per dispatch/invoice.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Invoice / Date</TableHead>
+                          <TableHead>Principal</TableHead>
+                          <TableHead>Due Date</TableHead>
+                          <TableHead>Payment</TableHead>
+                          <TableHead>Overdue Days</TableHead>
+                          <TableHead>Rate (%)</TableHead>
+                          <TableHead className="text-right">Interest Accrued</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {interestLoading ? (
+                           <TableRow>
+                              <TableCell colSpan={8} className="text-center py-10"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></TableCell>
+                           </TableRow>
+                        ) : interestSummary && interestSummary.length > 0 ? (
+                          interestSummary.map((item: any) => (
+                            <TableRow key={item.id}>
+                              <TableCell className="font-mono text-xs">
+                                <div>{item.reference}</div>
+                                <div className="text-[10px] text-muted-foreground">{new Date(item.date).toLocaleDateString()}</div>
+                              </TableCell>
+                              <TableCell className="font-medium text-xs">{formatCurrency(item.principal)}</TableCell>
+                              <TableCell className="text-xs">{new Date(item.dueDate).toLocaleDateString()}</TableCell>
+                              <TableCell className="text-xs">{item.actualPaymentDate}</TableCell>
+                              <TableCell className="text-xs text-destructive font-bold">{item.overdueDays}</TableCell>
+                              <TableCell className="text-xs">{item.rate}%</TableCell>
+                              <TableCell className="text-right font-bold text-destructive text-xs">
+                                {formatCurrency(item.interest)}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={item.status === "Settled" ? "default" : "destructive"} className="capitalize text-[10px]">
+                                  {item.status}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                              No overdue interest accrued.
                             </TableCell>
                           </TableRow>
                         )}
