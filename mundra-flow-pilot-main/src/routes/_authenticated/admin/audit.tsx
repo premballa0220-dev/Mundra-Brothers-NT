@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useQuery } from "@tanstack/react-query";
-import { getJournalEntries } from "@/lib/api/business.functions";
+import { getJournalEntries, getAdminOverdueReport } from "@/lib/api/business.functions";
 import { calculateLedgerBalances } from "@/lib/ledger";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -274,6 +274,11 @@ function AuditJournalPage() {
     queryFn: () => getJournalEntries(),
   });
 
+  const { data: overdueReport, isLoading: overdueLoading } = useQuery({
+    queryKey: ["admin-overdue-report", clientFilter],
+    queryFn: () => getAdminOverdueReport({ data: { clientId: clientFilter } }),
+  });
+
   const clientNames = useMemo(() => {
     const names = new Set<string>();
     for (const e of entries || []) {
@@ -406,10 +411,11 @@ function AuditJournalPage() {
         </header>
 
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-          <Tabs value={viewTab} onValueChange={(v: any) => setViewTab(v)} className="w-[350px]">
-            <TabsList className="grid w-full grid-cols-2">
+          <Tabs value={viewTab} onValueChange={(v: any) => setViewTab(v)} className="w-[450px]">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="journal">Journal Feed</TabsTrigger>
               <TabsTrigger value="ledger">Ledger Statements</TabsTrigger>
+              <TabsTrigger value="overdue">Aging & Overdue</TabsTrigger>
             </TabsList>
           </Tabs>
 
@@ -792,6 +798,74 @@ function AuditJournalPage() {
           </>
         )}
       </div>
+
+      {viewTab === "overdue" && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Aging & Overdue Invoices</CardTitle>
+            <CardDescription>
+              {clientFilter === "all" ? "Global view" : `${clientFilter}'s`} unpaid invoices and overdue days.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice No</TableHead>
+                  {clientFilter === "all" && <TableHead>Client Name</TableHead>}
+                  <TableHead>Invoice Date</TableHead>
+                  <TableHead>Due Date</TableHead>
+                  <TableHead className="text-right">Unpaid Amount</TableHead>
+                  <TableHead className="text-right">Overdue Days</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {overdueLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={clientFilter === "all" ? 7 : 6} className="text-center py-10 text-muted-foreground">
+                      <Loader2 className="h-5 w-5 animate-spin mx-auto" />
+                    </TableCell>
+                  </TableRow>
+                ) : overdueReport && overdueReport.length > 0 ? (
+                  overdueReport.map((inv: any) => (
+                    <TableRow key={inv.id}>
+                      <TableCell className="font-mono text-xs font-semibold">{inv.invoice_number}</TableCell>
+                      {clientFilter === "all" && <TableCell>{inv.client_name}</TableCell>}
+                      <TableCell>{new Date(inv.invoice_date).toLocaleDateString()}</TableCell>
+                      <TableCell>{new Date(inv.due_date).toLocaleDateString()}</TableCell>
+                      <TableCell className="text-right font-medium text-destructive">
+                        {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(inv.unpaid_amount)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {inv.overdue_days > 0 ? (
+                          <span className={`font-bold ${inv.is_in_grace_period ? "text-amber-500" : "text-destructive"}`}>
+                            {inv.overdue_days} Days
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">Not Overdue</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={inv.overdue_days > 0 ? (inv.is_in_grace_period ? "outline" : "destructive") : "secondary"} className="text-[10px] capitalize">
+                          {inv.status === "partially_paid" ? "Partial" : "Pending"}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={clientFilter === "all" ? 7 : 6} className="text-center py-10 text-muted-foreground">
+                      No unpaid invoices found for the selected criteria.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
       <CreditDebitNoteDialog open={isNoteDialogOpen} onOpenChange={setIsNoteDialogOpen} />
     </AppShell>
   );

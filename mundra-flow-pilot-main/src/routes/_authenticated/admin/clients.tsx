@@ -214,6 +214,7 @@ function AdminClientsPage() {
   const [initialOpeningBalanceDate, setInitialOpeningBalanceDate] = useState("");
 
   const [creditLimit, setCreditLimit] = useState<number | "">("");
+  const [annualInterestRate, setAnnualInterestRate] = useState<number | "">("");
   const [paymentTermsDays, setPaymentTermsDays] = useState<number | "">("");
   const [gracePeriodDays, setGracePeriodDays] = useState<number | "">("");
   const [includeUndispatched, setIncludeUndispatched] = useState(false);
@@ -303,6 +304,7 @@ function AdminClientsPage() {
     setInitialOpeningBalance("");
     setInitialOpeningBalanceDate("");
     setCreditLimit(0);
+    setAnnualInterestRate(0);
     setPaymentTermsDays(30);
     setGracePeriodDays(0);
     setIncludeUndispatched(false);
@@ -330,6 +332,7 @@ function AdminClientsPage() {
       primaryContactEmail,
       primaryContactPhone,
       creditLimit: creditLimit === "" ? 0 : creditLimit,
+      annualInterestRate: annualInterestRate === "" ? 0 : annualInterestRate,
       paymentTermsDays: paymentTermsDays === "" ? 30 : paymentTermsDays,
       gracePeriodDays: gracePeriodDays === "" ? 0 : gracePeriodDays,
       includeUndispatchedPos: includeUndispatched,
@@ -516,6 +519,18 @@ function AdminClientsPage() {
                           value={creditLimit}
                           onChange={(e) =>
                             setCreditLimit(e.target.value === "" ? "" : Number(e.target.value))
+                          }
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Interest Rate (%) *</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={annualInterestRate}
+                          onChange={(e) =>
+                            setAnnualInterestRate(e.target.value === "" ? "" : Number(e.target.value))
                           }
                           required
                         />
@@ -783,6 +798,7 @@ function ClientDetailsForm({
   const comm = client.client_commercial_profile || {};
 
   const [cl, setCl] = useState<number | "">(comm.credit_limit || "");
+  const [ir, setIr] = useState<number | "">(comm.annual_interest_rate || 0);
   const [pt, setPt] = useState<number | "">(comm.payment_terms_days || "");
   const [gp, setGp] = useState<number | "">(comm.grace_period_days || "");
   const [undispatched, setUndispatched] = useState(comm.include_undispatched_pos || false);
@@ -876,6 +892,7 @@ function ClientDetailsForm({
     mutation.mutate({
       organizationId: client.id,
       creditLimit: cl === "" ? 0 : cl,
+      annualInterestRate: ir === "" ? 0 : ir,
       paymentTermsDays: pt === "" ? 30 : pt,
       gracePeriodDays: gp === "" ? 0 : gp,
       includeUndispatchedPos: undispatched,
@@ -1100,6 +1117,15 @@ function ClientDetailsForm({
                 type="number"
                 value={cl}
                 onChange={(e) => setCl(e.target.value === "" ? "" : Number(e.target.value))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Interest Rate (%)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={ir}
+                onChange={(e) => setIr(e.target.value === "" ? "" : Number(e.target.value))}
               />
             </div>
             <div className="space-y-2">

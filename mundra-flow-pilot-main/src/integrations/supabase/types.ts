@@ -178,6 +178,7 @@ export type Database = {
       }
       client_commercial_profiles: {
         Row: {
+          annual_interest_rate: number
           commission_percentage: number | null
           created_at: string
           credit_limit: number
@@ -193,6 +194,7 @@ export type Database = {
           wallet_balance: number
         }
         Insert: {
+          annual_interest_rate?: number
           commission_percentage?: number | null
           created_at?: string
           credit_limit?: number
@@ -208,6 +210,7 @@ export type Database = {
           wallet_balance?: number
         }
         Update: {
+          annual_interest_rate?: number
           commission_percentage?: number | null
           created_at?: string
           credit_limit?: number
