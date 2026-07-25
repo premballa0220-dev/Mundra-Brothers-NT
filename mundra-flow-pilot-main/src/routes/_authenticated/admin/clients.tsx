@@ -212,6 +212,7 @@ function AdminClientsPage() {
 
   const [initialOpeningBalance, setInitialOpeningBalance] = useState<number | "">("");
   const [initialOpeningBalanceDate, setInitialOpeningBalanceDate] = useState("");
+  const [openingInvoices, setOpeningInvoices] = useState<{ invoiceNumber: string; amount: number | ""; date: string }[]>([]);
 
   const [creditLimit, setCreditLimit] = useState<number | "">("");
   const [annualInterestRate, setAnnualInterestRate] = useState<number | "">("");
@@ -303,6 +304,7 @@ function AdminClientsPage() {
     setPrimaryContactPhone("");
     setInitialOpeningBalance("");
     setInitialOpeningBalanceDate("");
+    setOpeningInvoices([]);
     setCreditLimit(0);
     setAnnualInterestRate(0);
     setPaymentTermsDays(30);
@@ -319,6 +321,15 @@ function AdminClientsPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    if (openingInvoices.length > 0) {
+      const sum = openingInvoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
+      if (sum !== Number(initialOpeningBalance || 0)) {
+        toast.error("The sum of historical invoices does not match the Initial Opening Balance.");
+        return;
+      }
+    }
+
     createMutation.mutate({
       legalName,
       shortName,
@@ -343,6 +354,7 @@ function AdminClientsPage() {
       deliveryLocations: deliveryLocations.map((l) => ({ ...l, isDefault: !!l.isDefault })),
       initialOpeningBalance: initialOpeningBalance === "" ? undefined : Number(initialOpeningBalance),
       initialOpeningBalanceDate: initialOpeningBalanceDate === "" ? undefined : initialOpeningBalanceDate,
+      openingInvoices: openingInvoices.filter(i => i.invoiceNumber && i.amount !== ""),
     });
   }
 
@@ -488,6 +500,82 @@ function AdminClientsPage() {
 
                   {/* Commercials */}
                   <div className="space-y-4">
+                    <h4 className="text-sm font-medium">Opening / Historical Invoices</h4>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <p className="text-xs text-muted-foreground">Optional: Add individual invoices that make up the opening balance.</p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setOpeningInvoices([...openingInvoices, { invoiceNumber: "", amount: "", date: "" }])}
+                        >
+                          <Plus className="h-3 w-3 mr-1" /> Add Invoice
+                        </Button>
+                      </div>
+                      {openingInvoices.map((inv, idx) => (
+                        <div key={idx} className="flex gap-3 items-end p-3 border rounded-md bg-muted/20">
+                          <div className="flex-1 space-y-1">
+                            <Label className="text-xs">Invoice Number *</Label>
+                            <Input 
+                              value={inv.invoiceNumber}
+                              onChange={(e) => {
+                                const newInvs = [...openingInvoices];
+                                newInvs[idx].invoiceNumber = e.target.value;
+                                setOpeningInvoices(newInvs);
+                              }}
+                              required
+                            />
+                          </div>
+                          <div className="flex-1 space-y-1">
+                            <Label className="text-xs">Amount (₹) *</Label>
+                            <Input 
+                              type="number"
+                              value={inv.amount}
+                              onChange={(e) => {
+                                const newInvs = [...openingInvoices];
+                                newInvs[idx].amount = e.target.value === "" ? "" : Number(e.target.value);
+                                setOpeningInvoices(newInvs);
+                              }}
+                              required
+                            />
+                          </div>
+                          <div className="flex-1 space-y-1">
+                            <Label className="text-xs">Date *</Label>
+                            <Input 
+                              type="date"
+                              value={inv.date}
+                              onChange={(e) => {
+                                const newInvs = [...openingInvoices];
+                                newInvs[idx].date = e.target.value;
+                                setOpeningInvoices(newInvs);
+                              }}
+                              required
+                            />
+                          </div>
+                          <Button 
+                            type="button" 
+                            variant="ghost" 
+                            size="icon" 
+                            className="text-destructive h-9 w-9 mb-0.5"
+                            onClick={() => setOpeningInvoices(openingInvoices.filter((_, i) => i !== idx))}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      {openingInvoices.length > 0 && (
+                        <div className="flex justify-between items-center text-sm px-1 pt-1">
+                          <span className="text-muted-foreground">Sum of Invoices:</span>
+                          <span className="font-medium text-primary">
+                            ₹{openingInvoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <hr className="border-border my-4" />
+
                     <h4 className="text-sm font-medium">Commercial Terms & Balances</h4>
                     <div className="grid grid-cols-2 gap-4 bg-muted/30 p-3 rounded-md border border-dashed">
                       <div className="space-y-2">
