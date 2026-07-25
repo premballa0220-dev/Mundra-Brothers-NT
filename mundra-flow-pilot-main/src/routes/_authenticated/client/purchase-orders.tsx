@@ -63,9 +63,10 @@ function ClientPurchaseOrdersPage() {
 
   // Form states
   const [poNumber, setPoNumber] = useState("");
-  const [productId, setProductId] = useState("");
-  const [quantity, setQuantity] = useState<number>(0);
-  const [lockedRate, setLockedRate] = useState<number>(0);
+  type LineItem = { productId: string; quantity: number; lockedRate: number; rateSource?: string };
+  const [lineItems, setLineItems] = useState<LineItem[]>([
+    { productId: "", quantity: 0, lockedRate: 0 },
+  ]);
   const [isExceptionRate, setIsExceptionRate] = useState(false);
   const [siteAddress, setSiteAddress] = useState("");
   const [deliveryContact, setDeliveryContact] = useState("");
@@ -109,18 +110,44 @@ function ClientPurchaseOrdersPage() {
     queryFn: () => getProducts(),
   });
 
-  const { data: applicableRateInfo, isLoading: rateLoading } = useQuery({
-    queryKey: ["applicable-rate", productId],
-    queryFn: () => getApplicableRate({ data: { productId } }),
-    enabled: !!productId,
-  });
+  const updateItem = (index: number, patch: Partial<LineItem>) => {
+    setLineItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)));
+  };
 
-  // Automatically compute / set rate when product is selected and not in exception mode
-  useEffect(() => {
-    if (applicableRateInfo && !isExceptionRate) {
-      setLockedRate(applicableRateInfo.rate);
+  // When a product is picked (and not an exception rate), auto-fetch its contract rate.
+  async function handleProductChange(index: number, newProductId: string) {
+    updateItem(index, { productId: newProductId });
+    if (newProductId && !isExceptionRate) {
+      try {
+        const info = await getApplicableRate({ data: { productId: newProductId } });
+        updateItem(index, { lockedRate: info?.rate ?? 0, rateSource: info?.source });
+      } catch {
+        updateItem(index, { lockedRate: 0, rateSource: undefined });
+      }
     }
-  }, [applicableRateInfo, isExceptionRate]);
+  }
+
+  const addLineItem = () =>
+    setLineItems((prev) => [...prev, { productId: "", quantity: 0, lockedRate: 0 }]);
+  const removeLineItem = (index: number) =>
+    setLineItems((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
+
+  // When exception mode is switched off, re-resolve every row's contract rate.
+  useEffect(() => {
+    if (isExceptionRate) return;
+    lineItems.forEach(async (it, i) => {
+      if (!it.productId) return;
+      try {
+        const info = await getApplicableRate({ data: { productId: it.productId } });
+        updateItem(i, { lockedRate: info?.rate ?? 0, rateSource: info?.source });
+      } catch {
+        /* leave as-is */
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isExceptionRate]);
+
+  const orderTotal = lineItems.reduce((s, it) => s + it.quantity * it.lockedRate, 0);
 
   const createMutation = useMutation({
     mutationFn: (newPo: any) => createPurchaseOrder({ data: newPo }),
@@ -135,9 +162,7 @@ function ClientPurchaseOrdersPage() {
 
   function resetForm() {
     setPoNumber("");
-    setProductId("");
-    setQuantity(0);
-    setLockedRate(0);
+    setLineItems([{ productId: "", quantity: 0, lockedRate: 0 }]);
     setIsExceptionRate(false);
     setSiteAddress("");
     setDeliveryContact("");
@@ -148,8 +173,17 @@ function ClientPurchaseOrdersPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (quantity <= 0) {
-      toast.error("Quantity must be greater than 0");
+    if (lineItems.some((it) => !it.productId)) {
+      toast.error("Please select a product for every line.");
+      return;
+    }
+    if (lineItems.some((it) => it.quantity <= 0)) {
+      toast.error("Every product needs a quantity greater than 0.");
+      return;
+    }
+    const productIds = lineItems.map((it) => it.productId);
+    if (new Set(productIds).size !== productIds.length) {
+      toast.error("The same product is listed more than once. Combine them into one line.");
       return;
     }
 
@@ -186,9 +220,11 @@ function ClientPurchaseOrdersPage() {
 
     createMutation.mutate({
       poNumber,
-      productId,
-      originalQuantity: quantity,
-      lockedRate,
+      items: lineItems.map((it) => ({
+        productId: it.productId,
+        quantity: it.quantity,
+        lockedRate: it.lockedRate,
+      })),
       isExceptionRate,
       siteAddress,
       deliveryContact,
@@ -243,61 +279,87 @@ function ClientPurchaseOrdersPage() {
                         required
                       />
                     </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="product">Product *</Label>
-                      <Select value={productId} onValueChange={setProductId} required>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select Product" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {products?.map((p: any) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.name} {p.packaging ? `- ${p.packaging}` : ""}{" "}
-                              {p.grade ? `(${p.grade})` : ""}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <Label htmlFor="quantity">Quantity *</Label>
-                      <Input
-                        id="quantity"
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={quantity || ""}
-                        onChange={(e) => setQuantity(Number(e.target.value))}
-                        required
-                      />
+                  {/* Product line items — add a row per product */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Products *</Label>
+                      <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
+                        <Plus className="h-3.5 w-3.5 mr-1" /> Add Product
+                      </Button>
                     </div>
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center h-4 mb-1">
-                        <Label>Contract Rate per MT</Label>
-                        {rateLoading && (
-                          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                        )}
-                        {applicableRateInfo && !rateLoading && (
-                          <span className="text-[10px] uppercase text-muted-foreground bg-secondary px-1.5 py-0.5 rounded font-medium tracking-wider">
-                            {applicableRateInfo.source}
-                          </span>
-                        )}
+                    {lineItems.map((item, index) => (
+                      <div
+                        key={index}
+                        className="grid grid-cols-[1fr_90px_110px_auto] gap-2 items-end border rounded-md p-2 bg-muted/20"
+                      >
+                        <div className="space-y-1">
+                          <Label className="text-xs">Product</Label>
+                          <Select
+                            value={item.productId}
+                            onValueChange={(v) => handleProductChange(index, v)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select Product" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {products?.map((p: any) => (
+                                <SelectItem key={p.id} value={p.id}>
+                                  {p.name} {p.packaging ? `- ${p.packaging}` : ""}{" "}
+                                  {p.grade ? `(${p.grade})` : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Qty (MT)</Label>
+                          <Input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={item.quantity || ""}
+                            onChange={(e) => updateItem(index, { quantity: Number(e.target.value) })}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between h-4">
+                            <Label className="text-xs">Rate/MT</Label>
+                            {item.rateSource && !isExceptionRate && (
+                              <span className="text-[9px] uppercase text-muted-foreground">
+                                {item.rateSource}
+                              </span>
+                            )}
+                          </div>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={item.lockedRate || ""}
+                            onChange={(e) =>
+                              updateItem(index, { lockedRate: Number(e.target.value) })
+                            }
+                            disabled={!isExceptionRate}
+                            className={
+                              !isExceptionRate
+                                ? "bg-muted font-semibold text-primary"
+                                : "font-semibold"
+                            }
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 text-destructive"
+                          disabled={lineItems.length === 1}
+                          onClick={() => removeLineItem(index)}
+                          title="Remove product"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
                       </div>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={lockedRate || ""}
-                        onChange={(e) => setLockedRate(Number(e.target.value))}
-                        disabled={!isExceptionRate}
-                        className={
-                          !isExceptionRate ? "bg-muted font-semibold text-primary" : "font-semibold"
-                        }
-                        required
-                      />
-                    </div>
+                    ))}
                   </div>
 
                   <div className="flex items-center space-x-2 border rounded-md p-3 bg-card mt-1">
@@ -315,9 +377,9 @@ function ClientPurchaseOrdersPage() {
                   </div>
 
                   <div className="space-y-1">
-                    <Label>Calculated PO Value</Label>
+                    <Label>Calculated PO Value ({lineItems.length} product{lineItems.length > 1 ? "s" : ""})</Label>
                     <div className="h-10 border border-success/30 rounded-md flex items-center px-3 bg-success/5 font-bold text-success text-lg">
-                      {formatCurrency(quantity * lockedRate)}
+                      {formatCurrency(orderTotal)}
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -440,7 +502,9 @@ function ClientPurchaseOrdersPage() {
                   <Button
                     type="submit"
                     disabled={
-                      createMutation.isPending || isUploading || (!lockedRate && quantity > 0)
+                      createMutation.isPending ||
+                      isUploading ||
+                      lineItems.some((it) => it.productId && !it.lockedRate)
                     }
                   >
                     {(createMutation.isPending || isUploading) && (
@@ -487,13 +551,39 @@ function ClientPurchaseOrdersPage() {
                             {po.po_number}
                           </div>
                         </TableCell>
-                        <TableCell>{po.product?.name}</TableCell>
-                        <TableCell className="text-right font-medium">
-                          {po.original_quantity}
-                        </TableCell>
-                        <TableCell className="text-right text-muted-foreground">
-                          {formatCurrency(po.locked_rate)}/MT
-                        </TableCell>
+                        {(() => {
+                          const rows =
+                            po.items && po.items.length > 0
+                              ? po.items
+                              : [
+                                  {
+                                    product: po.product,
+                                    original_quantity: po.original_quantity,
+                                    locked_rate: po.locked_rate,
+                                  },
+                                ];
+                          return (
+                            <>
+                              <TableCell>
+                                {rows.map((it: any, i: number) => (
+                                  <div key={i} className="whitespace-nowrap">
+                                    {it.product?.name ?? "—"}
+                                  </div>
+                                ))}
+                              </TableCell>
+                              <TableCell className="text-right font-medium">
+                                {rows.map((it: any, i: number) => (
+                                  <div key={i}>{it.original_quantity}</div>
+                                ))}
+                              </TableCell>
+                              <TableCell className="text-right text-muted-foreground">
+                                {rows.map((it: any, i: number) => (
+                                  <div key={i}>{formatCurrency(it.locked_rate)}/MT</div>
+                                ))}
+                              </TableCell>
+                            </>
+                          );
+                        })()}
                         <TableCell className="text-right font-medium">
                           {formatCurrency(po.total_value)}
                         </TableCell>

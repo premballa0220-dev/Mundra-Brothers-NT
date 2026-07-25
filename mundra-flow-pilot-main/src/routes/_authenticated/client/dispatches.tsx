@@ -71,9 +71,12 @@ function ClientDispatchesPage() {
   const [open, setOpen] = useState(false);
 
   // Form states
+  const today = new Date().toISOString().split("T")[0];
   const [purchaseOrderId, setPurchaseOrderId] = useState("");
-  const [quantity, setQuantity] = useState<number>(0);
-  const [requestedDate, setRequestedDate] = useState(new Date().toISOString().split("T")[0]); //Requested date is different than what was entered in Dispatch
+  // Per product-line inputs, keyed by purchase_order_item id.
+  const [itemInputs, setItemInputs] = useState<
+    Record<string, { quantity: number; requestedDate: string }>
+  >({});
   const [siteAddress, setSiteAddress] = useState("");
   const [deliveryContact, setDeliveryContact] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -116,6 +119,20 @@ function ClientDispatchesPage() {
     }
   }, [open, purchaseOrderId, pos, deliveryLocations]);
 
+  // Seed a quantity/date input for each product line when a PO is selected.
+  useEffect(() => {
+    const po = (pos ?? []).find((p: any) => p.id === purchaseOrderId);
+    const items = po?.items ?? [];
+    if (items.length > 0) {
+      const init: Record<string, { quantity: number; requestedDate: string }> = {};
+      for (const it of items) init[it.id] = { quantity: 0, requestedDate: today };
+      setItemInputs(init);
+    } else {
+      setItemInputs({});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [purchaseOrderId, pos]);
+
   const createMutation = useMutation({
     mutationFn: (newDr: any) => createDispatchRequest({ data: newDr }),
     onSuccess: () => {
@@ -131,8 +148,7 @@ function ClientDispatchesPage() {
 
   function resetForm() {
     setPurchaseOrderId("");
-    setQuantity(0);
-    setRequestedDate(new Date().toISOString().split("T")[0]);
+    setItemInputs({});
     setSiteAddress("");
     setDeliveryContact("");
     setInvoiceNumber("");
@@ -140,24 +156,39 @@ function ClientDispatchesPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (quantity <= 0) {
-      toast.error("Quantity must be greater than 0");
-      return;
+    const lines: Array<{ purchaseOrderItemId: string; quantity: number; requestedDate: string }> =
+      [];
+    for (const it of selectedItems) {
+      const input = itemInputs[it.id];
+      if (!input || input.quantity <= 0) continue; // skip products left at 0
+      const remaining = Math.max(0, Number(it.original_quantity) - usedByItem(it.id));
+      if (input.quantity > remaining) {
+        toast.error(
+          `${it.product?.name ?? "A product"}: requested ${input.quantity} MT exceeds remaining ${remaining.toFixed(2)} MT`,
+        );
+        return;
+      }
+      if (!input.requestedDate) {
+        toast.error(`Set a delivery date for ${it.product?.name ?? "each product"}.`);
+        return;
+      }
+      lines.push({
+        purchaseOrderItemId: it.id,
+        quantity: input.quantity,
+        requestedDate: input.requestedDate,
+      });
     }
-    if (quantity > remainingQty) {
-      toast.error(
-        `Cannot request dispatch. Requested ${quantity} MT exceeds remaining quantity ${remainingQty.toFixed(2)} MT`,
-      );
+    if (lines.length === 0) {
+      toast.error("Enter a quantity for at least one product.");
       return;
     }
     createMutation.mutate({
       purchaseOrderId,
-      quantity,
-      requestedDate,
+      lines,
       siteAddress,
       deliveryContact,
       invoiceNumber,
-    }); //po
+    });
   }
 
   const formatCurrency = (amount: number) => {
@@ -171,14 +202,13 @@ function ClientDispatchesPage() {
   const approvedPOs = pos?.filter((p: any) => p.status === "approved") ?? [];
 
   const selectedPO = approvedPOs.find((p: any) => p.id === purchaseOrderId);
-  const poOriginalQty = selectedPO ? Number(selectedPO.original_quantity) : 0;
-  const usedQty =
-    selectedPO && dispatches
-      ? dispatches
-          .filter((dr: any) => dr.purchase_order_id === purchaseOrderId && dr.status !== "rejected")
-          .reduce((sum: number, dr: any) => sum + Number(dr.quantity), 0)
-      : 0;
-  const remainingQty = Math.max(0, poOriginalQty - usedQty);
+  const selectedItems: any[] = selectedPO?.items ?? [];
+
+  // How much of a given product line has already been dispatched (non-rejected).
+  const usedByItem = (itemId: string) =>
+    (dispatches ?? [])
+      .filter((dr: any) => dr.purchase_order_item_id === itemId && dr.status !== "rejected")
+      .reduce((sum: number, dr: any) => sum + Number(dr.quantity), 0);
 
   return (
     <AppShell variant="client">
@@ -213,61 +243,92 @@ function ClientDispatchesPage() {
                         <SelectValue placeholder="Select Approved PO" />
                       </SelectTrigger>
                       <SelectContent>
-                        {approvedPOs.map((p: any) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.po_number} — {p.product?.name ?? "Product"} (
-                            {Number(p.original_quantity).toFixed(0)} MT @{" "}
-                            {formatCurrency(Number(p.locked_rate))}/MT)
-                          </SelectItem>
-                        ))}
+                        {approvedPOs.map((p: any) => {
+                          const count = p.items?.length ?? 1;
+                          return (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.po_number} —{" "}
+                              {count > 1
+                                ? `${count} products`
+                                : (p.items?.[0]?.product?.name ?? p.product?.name ?? "Product")}
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-end gap-2">
-                        <Label htmlFor="qty" className="shrink-0">
-                          Dispatch Qty (MT) *
-                        </Label>
-                        {selectedPO && (
-                          <span className="text-[10px] text-muted-foreground font-medium bg-muted px-2 py-0.5 rounded text-right">
-                            PO: {poOriginalQty.toFixed(2)} | Used: {usedQty.toFixed(2)} | Rem:{" "}
-                            {remainingQty.toFixed(2)}
-                          </span>
-                        )}
-                      </div>
-                      <Input
-                        id="qty"
-                        type="number"
-                        min="0.01"
-                        max={selectedPO ? remainingQty : undefined}
-                        step="0.01"
-                        value={quantity || ""}
-                        onChange={(e) => setQuantity(Number(e.target.value))}
-                        required
-                        className={
-                          quantity > remainingQty
-                            ? "border-destructive focus-visible:ring-destructive"
-                            : ""
-                        }
-                      />
-                      {quantity > remainingQty && (
-                        <p className="text-[10px] text-destructive mt-1 font-medium">
-                          Quantity exceeds remaining balance.
-                        </p>
-                      )}
+                  {selectedPO && (
+                    <div className="space-y-2">
+                      <Label>Products to dispatch *</Label>
+                      {selectedItems.map((it: any) => {
+                        const used = usedByItem(it.id);
+                        const remaining = Math.max(0, Number(it.original_quantity) - used);
+                        const input = itemInputs[it.id] ?? { quantity: 0, requestedDate: today };
+                        const over = input.quantity > remaining;
+                        return (
+                          <div key={it.id} className="border rounded-md p-2 space-y-2 bg-muted/20">
+                            <div className="flex justify-between items-center gap-2">
+                              <span className="text-sm font-medium">
+                                {it.product?.name ?? "Product"}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground font-medium bg-muted px-2 py-0.5 rounded">
+                                PO: {Number(it.original_quantity).toFixed(2)} | Used:{" "}
+                                {used.toFixed(2)} | Rem: {remaining.toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Dispatch Qty (MT)</Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max={remaining}
+                                  step="0.01"
+                                  value={input.quantity || ""}
+                                  onChange={(e) =>
+                                    setItemInputs((prev) => ({
+                                      ...prev,
+                                      [it.id]: {
+                                        requestedDate: prev[it.id]?.requestedDate ?? today,
+                                        quantity: Number(e.target.value),
+                                      },
+                                    }))
+                                  }
+                                  className={
+                                    over ? "border-destructive focus-visible:ring-destructive" : ""
+                                  }
+                                />
+                                {over && (
+                                  <p className="text-[10px] text-destructive font-medium">
+                                    Exceeds remaining balance.
+                                  </p>
+                                )}
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Requested Delivery Date</Label>
+                                <Input
+                                  type="date"
+                                  value={input.requestedDate}
+                                  onChange={(e) =>
+                                    setItemInputs((prev) => ({
+                                      ...prev,
+                                      [it.id]: {
+                                        quantity: prev[it.id]?.quantity ?? 0,
+                                        requestedDate: e.target.value,
+                                      },
+                                    }))
+                                  }
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <p className="text-[10px] text-muted-foreground">
+                        Leave a product's quantity at 0 to skip it.
+                      </p>
                     </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="date">Requested Delivery Date *</Label>
-                      <Input
-                        id="date"
-                        type="date"
-                        value={requestedDate}
-                        onChange={(e) => setRequestedDate(e.target.value)}
-                        required
-                      />
-                    </div>
-                  </div>
+                  )}
                   <div className="space-y-1">
                     <Label htmlFor="address">Site Address *</Label>
                     {deliveryLocations && deliveryLocations.length > 0 ? (
@@ -446,17 +507,27 @@ function ClientDispatchesPage() {
                           <TableCell className="font-semibold">
                             {dr.purchase_order?.po_number ?? "—"}
                           </TableCell>
-                          <TableCell>{dr.purchase_order?.product?.name ?? "—"}</TableCell>
                           <TableCell>
-                            {formatCurrency(Number(dr.purchase_order?.locked_rate || 0))}
+                            {dr.purchase_order_item?.product?.name ??
+                              dr.purchase_order?.product?.name ??
+                              "—"}
+                          </TableCell>
+                          <TableCell>
+                            {formatCurrency(
+                              Number(
+                                dr.purchase_order_item?.locked_rate ??
+                                  dr.purchase_order?.locked_rate ??
+                                  0,
+                              ),
+                            )}
                           </TableCell>
                           <TableCell>{Number(dr.quantity).toFixed(2)} MT</TableCell>
                           <TableCell>
                             {formatCurrency(
                               Number(dr.quantity) *
                                 Number(
-                                  dr.purchase_order?.locked_rate ||
-                                    dr.purchase_orders?.locked_rate ||
+                                  dr.purchase_order_item?.locked_rate ??
+                                    dr.purchase_order?.locked_rate ??
                                     0,
                                 ),
                             )}

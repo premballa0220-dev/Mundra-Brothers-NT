@@ -318,9 +318,7 @@ function AdminPOQueuePage() {
     createPOMutation.mutate({
       organizationId: selectedClientId,
       poNumber,
-      productId,
-      originalQuantity: quantity,
-      lockedRate,
+      items: [{ productId, quantity, lockedRate: isExceptionRate ? lockedRate : undefined }],
       isExceptionRate,
       siteAddress,
       deliveryContact,

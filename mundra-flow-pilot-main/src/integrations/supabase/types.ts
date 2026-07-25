@@ -552,6 +552,7 @@ export type Database = {
           invoice_number: string | null
           organization_id: string
           purchase_order_id: string
+          purchase_order_item_id: string | null
           quantity: number
           requested_date: string
           site_address: string
@@ -568,6 +569,7 @@ export type Database = {
           invoice_number?: string | null
           organization_id: string
           purchase_order_id: string
+          purchase_order_item_id?: string | null
           quantity: number
           requested_date: string
           site_address: string
@@ -584,6 +586,7 @@ export type Database = {
           invoice_number?: string | null
           organization_id?: string
           purchase_order_id?: string
+          purchase_order_item_id?: string | null
           quantity?: number
           requested_date?: string
           site_address?: string
@@ -1039,6 +1042,54 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_order_items: {
+        Row: {
+          created_at: string
+          id: string
+          locked_rate: number
+          original_quantity: number
+          product_id: string
+          purchase_order_id: string
+          total_value: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          locked_rate: number
+          original_quantity: number
+          product_id: string
+          purchase_order_id: string
+          total_value: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          locked_rate?: number
+          original_quantity?: number
+          product_id?: string
+          purchase_order_id?: string
+          total_value?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_order_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_items_purchase_order_id_fkey"
+            columns: ["purchase_order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
             referencedColumns: ["id"]
           },
         ]
