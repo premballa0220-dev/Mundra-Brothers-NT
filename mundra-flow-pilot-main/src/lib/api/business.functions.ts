@@ -652,6 +652,15 @@ export const createClient = createServerFn({ method: "POST" })
         .optional(),
       initialOpeningBalance: z.number().optional(),
       initialOpeningBalanceDate: z.string().optional(),
+      openingInvoices: z
+        .array(
+          z.object({
+            invoiceNumber: z.string().min(1),
+            amount: z.number().positive(),
+            date: z.string().min(1),
+          }),
+        )
+        .optional(),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -696,6 +705,7 @@ export const createClient = createServerFn({ method: "POST" })
       include_unpaid_invoices: data.includeUnpaidInvoices,
       restrictions: data.restrictions || null,
       commission_percentage: null,
+      historical_invoices: data.openingInvoices || [],
     };
     const { error: profileError } = await supabase
       .from("client_commercial_profiles")
