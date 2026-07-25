@@ -8,7 +8,8 @@ import {
   updateClientCommercials,
   updateClient,
   createOpeningBalance,
-  cancelOpeningBalanceAction
+  cancelOpeningBalanceAction,
+  deleteClientAdmin
 } from "@/lib/api/business.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -50,8 +51,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Building2, Plus, Loader2, MoreVertical, Ban, CheckCircle2, X } from "lucide-react";
-
+import { Building2, Plus, Loader2, MoreVertical, Ban, CheckCircle2, X, Trash2 } from "lucide-react";
 function DeliveryLocationsBuilder({
   locations,
   setLocations,
@@ -213,7 +213,6 @@ function AdminClientsPage() {
   const [initialOpeningBalance, setInitialOpeningBalance] = useState<number | "">("");
   const [initialOpeningBalanceDate, setInitialOpeningBalanceDate] = useState("");
   const [openingInvoices, setOpeningInvoices] = useState<{ invoiceNumber: string; amount: number | ""; date: string }[]>([]);
-
   useEffect(() => {
     if (openingInvoices.length > 0) {
       const sum = openingInvoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
@@ -294,6 +293,18 @@ function AdminClientsPage() {
     },
     onError: (err: any) => {
       toast.error(err?.message ?? "Failed to update client");
+    },
+  });
+
+  const deleteClientMutation = useMutation({
+    mutationFn: (organizationId: string) => deleteClientAdmin({ data: { organizationId } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-clients"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-dashboard-stats"] });
+      toast.success("Client deleted successfully!");
+    },
+    onError: (err: any) => {
+      toast.error(err?.message ?? "Failed to delete client");
     },
   });
 
@@ -801,6 +812,16 @@ function AdminClientsPage() {
                                       <CheckCircle2 className="h-4 w-4 mr-2" /> Reactivate
                                     </DropdownMenuItem>
                                   )}
+                                  <DropdownMenuItem
+                                    className="text-red-600 focus:text-red-700 focus:bg-red-50"
+                                    onClick={() => {
+                                      if (window.confirm("Are you sure you want to delete this client? This cannot be undone.")) {
+                                        deleteClientMutation.mutate(client.id);
+                                      }
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" /> Delete Client
+                                  </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </div>

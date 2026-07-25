@@ -944,6 +944,33 @@ export const updateClientStatus = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+export const deleteClientAdmin = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      organizationId: z.string().min(1),
+    }),
+  )
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    if (!isSuperAdmin(context.roles)) {
+      throw new Error("Unauthorized");
+    }
+
+    const supabase = createSupabaseAdminClient();
+    const { error } = await supabase.from("organizations").delete().eq("id", data.organizationId);
+
+    if (error) {
+      if (error.message.includes("foreign key constraint") || error.message.includes("violates foreign key constraint")) {
+        throw new Error("Cannot delete this client because it has associated records (e.g., invoices, POs).");
+      }
+      throw new Error("Failed to delete client: " + error.message);
+    }
+    
+    await createAuditLog(context.userId, "DELETE_CLIENT", "organizations", data.organizationId, null, null);
+    return { success: true };
+  });
+
 export const updateClientCommercials = createServerFn({ method: "POST" })
   .middleware([requireAuth])
   .validator(
@@ -2463,10 +2490,25 @@ export const getInvoices = createServerFn({ method: "GET" })
     }
 
     const { data: invoices } = await query;
+    const orgIds = [...new Set((invoices || []).map((i: any) => i.organization_id).filter(Boolean))];
+    
+    let profilesMap = new Map();
+    if (orgIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from("client_commercial_profiles")
+        .select("organization_id, historical_invoices")
+        .in("organization_id", orgIds);
+      profilesMap = new Map((profiles || []).map((p: any) => [p.organization_id, p]));
+    }
+
     const organizationsMap = await loadOrganizationsMap();
-    return (invoices || []).map((invoice: any) =>
-      withNestedOrganization(invoice, organizationsMap),
-    );
+    return (invoices || []).map((invoice: any) => {
+      const nested = withNestedOrganization(invoice, organizationsMap);
+      if (invoice.is_opening_balance) {
+        nested.historical_invoices = profilesMap.get(invoice.organization_id)?.historical_invoices || [];
+      }
+      return nested;
+    });
   });
 
 export const getClientStatement = createServerFn({ method: "GET" })
@@ -2490,6 +2532,12 @@ export const getClientStatement = createServerFn({ method: "GET" })
       .eq("organization_id", targetOrgId)
       .eq("is_opening_balance", true)
       .neq("status", "cancelled");
+
+    const { data: clientProfile } = await supabase
+      .from("client_commercial_profiles")
+      .select("historical_invoices")
+      .eq("organization_id", targetOrgId)
+      .single();
 
     // Fetch dispatches
     const { data: dispatches } = await supabase
@@ -2527,7 +2575,7 @@ export const getClientStatement = createServerFn({ method: "GET" })
         timestamp: ob.invoice_date,
         created_at: ob.created_at,
         title: "Opening Balance",
-        meta: { amount: ob.amount, invoice_number: ob.invoice_number, client_name: targetOrgId },
+        meta: { amount: ob.amount, invoice_number: ob.invoice_number, client_name: targetOrgId, historical_invoices: clientProfile?.historical_invoices || [] },
       });
     }
 

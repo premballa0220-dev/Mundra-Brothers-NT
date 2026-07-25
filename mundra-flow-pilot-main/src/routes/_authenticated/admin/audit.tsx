@@ -25,6 +25,8 @@ import {
   ArrowRight,
   BookOpen,
   AlertCircle,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import {

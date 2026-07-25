@@ -32,9 +32,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { useState } from "react";
+import React, { useState } from "react";
 import { toast } from "sonner";
-import { FileSignature, UploadCloud, AlertCircle, FileText, Loader2 } from "lucide-react";
+import { FileSignature, UploadCloud, AlertCircle, FileText, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/client/ledgers")({
   ssr: false,
@@ -46,6 +46,17 @@ function ClientLedgersPage() {
   const [open, setOpen] = useState(false);
   const [selectedConfId, setSelectedConfId] = useState("");
   const [signedPdfUrl, setSignedPdfUrl] = useState("");
+
+  const [expandedStatementIds, setExpandedStatementIds] = useState<Record<string, boolean>>({});
+  const [expandedInvoiceIds, setExpandedInvoiceIds] = useState<Record<string, boolean>>({});
+
+  const toggleStatementExpanded = (id: string) => {
+    setExpandedStatementIds(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const toggleInvoiceExpanded = (id: string) => {
+    setExpandedInvoiceIds(prev => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const { data: confirmations, isLoading: confsLoading } = useQuery({
     queryKey: ["client-confirmations"],
@@ -322,22 +333,69 @@ function ClientLedgersPage() {
                           
                           {statementData?.statement && statementData.statement.length > 0 ? (
                             statementData.statement.map((entry: any) => (
-                              <TableRow key={entry.id}>
-                                <TableCell className="text-xs">
-                                  {new Date(entry.date).toLocaleDateString()}
-                                </TableCell>
-                                <TableCell className="text-xs">{entry.particulars}</TableCell>
-                                <TableCell className="text-xs font-mono">{entry.reference}</TableCell>
-                                <TableCell className="text-right text-xs text-destructive">
-                                  {entry.debit > 0 ? formatCurrency(entry.debit) : "-"}
-                                </TableCell>
-                                <TableCell className="text-right text-xs text-success">
-                                  {entry.credit > 0 ? formatCurrency(entry.credit) : "-"}
-                                </TableCell>
-                                <TableCell className="text-right text-xs font-semibold">
-                                  {formatCurrency(entry.runningBalance)}
-                                </TableCell>
-                              </TableRow>
+                              <React.Fragment key={entry.id}>
+                                <TableRow>
+                                  <TableCell className="text-xs">
+                                    {new Date(entry.date).toLocaleDateString()}
+                                  </TableCell>
+                                  <TableCell className="text-xs">
+                                    <div className="flex items-center gap-2">
+                                      {entry.particulars}
+                                      {entry.type === "opening_balance" && entry.meta?.historical_invoices && entry.meta.historical_invoices.length > 0 && (
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-5 w-5 ml-1"
+                                          onClick={() => toggleStatementExpanded(entry.id)}
+                                        >
+                                          {expandedStatementIds[entry.id] ? (
+                                            <ChevronUp className="h-3 w-3" />
+                                          ) : (
+                                            <ChevronDown className="h-3 w-3" />
+                                          )}
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-xs font-mono">{entry.reference}</TableCell>
+                                  <TableCell className="text-right text-xs text-destructive">
+                                    {entry.debit > 0 ? formatCurrency(entry.debit) : "-"}
+                                  </TableCell>
+                                  <TableCell className="text-right text-xs text-success">
+                                    {entry.credit > 0 ? formatCurrency(entry.credit) : "-"}
+                                  </TableCell>
+                                  <TableCell className="text-right text-xs font-semibold">
+                                    {formatCurrency(entry.runningBalance)}
+                                  </TableCell>
+                                </TableRow>
+                                {expandedStatementIds[entry.id] && entry.meta?.historical_invoices && entry.meta.historical_invoices.length > 0 && (
+                                  <TableRow className="bg-muted/10">
+                                    <TableCell colSpan={6} className="p-0">
+                                      <div className="p-4 pl-12 border-l-2 border-primary/50">
+                                        <h5 className="text-xs font-semibold mb-2 text-muted-foreground">Historical Invoices Breakdown</h5>
+                                        <Table className="w-auto border bg-background rounded-md">
+                                          <TableHeader>
+                                            <TableRow>
+                                              <TableHead className="h-8">Invoice No</TableHead>
+                                              <TableHead className="h-8">Date</TableHead>
+                                              <TableHead className="h-8 text-right">Amount</TableHead>
+                                            </TableRow>
+                                          </TableHeader>
+                                          <TableBody>
+                                            {entry.meta.historical_invoices.map((hInv: any, i: number) => (
+                                              <TableRow key={i}>
+                                                <TableCell className="py-2 font-mono text-xs">{hInv.invoiceNumber}</TableCell>
+                                                <TableCell className="py-2 text-xs">{hInv.date}</TableCell>
+                                                <TableCell className="py-2 text-xs text-right font-semibold">{formatCurrency(Number(hInv.amount))}</TableCell>
+                                              </TableRow>
+                                            ))}
+                                          </TableBody>
+                                        </Table>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                              </React.Fragment>
                             ))
                           ) : (
                             <TableRow>
@@ -382,34 +440,79 @@ function ClientLedgersPage() {
                       <TableBody>
                         {invoices && invoices.length > 0 ? (
                           invoices.map((inv: any) => (
-                            <TableRow key={inv.id}>
-                              <TableCell className="font-mono text-xs font-semibold">
-                                {inv.is_opening_balance ? (
-                                  <span className="text-primary italic">Opening Balance</span>
-                                ) : (
-                                  inv.invoice_number
-                                )}
-                              </TableCell>
-                              <TableCell>{new Date(inv.invoice_date).toLocaleDateString()}</TableCell>
-                              <TableCell className="font-bold text-success">
-                                {formatCurrency(inv.amount)}
-                              </TableCell>
-                              <TableCell>{new Date(inv.due_date).toLocaleDateString()}</TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant={
-                                    inv.status === "paid"
-                                      ? "default"
-                                      : inv.status === "partially_paid"
-                                        ? "secondary"
-                                        : "destructive"
-                                  }
-                                  className="capitalize"
-                                >
-                                  {inv.status === "partially_paid" ? "Partially Paid" : inv.status}
-                                </Badge>
-                              </TableCell>
-                            </TableRow>
+                            <React.Fragment key={inv.id}>
+                              <TableRow>
+                                <TableCell className="font-mono text-xs font-semibold">
+                                  {inv.is_opening_balance ? (
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-primary italic">Opening Balance</span>
+                                      {inv.historical_invoices && inv.historical_invoices.length > 0 && (
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-5 w-5 ml-1"
+                                          onClick={() => toggleInvoiceExpanded(inv.id)}
+                                        >
+                                          {expandedInvoiceIds[inv.id] ? (
+                                            <ChevronUp className="h-3 w-3" />
+                                          ) : (
+                                            <ChevronDown className="h-3 w-3" />
+                                          )}
+                                        </Button>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    inv.invoice_number
+                                  )}
+                                </TableCell>
+                                <TableCell>{new Date(inv.invoice_date).toLocaleDateString()}</TableCell>
+                                <TableCell className="font-bold text-success">
+                                  {formatCurrency(inv.amount)}
+                                </TableCell>
+                                <TableCell>{new Date(inv.due_date).toLocaleDateString()}</TableCell>
+                                <TableCell>
+                                  <Badge
+                                    variant={
+                                      inv.status === "paid"
+                                        ? "default"
+                                        : inv.status === "partially_paid"
+                                          ? "secondary"
+                                          : "destructive"
+                                    }
+                                    className="capitalize"
+                                  >
+                                    {inv.status === "partially_paid" ? "Partially Paid" : inv.status}
+                                  </Badge>
+                                </TableCell>
+                              </TableRow>
+                              {expandedInvoiceIds[inv.id] && inv.historical_invoices && inv.historical_invoices.length > 0 && (
+                                <TableRow className="bg-muted/10">
+                                  <TableCell colSpan={5} className="p-0">
+                                    <div className="p-4 pl-12 border-l-2 border-primary/50">
+                                      <h5 className="text-xs font-semibold mb-2 text-muted-foreground">Historical Invoices Breakdown</h5>
+                                      <Table className="w-auto border bg-background rounded-md">
+                                        <TableHeader>
+                                          <TableRow>
+                                            <TableHead className="h-8">Invoice No</TableHead>
+                                            <TableHead className="h-8">Date</TableHead>
+                                            <TableHead className="h-8 text-right">Amount</TableHead>
+                                          </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                          {inv.historical_invoices.map((hInv: any, i: number) => (
+                                            <TableRow key={i}>
+                                              <TableCell className="py-2 font-mono text-xs">{hInv.invoiceNumber}</TableCell>
+                                              <TableCell className="py-2 text-xs">{hInv.date}</TableCell>
+                                              <TableCell className="py-2 text-xs text-right font-semibold">{formatCurrency(Number(hInv.amount))}</TableCell>
+                                            </TableRow>
+                                          ))}
+                                        </TableBody>
+                                      </Table>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </React.Fragment>
                           ))
                         ) : (
                           <TableRow>

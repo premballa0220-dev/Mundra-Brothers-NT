@@ -1,2 +1,2 @@
 ALTER TABLE public.client_commercial_profiles
-ADD COLUMN historical_invoices JSONB DEFAULT '[]'::jsonb;
+ADD COLUMN IF NOT EXISTS historical_invoices JSONB DEFAULT '[]'::jsonb;
