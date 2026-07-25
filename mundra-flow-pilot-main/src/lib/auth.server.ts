@@ -44,6 +44,40 @@ export function createSupabaseAdminClient() {
   });
 }
 
+function isTransientNetworkError(err: any): boolean {
+  const msg = String(err?.message ?? err ?? "");
+  const cause = String(err?.cause?.code ?? err?.cause?.message ?? "");
+  return /fetch failed|network|socket hang up|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|ECONNREFUSED/i.test(
+    `${msg} ${cause}`,
+  );
+}
+
+/**
+ * Runs a Supabase call, retrying only on transient network failures (e.g. the
+ * backend waking from idle). Real errors returned as `{ error }` are untouched;
+ * only thrown network errors trigger a retry. If it still fails, a clear,
+ * user-facing message replaces the raw "fetch failed".
+ */
+async function withRetry<T>(fn: () => PromiseLike<T>): Promise<T> {
+  const maxAttempts = 3;
+  let lastErr: any;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (!isTransientNetworkError(err) || attempt === maxAttempts) break;
+      await new Promise((r) => setTimeout(r, 500 * attempt));
+    }
+  }
+  if (isTransientNetworkError(lastErr)) {
+    throw new Error(
+      "Couldn't reach the authentication service — it may be waking up from idle. Please wait a few seconds and try again.",
+    );
+  }
+  throw lastErr;
+}
+
 export function mapUserToSessionContext(user: AuthUser): SessionContext {
   return {
     userId: user._id,
@@ -195,10 +229,12 @@ export async function signInUser({
   userAgent?: string;
 }) {
   const supabase = createSupabaseClient();
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: email.toLowerCase().trim(),
-    password,
-  });
+  const { data, error } = await withRetry(() =>
+    supabase.auth.signInWithPassword({
+      email: email.toLowerCase().trim(),
+      password,
+    }),
+  );
 
   if (error || !data.session || !data.user) {
     throw new Error(error?.message || "Invalid email or password.");
@@ -206,11 +242,13 @@ export async function signInUser({
 
   // Fetch from DB to ensure approval status and accurate roles
   const adminClient = createSupabaseAdminClient();
-  const { data: profile, error: profileError } = await adminClient
-    .from("profiles")
-    .select("*, organizations(legal_name, org_type)")
-    .eq("id", data.user.id)
-    .single();
+  const { data: profile, error: profileError } = await withRetry(() =>
+    adminClient
+      .from("profiles")
+      .select("*, organizations(legal_name, org_type)")
+      .eq("id", data.user.id)
+      .single(),
+  );
 
   if (profileError) {
     console.error("Error fetching profile:", profileError.message);
@@ -229,10 +267,9 @@ export async function signInUser({
     throw new Error("Account pending approval. You cannot log in yet.");
   }
 
-  const { data: roleData } = await adminClient
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", data.user.id);
+  const { data: roleData } = await withRetry(() =>
+    adminClient.from("user_roles").select("role").eq("user_id", data.user.id),
+  );
 
   const authUser: AuthUser = {
     _id: data.user.id,
