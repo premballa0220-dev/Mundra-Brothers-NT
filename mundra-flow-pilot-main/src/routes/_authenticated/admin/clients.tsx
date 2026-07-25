@@ -214,6 +214,13 @@ function AdminClientsPage() {
   const [initialOpeningBalanceDate, setInitialOpeningBalanceDate] = useState("");
   const [openingInvoices, setOpeningInvoices] = useState<{ invoiceNumber: string; amount: number | ""; date: string }[]>([]);
 
+  useEffect(() => {
+    if (openingInvoices.length > 0) {
+      const sum = openingInvoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
+      setInitialOpeningBalance(sum || "");
+    }
+  }, [openingInvoices]);
+
   const [creditLimit, setCreditLimit] = useState<number | "">("");
   const [annualInterestRate, setAnnualInterestRate] = useState<number | "">("");
   const [paymentTermsDays, setPaymentTermsDays] = useState<number | "">("");
@@ -584,6 +591,7 @@ function AdminClientsPage() {
                           type="number"
                           placeholder="e.g. 50000"
                           value={initialOpeningBalance}
+                          disabled={openingInvoices.length > 0}
                           onChange={(e) =>
                             setInitialOpeningBalance(e.target.value === "" ? "" : Number(e.target.value))
                           }
