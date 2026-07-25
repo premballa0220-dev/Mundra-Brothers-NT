@@ -259,11 +259,15 @@ function AdminDispatchQueuePage() {
       );
       return;
     }
+    const firstItemId = selectedPO?.items?.[0]?.id;
+    if (!firstItemId) {
+      toast.error("This PO has no line items to dispatch against.");
+      return;
+    }
     createMutation.mutate({
       organizationId: selectedClientId,
       purchaseOrderId,
-      quantity,
-      requestedDate,
+      lines: [{ purchaseOrderItemId: firstItemId, quantity, requestedDate }],
       siteAddress,
       deliveryContact,
       invoiceNumber,

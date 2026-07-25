@@ -1328,7 +1328,7 @@ async function runDispatchEligibilityCheck(dispatchRequestId: string, userId: st
 
   const { data: activeDRs } = await supabase
     .from("dispatch_requests")
-    .select("purchase_order_id, quantity")
+    .select("purchase_order_id, purchase_order_item_id, quantity")
     .eq("organization_id", orgId)
     .in("status", ["submitted", "auto_approved", "pending_mundra", "approved"]);
 
@@ -1344,44 +1344,80 @@ async function runDispatchEligibilityCheck(dispatchRequestId: string, userId: st
   }
   const purchaseOrderMap = new Map(purchaseOrders.map((p: any) => [p.id, p]));
 
-  const activeDispatchesValue = (activeDRs || []).reduce((sum: number, item: any) => {
-    const itemPo = purchaseOrderMap.get(item.purchase_order_id);
-    return sum + Number(item.quantity || 0) * Number(itemPo?.locked_rate || 0);
-  }, 0);
+  // Prefer the dispatch's own line-item rate; fall back to the PO rate
+  // (matches the recalculate_wallet_balance DB function).
+  const activeItemIds = (activeDRs || [])
+    .map((d: any) => d.purchase_order_item_id)
+    .filter(Boolean);
+  const itemRateMap = new Map<string, number>();
+  if (activeItemIds.length > 0) {
+    const { data: itemRows } = await supabase
+      .from("purchase_order_items")
+      .select("id, locked_rate")
+      .in("id", activeItemIds);
+    for (const it of itemRows || []) itemRateMap.set(it.id, Number(it.locked_rate || 0));
+  }
+  const rateForDr = (d: any): number => {
+    if (d.purchase_order_item_id && itemRateMap.has(d.purchase_order_item_id)) {
+      return itemRateMap.get(d.purchase_order_item_id)!;
+    }
+    return Number(purchaseOrderMap.get(d.purchase_order_id)?.locked_rate || 0);
+  };
+
+  const activeDispatchesValue = (activeDRs || []).reduce(
+    (sum: number, item: any) => sum + Number(item.quantity || 0) * rateForDr(item),
+    0,
+  );
 
   const includeUndispatched = commProfile?.include_undispatched_pos ?? false;
   const includeDispatched = commProfile?.include_dispatched_unbilled ?? true;
 
-  const currentVal = Number(dr.quantity || 0) * Number(po.locked_rate || 0);
+  let currentRate = Number(po.locked_rate || 0);
+  if (dr.purchase_order_item_id) {
+    const { data: curItem } = await supabase
+      .from("purchase_order_items")
+      .select("locked_rate")
+      .eq("id", dr.purchase_order_item_id)
+      .single();
+    if (curItem) currentRate = Number(curItem.locked_rate || 0);
+  }
+  const currentVal = Number(dr.quantity || 0) * currentRate;
 
   let undispatchedValue = 0;
   if (includeUndispatched) {
     const { data: approvedPOs } = await supabase
       .from("purchase_orders")
-      .select("id, original_quantity, locked_rate")
+      .select("id")
       .eq("organization_id", orgId)
       .eq("status", "approved");
 
-    if (approvedPOs && approvedPOs.length > 0) {
+    const approvedPoIds = (approvedPOs || []).map((p: any) => p.id);
+    if (approvedPoIds.length > 0) {
+      const { data: poItems } = await supabase
+        .from("purchase_order_items")
+        .select("id, purchase_order_id, original_quantity, locked_rate")
+        .in("purchase_order_id", approvedPoIds);
+
       const { data: allDispatches } = await supabase
         .from("dispatch_requests")
-        .select("purchase_order_id, quantity")
-        .in(
-          "purchase_order_id",
-          approvedPOs.map((p: any) => p.id),
-        )
+        .select("purchase_order_item_id, quantity")
+        .in("purchase_order_id", approvedPoIds)
         .in("status", ["submitted", "auto_approved", "pending_mundra", "approved"]);
 
-      for (const apo of approvedPOs) {
-        const poDispatches = (allDispatches || []).filter(
-          (d: any) => d.purchase_order_id === apo.id,
+      // Dispatched quantity per line item.
+      const dispatchedByItem = new Map<string, number>();
+      for (const d of allDispatches || []) {
+        if (!d.purchase_order_item_id) continue;
+        dispatchedByItem.set(
+          d.purchase_order_item_id,
+          (dispatchedByItem.get(d.purchase_order_item_id) || 0) + Number(d.quantity || 0),
         );
-        const dispatchedQty = poDispatches.reduce(
-          (s: number, d: any) => s + Number(d.quantity || 0),
-          0,
-        );
-        const remainingQty = Math.max(0, Number(apo.original_quantity || 0) - dispatchedQty);
-        undispatchedValue += remainingQty * Number(apo.locked_rate || 0);
+      }
+
+      for (const item of poItems || []) {
+        const dispatchedQty = dispatchedByItem.get(item.id) || 0;
+        const remainingQty = Math.max(0, Number(item.original_quantity || 0) - dispatchedQty);
+        undispatchedValue += remainingQty * Number(item.locked_rate || 0);
       }
     }
   }
@@ -1490,10 +1526,26 @@ export const getPurchaseOrders = createServerFn({ method: "GET" })
     const productsMap = await loadProductsMap();
     const organizationsMap = await loadOrganizationsMap();
 
+    // Attach line items (with product info) to each PO.
+    const poIds = (purchaseOrders || []).map((po: any) => po.id);
+    const itemsByPo = new Map<string, any[]>();
+    if (poIds.length > 0) {
+      const { data: items } = await supabase
+        .from("purchase_order_items")
+        .select("*")
+        .in("purchase_order_id", poIds);
+      for (const it of items || []) {
+        const arr = itemsByPo.get(it.purchase_order_id) || [];
+        arr.push({ ...it, product: productsMap.get(it.product_id) ?? null });
+        itemsByPo.set(it.purchase_order_id, arr);
+      }
+    }
+
     return (purchaseOrders || []).map((po: any) => ({
       ...po,
       product: productsMap.get(po.product_id) ?? null,
       organization: organizationsMap.get(po.organization_id) ?? null,
+      items: itemsByPo.get(po.id) ?? [],
     }));
   });
 
@@ -1702,14 +1754,85 @@ export const approveProductRate = createServerFn({ method: "POST" })
     return { success: true };
   });
 
+// Shared line-item shape for a multi-product PO.
+const poLineItemSchema = z.object({
+  productId: z.string().uuid(),
+  quantity: z.number().positive(),
+  lockedRate: z.number().nonnegative(),
+});
+
+/**
+ * Resolve the currently-applicable rate for a product/org (client-specific
+ * override wins over the generic rate). Returns null if none is active.
+ */
+async function resolveApplicableRate(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  productId: string,
+  organizationId: string,
+): Promise<number | null> {
+  const today = new Date().toISOString().split("T")[0];
+  const { data: clientRates } = await supabase
+    .from("rates")
+    .select("*")
+    .eq("product_id", productId)
+    .eq("organization_id", organizationId)
+    .eq("status", "active")
+    .lte("effective_from", today)
+    .order("effective_from", { ascending: false });
+  const { data: genRates } = await supabase
+    .from("rates")
+    .select("*")
+    .eq("product_id", productId)
+    .is("organization_id", null)
+    .eq("status", "active")
+    .lte("effective_from", today)
+    .order("effective_from", { ascending: false });
+
+  const applicable =
+    clientRates?.find((r: any) => !r.effective_to || r.effective_to >= today) ||
+    genRates?.find((r: any) => !r.effective_to || r.effective_to >= today);
+  return applicable ? Number(applicable.amount) : null;
+}
+
+/**
+ * Build the line-item rows for a PO, resolving each rate against the rate master
+ * unless an exception rate was explicitly requested.
+ */
+async function buildPoItems(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  poId: string,
+  organizationId: string,
+  items: Array<{ productId: string; quantity: number; lockedRate: number }>,
+  isExceptionRate: boolean,
+) {
+  const rows = [];
+  for (const item of items) {
+    let finalRate = item.lockedRate;
+    if (!isExceptionRate) {
+      const applicable = await resolveApplicableRate(supabase, item.productId, organizationId);
+      if (applicable === null) {
+        throw new Error("No active rate found for one of the selected products.");
+      }
+      finalRate = applicable;
+    }
+    rows.push({
+      id: crypto.randomUUID(),
+      purchase_order_id: poId,
+      product_id: item.productId,
+      original_quantity: item.quantity,
+      locked_rate: finalRate,
+      total_value: item.quantity * finalRate,
+    });
+  }
+  return rows;
+}
+
 export const createPurchaseOrder = createServerFn({ method: "POST" })
   .middleware([requireAuth])
   .validator(
     z.object({
       poNumber: z.string().min(1),
-      productId: z.string().uuid(),
-      originalQuantity: z.number().positive(),
-      lockedRate: z.number().nonnegative(),
+      items: z.array(poLineItemSchema).min(1),
       isExceptionRate: z.boolean().default(false),
       siteAddress: z.string().min(1),
       deliveryContact: z.string().optional(),
@@ -1721,57 +1844,32 @@ export const createPurchaseOrder = createServerFn({ method: "POST" })
     ensureClientOrg(context.orgType);
     const supabase = createSupabaseAdminClient();
 
-    let finalRate = data.lockedRate;
-    let status = "pending_approval";
-
-    if (!data.isExceptionRate) {
-      // Validate rate matches applicable rate
-      const { data: clientRates } = await supabase
-        .from("rates")
-        .select("*")
-        .eq("product_id", data.productId)
-        .eq("organization_id", context.organizationId)
-        .eq("status", "active")
-        .lte("effective_from", new Date().toISOString().split("T")[0])
-        .order("effective_from", { ascending: false });
-      const { data: genRates } = await supabase
-        .from("rates")
-        .select("*")
-        .eq("product_id", data.productId)
-        .is("organization_id", null)
-        .eq("status", "active")
-        .lte("effective_from", new Date().toISOString().split("T")[0])
-        .order("effective_from", { ascending: false });
-
-      const applicable =
-        clientRates?.find(
-          (r) => !r.effective_to || r.effective_to >= new Date().toISOString().split("T")[0],
-        ) ||
-        genRates?.find(
-          (r) => !r.effective_to || r.effective_to >= new Date().toISOString().split("T")[0],
-        );
-
-      if (!applicable) throw new Error("No active rate found for this product.");
-      finalRate = Number(applicable.amount);
-    } else {
-      // Exception rate requested, could use a special status if needed, but pending_approval works.
-      // We will rely on UI to show a badge for "Exception Rate" if locked_rate != applicable_rate.
-    }
-
     const poId = crypto.randomUUID();
+    const itemRows = await buildPoItems(
+      supabase,
+      poId,
+      context.organizationId,
+      data.items,
+      data.isExceptionRate,
+    );
+
+    const poTotal = itemRows.reduce((s, it) => s + it.total_value, 0);
+    const first = itemRows[0];
     const purchaseOrder = {
       id: poId,
       organization_id: context.organizationId,
       po_number: data.poNumber,
-      product_id: data.productId,
-      original_quantity: data.originalQuantity,
-      locked_rate: finalRate,
-      total_value: data.originalQuantity * finalRate,
+      // Legacy single-product columns kept populated from the first line for
+      // backward compatibility; the source of truth is purchase_order_items.
+      product_id: first.product_id,
+      original_quantity: first.original_quantity,
+      locked_rate: first.locked_rate,
+      total_value: poTotal,
       site_address: data.siteAddress,
       delivery_contact: data.deliveryContact || null,
       document_method: data.documentMethod,
       document_url: data.documentUrl || null,
-      status,
+      status: "pending_approval",
       created_by: context.userId,
       approved_by: null,
     };
@@ -1779,15 +1877,18 @@ export const createPurchaseOrder = createServerFn({ method: "POST" })
     const { error } = await supabase.from("purchase_orders").insert(purchaseOrder);
     if (error) throw new Error("Failed to create PO: " + error.message);
 
-    await createAuditLog(
-      context.userId,
-      "CREATE_PO",
-      "purchase_orders",
-      purchaseOrder.id,
-      null,
-      purchaseOrder,
-    );
-    return purchaseOrder;
+    const { error: itemsError } = await supabase.from("purchase_order_items").insert(itemRows);
+    if (itemsError) {
+      // Roll back the header so we never leave an item-less PO behind.
+      await supabase.from("purchase_orders").delete().eq("id", poId);
+      throw new Error("Failed to create PO line items: " + itemsError.message);
+    }
+
+    await createAuditLog(context.userId, "CREATE_PO", "purchase_orders", poId, null, {
+      ...purchaseOrder,
+      items: itemRows,
+    });
+    return { ...purchaseOrder, items: itemRows };
   });
 
 export const createPurchaseOrderAdmin = createServerFn({ method: "POST" })
@@ -1795,59 +1896,65 @@ export const createPurchaseOrderAdmin = createServerFn({ method: "POST" })
   .validator(
     z.object({
       organizationId: z.string().uuid(),
-      productId: z.string().uuid(),
-      originalQuantity: z.number().positive(),
-      lockedRate: z.number().nonnegative().optional(),
+      poNumber: z.string().min(1),
+      items: z
+        .array(
+          z.object({
+            productId: z.string().uuid(),
+            quantity: z.number().positive(),
+            lockedRate: z.number().nonnegative().optional(),
+          }),
+        )
+        .min(1),
       isExceptionRate: z.boolean().default(false),
       siteAddress: z.string().min(1),
       deliveryContact: z.string().optional(),
       documentMethod: z.enum(["upload", "generate"]),
       documentUrl: z.string().optional(),
       paymentTermsDays: z.number().nonnegative().optional(),
-      poNumber: z.string().min(1),
     }),
   )
   .handler(async ({ data, context }) => {
     ensureMundraOrg(context.orgType);
     const supabase = createSupabaseAdminClient();
 
-    let finalRate = data.lockedRate || 0;
-    if (!data.isExceptionRate && !data.lockedRate) {
-      const { data: clientRates } = await supabase
-        .from("rates")
-        .select("*")
-        .eq("product_id", data.productId)
-        .eq("organization_id", data.organizationId)
-        .eq("status", "active")
-        .lte("effective_from", new Date().toISOString().split("T")[0])
-        .order("effective_from", { ascending: false });
-      const { data: genRates } = await supabase
-        .from("rates")
-        .select("*")
-        .eq("product_id", data.productId)
-        .is("organization_id", null)
-        .eq("status", "active")
-        .lte("effective_from", new Date().toISOString().split("T")[0])
-        .order("effective_from", { ascending: false });
-      const applicable =
-        clientRates?.find(
-          (r) => !r.effective_to || r.effective_to >= new Date().toISOString().split("T")[0],
-        ) ||
-        genRates?.find(
-          (r) => !r.effective_to || r.effective_to >= new Date().toISOString().split("T")[0],
+    const poId = crypto.randomUUID();
+
+    // Resolve each line item's rate (admin may override per line, else rate master).
+    const itemRows = [];
+    for (const item of data.items) {
+      let finalRate = item.lockedRate ?? 0;
+      if (!data.isExceptionRate && !item.lockedRate) {
+        const applicable = await resolveApplicableRate(
+          supabase,
+          item.productId,
+          data.organizationId,
         );
-      if (!applicable) throw new Error("No active rate found for this product.");
-      finalRate = Number(applicable.amount);
+        if (applicable === null) {
+          throw new Error("No active rate found for one of the selected products.");
+        }
+        finalRate = applicable;
+      }
+      itemRows.push({
+        id: crypto.randomUUID(),
+        purchase_order_id: poId,
+        product_id: item.productId,
+        original_quantity: item.quantity,
+        locked_rate: finalRate,
+        total_value: item.quantity * finalRate,
+      });
     }
 
-    const poId = crypto.randomUUID();
+    const poTotal = itemRows.reduce((s, it) => s + it.total_value, 0);
+    const first = itemRows[0];
     const purchaseOrder = {
       id: poId,
       organization_id: data.organizationId,
-      product_id: data.productId,
-      original_quantity: data.originalQuantity,
-      locked_rate: finalRate,
-      total_value: data.originalQuantity * finalRate,
+      // Legacy single-product columns from the first line for compatibility.
+      product_id: first.product_id,
+      original_quantity: first.original_quantity,
+      locked_rate: first.locked_rate,
+      total_value: poTotal,
       status: "approved",
       site_address: data.siteAddress,
       delivery_contact: data.deliveryContact || null,
@@ -1860,6 +1967,12 @@ export const createPurchaseOrderAdmin = createServerFn({ method: "POST" })
 
     const { error } = await supabase.from("purchase_orders").insert(purchaseOrder);
     if (error) throw new Error("Failed to create purchase order: " + error.message);
+
+    const { error: itemsError } = await supabase.from("purchase_order_items").insert(itemRows);
+    if (itemsError) {
+      await supabase.from("purchase_orders").delete().eq("id", poId);
+      throw new Error("Failed to create PO line items: " + itemsError.message);
+    }
 
     await createAuditLog(
       context.userId,
@@ -1979,9 +2092,28 @@ export const getDispatchRequests = createServerFn({ method: "GET" })
     const purchaseOrderMap = new Map(purchaseOrders.map((po: any) => [po.id, po]));
     const organizationsMap = await loadOrganizationsMap();
 
+    // Attach the specific line item (with product) each dispatch draws from.
+    const itemIds = (dispatchRequests || [])
+      .map((dr: any) => dr.purchase_order_item_id)
+      .filter(Boolean);
+    const itemMap = new Map<string, any>();
+    if (itemIds.length > 0) {
+      const productsMap = await loadProductsMap();
+      const { data: items } = await supabase
+        .from("purchase_order_items")
+        .select("*")
+        .in("id", itemIds);
+      for (const it of items || []) {
+        itemMap.set(it.id, { ...it, product: productsMap.get(it.product_id) ?? null });
+      }
+    }
+
     return (dispatchRequests || []).map((dr: any) => ({
       ...dr,
       purchase_order: purchaseOrderMap.get(dr.purchase_order_id) ?? null,
+      purchase_order_item: dr.purchase_order_item_id
+        ? (itemMap.get(dr.purchase_order_item_id) ?? null)
+        : null,
       organization: organizationsMap.get(dr.organization_id) ?? null,
     }));
   });
@@ -1991,8 +2123,16 @@ export const createDispatchRequest = createServerFn({ method: "POST" })
   .validator(
     z.object({
       purchaseOrderId: z.string().uuid(),
-      quantity: z.number().positive(),
-      requestedDate: z.string(),
+      // One entry per product line the client wants to dispatch.
+      lines: z
+        .array(
+          z.object({
+            purchaseOrderItemId: z.string().uuid(),
+            quantity: z.number().positive(),
+            requestedDate: z.string(),
+          }),
+        )
+        .min(1),
       siteAddress: z.string().min(1),
       deliveryContact: z.string().optional(),
       invoiceNumber: z.string().optional(),
@@ -2002,34 +2142,43 @@ export const createDispatchRequest = createServerFn({ method: "POST" })
     ensureClientOrg(context.orgType);
 
     const supabase = createSupabaseAdminClient();
-    const drId = crypto.randomUUID();
-    const dispatchRequest = {
-      id: drId,
-      purchase_order_id: data.purchaseOrderId,
-      organization_id: context.organizationId,
-      quantity: data.quantity,
-      requested_date: data.requestedDate,
-      site_address: data.siteAddress,
-      delivery_contact: data.deliveryContact || null,
-      invoice_number: data.invoiceNumber || null,
-      status: "submitted",
-      eligibility_result: null,
-      approved_by: null,
-    };
+    const created: any[] = [];
 
-    const { error } = await supabase.from("dispatch_requests").insert(dispatchRequest);
-    if (error) throw new Error("Failed to create dispatch request: " + error.message);
+    // Each product line becomes its own dispatch request (single-product),
+    // so downstream credit/dispatch/ledger logic stays per-product.
+    for (const line of data.lines) {
+      const drId = crypto.randomUUID();
+      const dispatchRequest = {
+        id: drId,
+        purchase_order_id: data.purchaseOrderId,
+        purchase_order_item_id: line.purchaseOrderItemId,
+        organization_id: context.organizationId,
+        quantity: line.quantity,
+        requested_date: line.requestedDate,
+        site_address: data.siteAddress,
+        delivery_contact: data.deliveryContact || null,
+        invoice_number: data.invoiceNumber || null,
+        status: "submitted",
+        eligibility_result: null,
+        approved_by: null,
+      };
 
-    await createAuditLog(
-      context.userId,
-      "CREATE_DISPATCH",
-      "dispatch_requests",
-      dispatchRequest.id,
-      null,
-      dispatchRequest,
-    );
-    await runDispatchEligibilityCheck(dispatchRequest.id, context.userId);
-    return dispatchRequest;
+      const { error } = await supabase.from("dispatch_requests").insert(dispatchRequest);
+      if (error) throw new Error("Failed to create dispatch request: " + error.message);
+
+      await createAuditLog(
+        context.userId,
+        "CREATE_DISPATCH",
+        "dispatch_requests",
+        drId,
+        null,
+        dispatchRequest,
+      );
+      await runDispatchEligibilityCheck(drId, context.userId);
+      created.push(dispatchRequest);
+    }
+
+    return created;
   });
 
 export const evaluateDispatchEligibility = createServerFn({ method: "POST" })
@@ -3146,8 +3295,15 @@ export const createDispatchRequestAdmin = createServerFn({ method: "POST" })
     z.object({
       organizationId: z.string().uuid(),
       purchaseOrderId: z.string().uuid(),
-      quantity: z.number().positive(),
-      requestedDate: z.string(),
+      lines: z
+        .array(
+          z.object({
+            purchaseOrderItemId: z.string().uuid(),
+            quantity: z.number().positive(),
+            requestedDate: z.string(),
+          }),
+        )
+        .min(1),
       siteAddress: z.string().min(1),
       deliveryContact: z.string().optional(),
       invoiceNumber: z.string().optional(),
@@ -3156,31 +3312,37 @@ export const createDispatchRequestAdmin = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     ensureMundraOrg(context.orgType);
     const supabase = createSupabaseAdminClient();
-    const drId = crypto.randomUUID();
-    const dispatchRequest = {
-      id: drId,
-      purchase_order_id: data.purchaseOrderId,
-      organization_id: data.organizationId,
-      quantity: data.quantity,
-      requested_date: data.requestedDate,
-      site_address: data.siteAddress,
-      delivery_contact: data.deliveryContact || null,
-      invoice_number: data.invoiceNumber || null,
-      status: "submitted",
-      eligibility_result: null,
-      approved_by: null,
-    };
-    const { error } = await supabase.from("dispatch_requests").insert(dispatchRequest);
-    if (error) throw new Error("Failed to create dispatch request: " + error.message);
-    await createAuditLog(
-      context.userId,
-      "CREATE_DISPATCH_REQUEST_ADMIN",
-      "dispatch_requests",
-      dispatchRequest.id,
-      null,
-      dispatchRequest,
-    );
-    return dispatchRequest;
+    const created: any[] = [];
+
+    for (const line of data.lines) {
+      const drId = crypto.randomUUID();
+      const dispatchRequest = {
+        id: drId,
+        purchase_order_id: data.purchaseOrderId,
+        purchase_order_item_id: line.purchaseOrderItemId,
+        organization_id: data.organizationId,
+        quantity: line.quantity,
+        requested_date: line.requestedDate,
+        site_address: data.siteAddress,
+        delivery_contact: data.deliveryContact || null,
+        invoice_number: data.invoiceNumber || null,
+        status: "submitted",
+        eligibility_result: null,
+        approved_by: null,
+      };
+      const { error } = await supabase.from("dispatch_requests").insert(dispatchRequest);
+      if (error) throw new Error("Failed to create dispatch request: " + error.message);
+      await createAuditLog(
+        context.userId,
+        "CREATE_DISPATCH_REQUEST_ADMIN",
+        "dispatch_requests",
+        drId,
+        null,
+        dispatchRequest,
+      );
+      created.push(dispatchRequest);
+    }
+    return created;
   });
 
 export const editDispatchRequestAdmin = createServerFn({ method: "POST" })
