@@ -263,6 +263,112 @@ function JournalEntryCard({ entry, onSendRefund }: { entry: any; onSendRefund: (
   );
 }
 
+function ExpandableLedgerRow({ row, clientFilter }: { row: any; clientFilter: string }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const isOpeningBalance = row.type === "opening_balance";
+  const hasInvoices = isOpeningBalance && row.meta?.historical_invoices && row.meta.historical_invoices.length > 0;
+
+  return (
+    <>
+      <TableRow
+        className={
+          !row.isPosting
+            ? "bg-muted/20 text-muted-foreground hover:bg-muted/30"
+            : ""
+        }
+      >
+        <TableCell className="font-medium text-xs whitespace-nowrap pl-4">
+          <div className="flex items-center gap-2">
+            {hasInvoices ? (
+              <button onClick={() => setIsExpanded(!isExpanded)} className="hover:bg-muted p-0.5 rounded focus:outline-none">
+                {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+              </button>
+            ) : (
+              <span className="w-5" />
+            )}
+            {formatDate(row.timestamp)}
+          </div>
+        </TableCell>
+        <TableCell>
+          <Badge
+            variant="outline"
+            className={
+              !row.isPosting ? "opacity-60 text-[10px]" : "text-[10px]"
+            }
+          >
+            {TYPE_CONFIG[row.type]?.label || row.type}
+          </Badge>
+          {!row.isPosting && (
+            <span className="ml-2 text-[10px] italic">(Memo)</span>
+          )}
+        </TableCell>
+        {clientFilter === "all" && (
+          <TableCell className="text-xs font-medium truncate max-w-[150px]">
+            {row.meta?.client_name || "—"}
+          </TableCell>
+        )}
+        <TableCell className="font-mono text-xs">
+          {row.meta?.invoice_number || 
+            row.meta?.reference_number ||
+            row.meta?.po_number ||
+            (row.meta?.dispatch_id
+              ? `DR-${row.meta.dispatch_id.substring(0, 6)}`
+              : "—")}
+        </TableCell>
+        <TableCell className="text-right text-xs">
+          {row.meta?.quantity ? `${row.meta.quantity} MT` : "—"}
+        </TableCell>
+        <TableCell className="text-right text-xs">
+          {row.meta?.locked_rate
+            ? formatCurrency(row.meta.locked_rate)
+            : "—"}
+        </TableCell>
+        <TableCell className="text-right text-xs text-destructive">
+          {row.debit > 0 ? formatCurrency(row.debit) : "—"}
+        </TableCell>
+        <TableCell className="text-right text-xs text-emerald-600">
+          {row.credit > 0 ? formatCurrency(row.credit) : "—"}
+        </TableCell>
+        <TableCell className="text-right text-xs font-bold pr-4">
+          {formatCurrency(Math.abs(row.runningBalance))}{" "}
+          {row.runningBalance > 0
+            ? "Dr"
+            : row.runningBalance < 0
+              ? "Cr"
+              : ""}
+        </TableCell>
+      </TableRow>
+      {isExpanded && hasInvoices && (
+        <TableRow className="bg-muted/10">
+          <TableCell colSpan={clientFilter === "all" ? 9 : 8} className="p-0 border-b">
+            <div className="px-12 py-4">
+              <div className="text-xs font-semibold mb-2">Historical Invoices</div>
+              <Table className="bg-background border rounded-md">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs h-8">Invoice No</TableHead>
+                    <TableHead className="text-xs h-8">Date</TableHead>
+                    <TableHead className="text-xs h-8 text-right pr-4">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {row.meta.historical_invoices.map((inv: any, idx: number) => (
+                    <TableRow key={idx}>
+                      <TableCell className="text-xs py-2">{inv.invoiceNo}</TableCell>
+                      <TableCell className="text-xs py-2">{inv.date ? formatDate(inv.date) : "—"}</TableCell>
+                      <TableCell className="text-xs text-right pr-4 py-2 font-medium">{formatCurrency(Number(inv.amount))}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  );
+}
+
 function AuditJournalPage() {
   const navigate = useNavigate();
   const [viewTab, setViewTab] = useState<"journal" | "ledger">("journal");
@@ -714,66 +820,7 @@ function AuditJournalPage() {
                             </TableRow>
                           ) : (
                             clientLedgerRows.map((row) => (
-                              <TableRow
-                                key={row.id}
-                                className={
-                                  !row.isPosting
-                                    ? "bg-muted/20 text-muted-foreground hover:bg-muted/30"
-                                    : ""
-                                }
-                              >
-                                <TableCell className="font-medium text-xs whitespace-nowrap pl-4">
-                                  {formatDate(row.timestamp)}
-                                </TableCell>
-                                <TableCell>
-                                  <Badge
-                                    variant="outline"
-                                    className={
-                                      !row.isPosting ? "opacity-60 text-[10px]" : "text-[10px]"
-                                    }
-                                  >
-                                    {TYPE_CONFIG[row.type]?.label || row.type}
-                                  </Badge>
-                                  {!row.isPosting && (
-                                    <span className="ml-2 text-[10px] italic">(Memo)</span>
-                                  )}
-                                </TableCell>
-                                {clientFilter === "all" && (
-                                  <TableCell className="text-xs font-medium truncate max-w-[150px]">
-                                    {row.meta?.client_name || "—"}
-                                  </TableCell>
-                                )}
-                                <TableCell className="font-mono text-xs">
-                                  {row.meta?.invoice_number || 
-                                    row.meta?.reference_number ||
-                                    row.meta?.po_number ||
-                                    (row.meta?.dispatch_id
-                                      ? `DR-${row.meta.dispatch_id.substring(0, 6)}`
-                                      : "—")}
-                                </TableCell>
-                                <TableCell className="text-right text-xs">
-                                  {row.meta?.quantity ? `${row.meta.quantity} MT` : "—"}
-                                </TableCell>
-                                <TableCell className="text-right text-xs">
-                                  {row.meta?.locked_rate
-                                    ? formatCurrency(row.meta.locked_rate)
-                                    : "—"}
-                                </TableCell>
-                                <TableCell className="text-right text-xs text-destructive">
-                                  {row.debit > 0 ? formatCurrency(row.debit) : "—"}
-                                </TableCell>
-                                <TableCell className="text-right text-xs text-emerald-600">
-                                  {row.credit > 0 ? formatCurrency(row.credit) : "—"}
-                                </TableCell>
-                                <TableCell className="text-right text-xs font-bold pr-4">
-                                  {formatCurrency(Math.abs(row.runningBalance))}{" "}
-                                  {row.runningBalance > 0
-                                    ? "Dr"
-                                    : row.runningBalance < 0
-                                      ? "Cr"
-                                      : ""}
-                                </TableCell>
-                              </TableRow>
+                              <ExpandableLedgerRow key={row.id} row={row} clientFilter={clientFilter} />
                             ))
                           )}
                         </TableBody>

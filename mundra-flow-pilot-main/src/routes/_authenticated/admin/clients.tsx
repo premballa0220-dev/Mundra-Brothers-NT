@@ -217,6 +217,12 @@ function AdminClientsPage() {
     if (openingInvoices.length > 0) {
       const sum = openingInvoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
       setInitialOpeningBalance(sum || "");
+      
+      const validDates = openingInvoices.map(inv => inv.date).filter(Boolean);
+      if (validDates.length > 0) {
+        const latestDate = validDates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+        setInitialOpeningBalanceDate(latestDate);
+      }
     }
   }, [openingInvoices]);
 

@@ -3721,6 +3721,16 @@ export const getJournalEntries = createServerFn({ method: "GET" })
     }
 
     // 7. Opening Balances
+    const obOrgIds = (openingBalances || []).map((ob: any) => ob.organization_id);
+    let profilesMap = new Map();
+    if (obOrgIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from("client_commercial_profiles")
+        .select("organization_id, historical_invoices")
+        .in("organization_id", obOrgIds);
+      profilesMap = new Map((profiles || []).map((p: any) => [p.organization_id, p]));
+    }
+
     for (const ob of openingBalances || []) {
       const org = organizationsMap.get(ob.organization_id);
       entries.push({
@@ -3733,6 +3743,7 @@ export const getJournalEntries = createServerFn({ method: "GET" })
           amount: ob.amount,
           invoice_number: ob.invoice_number,
           client_name: (org as any)?.legal_name || null,
+          historical_invoices: profilesMap.get(ob.organization_id)?.historical_invoices || [],
         },
       });
     }
