@@ -39,7 +39,7 @@ WHERE id IN (
     SELECT id FROM public.organizations WHERE org_type = 'client'
   )
 );
-
+--2. Delete remaining crons and pushes
 -- 3. Delete all Client Organizations
 -- This deletes the organizations, which cascades to delete their 
 -- commercial profiles, workflow settings, seals, and client-specific rates.

@@ -29,6 +29,7 @@ import { Route as AuthenticatedAdminRefundLettersRouteImport } from './routes/_a
 import { Route as AuthenticatedAdminRatesRouteImport } from './routes/_authenticated/admin/rates'
 import { Route as AuthenticatedAdminProductsRouteImport } from './routes/_authenticated/admin/products'
 import { Route as AuthenticatedAdminPoQueueRouteImport } from './routes/_authenticated/admin/po-queue'
+import { Route as AuthenticatedAdminPoFormatsRouteImport } from './routes/_authenticated/admin/po-formats'
 import { Route as AuthenticatedAdminPaymentsRouteImport } from './routes/_authenticated/admin/payments'
 import { Route as AuthenticatedAdminDispatchQueueRouteImport } from './routes/_authenticated/admin/dispatch-queue'
 import { Route as AuthenticatedAdminClientsRouteImport } from './routes/_authenticated/admin/clients'
@@ -149,6 +150,12 @@ const AuthenticatedAdminPoQueueRoute =
     path: '/po-queue',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
+const AuthenticatedAdminPoFormatsRoute =
+  AuthenticatedAdminPoFormatsRouteImport.update({
+    id: '/po-formats',
+    path: '/po-formats',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
 const AuthenticatedAdminPaymentsRoute =
   AuthenticatedAdminPaymentsRouteImport.update({
     id: '/payments',
@@ -196,6 +203,7 @@ export interface FileRoutesByFullPath {
   '/admin/clients': typeof AuthenticatedAdminClientsRoute
   '/admin/dispatch-queue': typeof AuthenticatedAdminDispatchQueueRoute
   '/admin/payments': typeof AuthenticatedAdminPaymentsRoute
+  '/admin/po-formats': typeof AuthenticatedAdminPoFormatsRoute
   '/admin/po-queue': typeof AuthenticatedAdminPoQueueRoute
   '/admin/products': typeof AuthenticatedAdminProductsRoute
   '/admin/rates': typeof AuthenticatedAdminRatesRoute
@@ -221,6 +229,7 @@ export interface FileRoutesByTo {
   '/admin/clients': typeof AuthenticatedAdminClientsRoute
   '/admin/dispatch-queue': typeof AuthenticatedAdminDispatchQueueRoute
   '/admin/payments': typeof AuthenticatedAdminPaymentsRoute
+  '/admin/po-formats': typeof AuthenticatedAdminPoFormatsRoute
   '/admin/po-queue': typeof AuthenticatedAdminPoQueueRoute
   '/admin/products': typeof AuthenticatedAdminProductsRoute
   '/admin/rates': typeof AuthenticatedAdminRatesRoute
@@ -250,6 +259,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/clients': typeof AuthenticatedAdminClientsRoute
   '/_authenticated/admin/dispatch-queue': typeof AuthenticatedAdminDispatchQueueRoute
   '/_authenticated/admin/payments': typeof AuthenticatedAdminPaymentsRoute
+  '/_authenticated/admin/po-formats': typeof AuthenticatedAdminPoFormatsRoute
   '/_authenticated/admin/po-queue': typeof AuthenticatedAdminPoQueueRoute
   '/_authenticated/admin/products': typeof AuthenticatedAdminProductsRoute
   '/_authenticated/admin/rates': typeof AuthenticatedAdminRatesRoute
@@ -279,6 +289,7 @@ export interface FileRouteTypes {
     | '/admin/clients'
     | '/admin/dispatch-queue'
     | '/admin/payments'
+    | '/admin/po-formats'
     | '/admin/po-queue'
     | '/admin/products'
     | '/admin/rates'
@@ -304,6 +315,7 @@ export interface FileRouteTypes {
     | '/admin/clients'
     | '/admin/dispatch-queue'
     | '/admin/payments'
+    | '/admin/po-formats'
     | '/admin/po-queue'
     | '/admin/products'
     | '/admin/rates'
@@ -332,6 +344,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/clients'
     | '/_authenticated/admin/dispatch-queue'
     | '/_authenticated/admin/payments'
+    | '/_authenticated/admin/po-formats'
     | '/_authenticated/admin/po-queue'
     | '/_authenticated/admin/products'
     | '/_authenticated/admin/rates'
@@ -496,6 +509,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminPoQueueRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
+    '/_authenticated/admin/po-formats': {
+      id: '/_authenticated/admin/po-formats'
+      path: '/po-formats'
+      fullPath: '/admin/po-formats'
+      preLoaderRoute: typeof AuthenticatedAdminPoFormatsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
     '/_authenticated/admin/payments': {
       id: '/_authenticated/admin/payments'
       path: '/payments'
@@ -548,6 +568,7 @@ interface AuthenticatedAdminRouteRouteChildren {
   AuthenticatedAdminClientsRoute: typeof AuthenticatedAdminClientsRoute
   AuthenticatedAdminDispatchQueueRoute: typeof AuthenticatedAdminDispatchQueueRoute
   AuthenticatedAdminPaymentsRoute: typeof AuthenticatedAdminPaymentsRoute
+  AuthenticatedAdminPoFormatsRoute: typeof AuthenticatedAdminPoFormatsRoute
   AuthenticatedAdminPoQueueRoute: typeof AuthenticatedAdminPoQueueRoute
   AuthenticatedAdminProductsRoute: typeof AuthenticatedAdminProductsRoute
   AuthenticatedAdminRatesRoute: typeof AuthenticatedAdminRatesRoute
@@ -566,6 +587,7 @@ const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren
     AuthenticatedAdminClientsRoute: AuthenticatedAdminClientsRoute,
     AuthenticatedAdminDispatchQueueRoute: AuthenticatedAdminDispatchQueueRoute,
     AuthenticatedAdminPaymentsRoute: AuthenticatedAdminPaymentsRoute,
+    AuthenticatedAdminPoFormatsRoute: AuthenticatedAdminPoFormatsRoute,
     AuthenticatedAdminPoQueueRoute: AuthenticatedAdminPoQueueRoute,
     AuthenticatedAdminProductsRoute: AuthenticatedAdminProductsRoute,
     AuthenticatedAdminRatesRoute: AuthenticatedAdminRatesRoute,

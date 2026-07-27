@@ -52,6 +52,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Building2, Plus, Loader2, MoreVertical, Ban, CheckCircle2, X, Trash2 } from "lucide-react";
+
 function DeliveryLocationsBuilder({
   locations,
   setLocations,
@@ -1073,6 +1074,7 @@ function ClientDetailsForm({
           <TabsTrigger value="opening-balance" className="flex-1">
             Opening Balance
           </TabsTrigger>
+
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -1441,6 +1443,8 @@ function ClientDetailsForm({
             )}
           </div>
         </TabsContent>
+
+
       </Tabs>
     </>
   );

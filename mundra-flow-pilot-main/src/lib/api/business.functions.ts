@@ -1950,6 +1950,8 @@ export const createPurchaseOrderAdmin = createServerFn({ method: "POST" })
       documentMethod: z.enum(["upload", "generate"]),
       documentUrl: z.string().optional(),
       paymentTermsDays: z.number().nonnegative().optional(),
+      poFormatId: z.string().uuid().optional().nullable(),
+      poFormatData: z.record(z.unknown()).optional().nullable(),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -1999,6 +2001,8 @@ export const createPurchaseOrderAdmin = createServerFn({ method: "POST" })
       document_method: data.documentMethod,
       document_url: data.documentUrl || null,
       po_number: data.poNumber,
+      po_format_id: data.poFormatId || null,
+      po_format_data: data.poFormatData || null,
       approved_by: context.userId,
       created_by: context.userId,
     };

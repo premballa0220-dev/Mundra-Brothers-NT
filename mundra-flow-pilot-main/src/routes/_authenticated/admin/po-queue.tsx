@@ -11,6 +11,7 @@ import {
   getClientDeliveryLocationsAdmin,
   deletePurchaseOrdersAdmin,
 } from "@/lib/api/business.functions";
+import { getPoFormats } from "@/lib/api/po-formats.functions";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -113,6 +114,7 @@ function AdminPOQueuePage() {
   >(null);
   const [confirmPOId, setConfirmPOId] = useState<string | null>(null);
   const [confirmPONumber, setConfirmPONumber] = useState<string>("");
+  const [viewGeneratedPo, setViewGeneratedPo] = useState<any>(null);
 
   const [selectedPOIds, setSelectedPOIds] = useState<Set<string>>(new Set());
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
@@ -148,6 +150,9 @@ function AdminPOQueuePage() {
   const [documentUrl, setDocumentUrl] = useState("");
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [selectedPoFormatId, setSelectedPoFormatId] = useState("");
+  const [poFormatText, setPoFormatText] = useState("");
+  const [poFormatLetterheadUrl, setPoFormatLetterheadUrl] = useState("");
 
   const { data: clients } = useQuery({
     queryKey: ["admin-clients"],
@@ -170,6 +175,27 @@ function AdminPOQueuePage() {
     queryFn: () => getApplicableRate({ data: { productId, organizationId: selectedClientId } }),
     enabled: !!productId && !!selectedClientId,
   });
+
+  const { data: poFormats } = useQuery({
+    queryKey: ["admin-client-po-formats", selectedClientId],
+    queryFn: () => getPoFormats({ data: { organization_id: selectedClientId } }),
+    enabled: !!selectedClientId,
+  });
+
+  useEffect(() => {
+    if (poFormats && poFormats.length > 0) {
+      const format = poFormats[0];
+      setSelectedPoFormatId(format.id);
+      setPoFormatText(format.template_schema?.template_text || "");
+      setPoFormatLetterheadUrl(format.template_schema?.letterhead_url || "");
+      setDocumentMethod("generate");
+    } else {
+      setSelectedPoFormatId("");
+      setPoFormatText("");
+      setPoFormatLetterheadUrl("");
+      setDocumentMethod("upload");
+    }
+  }, [poFormats, selectedClientId]);
 
   // Effect to pre-fill default delivery location when client locations are loaded
   useEffect(() => {
@@ -272,6 +298,9 @@ function AdminPOQueuePage() {
     setDocumentMethod("upload");
     setDocumentUrl("");
     setDocumentFile(null);
+    setSelectedPoFormatId("");
+    setPoFormatText("");
+    setPoFormatLetterheadUrl("");
   }
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -324,6 +353,8 @@ function AdminPOQueuePage() {
       deliveryContact,
       documentMethod,
       documentUrl: finalDocumentUrl,
+      poFormatId: selectedPoFormatId || null,
+      poFormatData: selectedPoFormatId ? { html_content: poFormatText, letterhead_url: poFormatLetterheadUrl } : null,
     });
   };
 
@@ -570,12 +601,20 @@ function AdminPOQueuePage() {
                             {formatCurrency(po.total_value)}
                           </TableCell>
                           <TableCell>
-                            {po.document_url ? (
+                            {po.document_method === "generate" && po.po_format_data ? (
+                              <button
+                                onClick={() => setViewGeneratedPo(po)}
+                                className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+                              >
+                                <FileText className="h-3.5 w-3.5" />
+                                View Generated PO
+                              </button>
+                            ) : po.document_url ? (
                               <a
                                 href={po.document_url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                                className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
                               >
                                 <FileText className="h-3.5 w-3.5" />
                                 View PDF
@@ -787,7 +826,25 @@ function AdminPOQueuePage() {
                     <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
                       PO Document
                     </div>
-                    {selectedPO.document_url ? (
+                    {selectedPO.document_method === "generate" && selectedPO.po_format_data ? (
+                      <div className="flex items-center justify-between p-3 bg-primary/5 rounded-md border border-primary/20">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 bg-primary/10 text-primary rounded-md flex items-center justify-center">
+                            <FileText className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium">Auto-Generated PO</div>
+                            <div className="text-xs text-muted-foreground">
+                              Created from client format
+                            </div>
+                          </div>
+                        </div>
+                        <Button variant="default" size="sm" onClick={() => setViewGeneratedPo(selectedPO)}>
+                          <FileText className="h-3.5 w-3.5 mr-1.5" />
+                          View PO
+                        </Button>
+                      </div>
+                    ) : selectedPO.document_url ? (
                       <div className="flex items-center justify-between p-3 bg-muted/30 rounded-md">
                         <div className="flex items-center gap-3">
                           <div className="h-10 w-10 bg-primary/10 text-primary rounded-md flex items-center justify-center">
@@ -1108,6 +1165,18 @@ function AdminPOQueuePage() {
                       </div>
                     </div>
 
+                    {selectedPoFormatId && (
+                      <div className="space-y-2 pt-4 border-t">
+                        <Label>Format Editor</Label>
+                        <Textarea 
+                          value={poFormatText}
+                          onChange={(e) => setPoFormatText(e.target.value)}
+                          rows={8}
+                          placeholder="Edit the PO template here..."
+                        />
+                      </div>
+                    )}
+
                     <div className="space-y-3 pt-2 border-t">
                       <Label>PO Document</Label>
                       <div className="border rounded-md p-4 bg-muted/10 space-y-4">
@@ -1122,16 +1191,16 @@ function AdminPOQueuePage() {
                             />
                             Upload Client PO PDF
                           </Label>
-                          <Label className="flex items-center gap-2 cursor-pointer text-muted-foreground">
+                          <Label className={`flex items-center gap-2 cursor-pointer ${!selectedPoFormatId ? 'text-muted-foreground' : ''}`}>
                             <input
                               type="radio"
                               name="docMethod"
                               checked={documentMethod === "generate"}
                               onChange={() => setDocumentMethod("generate")}
                               className="accent-primary"
-                              disabled
+                              disabled={!selectedPoFormatId}
                             />
-                            Generate Proforma (Coming Soon)
+                            Generate Proforma {(!selectedPoFormatId) && "(Format Required)"}
                           </Label>
                         </div>
 
@@ -1176,6 +1245,54 @@ function AdminPOQueuePage() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Generated PO Viewer Dialog */}
+      <Dialog open={!!viewGeneratedPo} onOpenChange={(open) => !open && setViewGeneratedPo(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden flex flex-col bg-slate-50">
+          <div className="p-4 border-b bg-white flex justify-between items-center shadow-sm z-10">
+            <div>
+              <DialogTitle className="text-lg">Generated Purchase Order</DialogTitle>
+              <DialogDescription>
+                {viewGeneratedPo?.po_number} - {viewGeneratedPo?.organization?.trade_name || viewGeneratedPo?.organization?.legal_name}
+              </DialogDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => window.print()}>
+              <FileText className="h-4 w-4 mr-2" />
+              Print / Save PDF
+            </Button>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-8 bg-slate-100 flex justify-center print:p-0 print:bg-white">
+            {viewGeneratedPo && viewGeneratedPo.po_format_data && (
+              <div 
+                className="w-[210mm] min-h-[297mm] bg-white shadow-xl relative print:shadow-none print:w-full"
+                style={{
+                  backgroundImage: viewGeneratedPo.po_format_data.letterhead_url ? `url(${viewGeneratedPo.po_format_data.letterhead_url})` : 'none',
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat'
+                }}
+              >
+                {/* We render the HTML on top, with padding so it doesn't overlap the header/footer of the letterhead. 
+                    Usually letterheads have ~40-50mm top/bottom margins. */}
+                <div 
+                  className="pt-[45mm] pb-[45mm] px-[25mm] text-sm whitespace-pre-wrap font-sans"
+                  dangerouslySetInnerHTML={{
+                    __html: (viewGeneratedPo.po_format_data.html_content || "")
+                      .replace(/\{\{PO_NUMBER\}\}/g, viewGeneratedPo.po_number || "")
+                      .replace(/\{\{CLIENT_NAME\}\}/g, viewGeneratedPo.organization?.trade_name || viewGeneratedPo.organization?.legal_name || "")
+                      .replace(/\{\{PRODUCT_NAME\}\}/g, viewGeneratedPo.product?.name || "")
+                      .replace(/\{\{QUANTITY\}\}/g, Number(viewGeneratedPo.original_quantity).toFixed(2))
+                      .replace(/\{\{RATE\}\}/g, formatCurrency(viewGeneratedPo.locked_rate))
+                      .replace(/\{\{TOTAL_VALUE\}\}/g, formatCurrency(viewGeneratedPo.total_value))
+                      .replace(/\{\{DATE\}\}/g, new Date(viewGeneratedPo.created_at || Date.now()).toLocaleDateString())
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

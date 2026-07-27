@@ -1094,6 +1094,44 @@ export type Database = {
           },
         ]
       }
+      po_formats: {
+        Row: {
+          created_at: string
+          format_name: string
+          id: string
+          is_active: boolean
+          organization_id: string
+          template_schema: Json | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          format_name: string
+          id?: string
+          is_active?: boolean
+          organization_id: string
+          template_schema?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          format_name?: string
+          id?: string
+          is_active?: boolean
+          organization_id?: string
+          template_schema?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "po_formats_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       purchase_orders: {
         Row: {
           approved_by: string | null
@@ -1106,6 +1144,8 @@ export type Database = {
           locked_rate: number
           organization_id: string
           original_quantity: number
+          po_format_data: Json | null
+          po_format_id: string | null
           po_number: string
           product_id: string
           site_address: string
@@ -1124,6 +1164,8 @@ export type Database = {
           locked_rate: number
           organization_id: string
           original_quantity: number
+          po_format_data?: Json | null
+          po_format_id?: string | null
           po_number: string
           product_id: string
           site_address: string
@@ -1142,6 +1184,8 @@ export type Database = {
           locked_rate?: number
           organization_id?: string
           original_quantity?: number
+          po_format_data?: Json | null
+          po_format_id?: string | null
           po_number?: string
           product_id?: string
           site_address?: string
@@ -1162,6 +1206,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_po_format_id_fkey"
+            columns: ["po_format_id"]
+            isOneToOne: false
+            referencedRelation: "po_formats"
             referencedColumns: ["id"]
           },
         ]

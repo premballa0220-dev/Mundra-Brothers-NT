@@ -63,6 +63,7 @@ const ADMIN_NAV: NavItem[] = [
   { to: "/admin/products", label: "Products", icon: Boxes },
   { to: "/admin/rates", label: "Rate Master", icon: Tags },
   { to: "/admin/po-queue", label: "PO Queue", icon: FileText },
+  { to: "/admin/po-formats", label: "PO Formats", icon: FileText },
   { to: "/admin/dispatch-queue", label: "Dispatch Queue", icon: Truck },
   { to: "/admin/payments", label: "Payments & Refunds", icon: Wallet },
   { to: "/admin/refund-letters", label: "Balance Confirmations", icon: Files },
