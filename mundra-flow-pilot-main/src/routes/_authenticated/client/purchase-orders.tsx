@@ -76,6 +76,10 @@ function ClientPurchaseOrdersPage() {
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
+  const [poFormatText, setPoFormatText] = useState("");
+  const [selectedPoFormatId, setSelectedPoFormatId] = useState<string | null>(null);
+  const [viewGeneratedPo, setViewGeneratedPo] = useState<any>(null);
+
   const { data: deliveryLocations } = useQuery({
     queryKey: ["client-delivery-locations"],
     queryFn: () => getClientDeliveryLocations(),
@@ -110,6 +114,20 @@ function ClientPurchaseOrdersPage() {
     queryKey: ["client-products"],
     queryFn: () => getProducts(),
   });
+
+  const { data: poFormats } = useQuery({
+    queryKey: ["po-formats"],
+    queryFn: () => getPoFormats(),
+  });
+
+  useEffect(() => {
+    if (open && poFormats && poFormats.length > 0) {
+      const activeFormat = poFormats[0];
+      setSelectedPoFormatId(activeFormat.id);
+      const schema = activeFormat.template_schema as { template_text?: string } | null;
+      setPoFormatText(schema?.template_text || "");
+    }
+  }, [open, poFormats]);
 
   const updateItem = (index: number, patch: Partial<LineItem>) => {
     setLineItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)));
@@ -170,6 +188,15 @@ function ClientPurchaseOrdersPage() {
     setDocumentMethod("upload");
     setDocumentUrl("");
     setDocumentFile(null);
+    if (poFormats && poFormats.length > 0) {
+      const activeFormat = poFormats[0];
+      setSelectedPoFormatId(activeFormat.id);
+      const schema = activeFormat.template_schema as { template_text?: string } | null;
+      setPoFormatText(schema?.template_text || "");
+    } else {
+      setSelectedPoFormatId(null);
+      setPoFormatText("");
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -230,7 +257,9 @@ function ClientPurchaseOrdersPage() {
       siteAddress,
       deliveryContact,
       documentMethod,
-      documentUrl: finalDocumentUrl || "https://example.com/demo-po.pdf",
+      documentUrl: finalDocumentUrl || null,
+      poFormatId: documentMethod === "generate" ? selectedPoFormatId : null,
+      poFormatData: documentMethod === "generate" ? { html_content: poFormatText } : null,
     });
   }
 
