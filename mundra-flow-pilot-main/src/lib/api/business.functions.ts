@@ -619,7 +619,6 @@ export const createClient = createServerFn({ method: "POST" })
       legalName: z.string().min(1),
       shortName: z.string().optional(),
       tradeName: z.string().optional(),
-      logoUrl: z.string().optional(),
       partyCode: z.string().optional(),
       tpCode: z.string().optional(),
       gstNumber: z.string().optional(),
@@ -818,7 +817,6 @@ export const updateClient = createServerFn({ method: "POST" })
         primary_contact_name: data.primaryContactName || null,
         primary_contact_email: data.primaryContactEmail || null,
         primary_contact_phone: data.primaryContactPhone || null,
-        logo_url: data.logoUrl || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -4313,4 +4311,27 @@ export const getAdminOverdueReport = createServerFn({ method: "POST" })
     }).filter((r: any) => r.unpaid_amount > 0);
 
     return report.sort((a, b) => b.overdue_days - a.overdue_days);
+  });
+
+export const getClientOrganization = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      organizationId: z.string().optional(), // Admin passes this, client uses context
+    }).optional()
+  )
+  .handler(async ({ data, context }) => {
+    const supabase = createSupabaseAdminClient();
+    const orgId = context.orgType === "mundra" && data?.organizationId ? data.organizationId : context.organizationId;
+    
+    if (!orgId) throw new Error("Organization ID required");
+    
+    const { data: org, error } = await supabase
+      .from("organizations")
+      .select("*")
+      .eq("id", orgId)
+      .single();
+      
+    if (error) throw new Error(error.message);
+    return org;
   });

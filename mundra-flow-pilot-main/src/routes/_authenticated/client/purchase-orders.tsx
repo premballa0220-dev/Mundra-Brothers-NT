@@ -7,6 +7,7 @@ import {
   getProducts,
   getApplicableRate,
   getClientDeliveryLocations,
+  getClientOrganization,
 } from "@/lib/api/business.functions";
 import { getPoFormats } from "@/lib/api/po-formats.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -115,17 +116,27 @@ function ClientPurchaseOrdersPage() {
     queryFn: () => getProducts(),
   });
 
+  const { data: organization } = useQuery({
+    queryKey: ["client-organization"],
+    queryFn: () => getClientOrganization(),
+  });
+
   const { data: poFormats } = useQuery({
     queryKey: ["po-formats"],
     queryFn: () => getPoFormats(),
   });
 
   useEffect(() => {
-    if (open && poFormats && poFormats.length > 0) {
-      const activeFormat = poFormats[0];
-      setSelectedPoFormatId(activeFormat.id);
-      const schema = activeFormat.template_schema as { template_text?: string } | null;
-      setPoFormatText(schema?.template_text || "");
+    if (open) {
+      if (poFormats && poFormats.length > 0) {
+        const activeFormat = poFormats[0];
+        setSelectedPoFormatId(activeFormat.id);
+        const schema = activeFormat.template_schema as { template_text?: string } | null;
+        setPoFormatText(schema?.template_text || "");
+      } else {
+        setSelectedPoFormatId(null);
+        setPoFormatText("");
+      }
     }
   }, [open, poFormats]);
 
@@ -471,10 +482,11 @@ function ClientPurchaseOrdersPage() {
                     </p>
                   )}
 
-                  {selectedPoFormatId && (
+                  {documentMethod === "generate" && (
                     <div className="space-y-2 pt-4 border-t">
                       <Label>Format Editor</Label>
-                      <Textarea 
+                      <textarea
+                        className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                         value={poFormatText}
                         onChange={(e) => setPoFormatText(e.target.value)}
                         rows={8}
@@ -497,16 +509,16 @@ function ClientPurchaseOrdersPage() {
                           />
                           Upload PO PDF
                         </Label>
-                        <Label className={`flex items-center gap-2 cursor-pointer ${!selectedPoFormatId ? 'text-muted-foreground' : ''}`}>
+                        <Label className={`flex items-center gap-2 cursor-pointer ${!organization?.logo_url ? 'text-muted-foreground' : ''}`}>
                           <input
                             type="radio"
                             name="docMethod"
                             checked={documentMethod === "generate"}
                             onChange={() => setDocumentMethod("generate")}
                             className="accent-primary"
-                            disabled={!selectedPoFormatId}
+                            disabled={!organization?.logo_url}
                           />
-                          Generate Proforma {(!selectedPoFormatId) && "(Format Required)"}
+                          Generate Proforma {(!organization?.logo_url) && "(Logo Required)"}
                         </Label>
                       </div>
 

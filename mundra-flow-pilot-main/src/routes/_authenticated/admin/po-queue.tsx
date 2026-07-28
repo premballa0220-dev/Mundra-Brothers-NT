@@ -158,6 +158,9 @@ function AdminPOQueuePage() {
     queryFn: () => getClients(),
   });
 
+  const selectedClientObject = clients?.find((c: any) => c.id === selectedClientId);
+  const clientHasLogo = !!selectedClientObject?.logo_url;
+
   const { data: products } = useQuery({
     queryKey: ["admin-products"],
     queryFn: () => getProducts(),
@@ -182,17 +185,17 @@ function AdminPOQueuePage() {
   });
 
   useEffect(() => {
-    if (poFormats && poFormats.length > 0) {
-      const format = poFormats[0];
-      setSelectedPoFormatId(format.id);
-      setPoFormatText(format.template_schema?.template_text || "");
-      setDocumentMethod("generate");
-    } else {
-      setSelectedPoFormatId("");
-      setPoFormatText("");
-      setDocumentMethod("upload");
+    if (createPOOpen) {
+      if (poFormats && poFormats.length > 0) {
+        const format = poFormats[0];
+        setSelectedPoFormatId(format.id);
+        setPoFormatText(format.template_schema?.template_text || "");
+      } else {
+        setSelectedPoFormatId("");
+        setPoFormatText("");
+      }
     }
-  }, [poFormats, selectedClientId]);
+  }, [poFormats, selectedClientId, createPOOpen]);
 
   // Effect to pre-fill default delivery location when client locations are loaded
   useEffect(() => {
@@ -349,8 +352,8 @@ function AdminPOQueuePage() {
       deliveryContact,
       documentMethod,
       documentUrl: finalDocumentUrl,
-      poFormatId: selectedPoFormatId || null,
-      poFormatData: selectedPoFormatId ? { html_content: poFormatText } : null,
+      poFormatId: documentMethod === "generate" && selectedPoFormatId ? selectedPoFormatId : null,
+      poFormatData: documentMethod === "generate" ? { html_content: poFormatText } : null,
     });
   };
 
@@ -1161,7 +1164,7 @@ function AdminPOQueuePage() {
                       </div>
                     </div>
 
-                    {selectedPoFormatId && (
+                    {documentMethod === "generate" && (
                       <div className="space-y-2 pt-4 border-t">
                         <Label>Format Editor</Label>
                         <Textarea 
@@ -1187,16 +1190,16 @@ function AdminPOQueuePage() {
                             />
                             Upload Client PO PDF
                           </Label>
-                          <Label className={`flex items-center gap-2 cursor-pointer ${!selectedPoFormatId ? 'text-muted-foreground' : ''}`}>
+                          <Label className={`flex items-center gap-2 cursor-pointer ${!clientHasLogo ? 'text-muted-foreground' : ''}`}>
                             <input
                               type="radio"
                               name="docMethod"
                               checked={documentMethod === "generate"}
                               onChange={() => setDocumentMethod("generate")}
                               className="accent-primary"
-                              disabled={!selectedPoFormatId}
+                              disabled={!clientHasLogo}
                             />
-                            Generate Proforma {(!selectedPoFormatId) && "(Format Required)"}
+                            Generate Proforma {(!clientHasLogo) && "(Logo Required)"}
                           </Label>
                         </div>
 
