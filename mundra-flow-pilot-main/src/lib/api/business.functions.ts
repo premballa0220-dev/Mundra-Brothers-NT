@@ -4391,7 +4391,7 @@ export const getClientOrganization = createServerFn({ method: "GET" })
     
     const { data: org, error } = await supabase
       .from("organizations")
-      .select("*")
+      .select("*, billing_addresses:client_billing_addresses(*)")
       .eq("id", orgId)
       .single();
       

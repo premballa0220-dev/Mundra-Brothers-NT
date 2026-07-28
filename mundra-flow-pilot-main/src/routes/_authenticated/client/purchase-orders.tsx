@@ -72,6 +72,7 @@ function ClientPurchaseOrdersPage() {
   const [isExceptionRate, setIsExceptionRate] = useState(false);
   const [siteAddress, setSiteAddress] = useState("");
   const [deliveryContact, setDeliveryContact] = useState("");
+  const [selectedBillingProfileId, setSelectedBillingProfileId] = useState("");
   const [documentMethod, setDocumentMethod] = useState<"upload" | "generate">("upload");
   const [documentUrl, setDocumentUrl] = useState("");
   const [documentFile, setDocumentFile] = useState<File | null>(null);
@@ -137,8 +138,15 @@ function ClientPurchaseOrdersPage() {
         setSelectedPoFormatId(null);
         setPoFormatText("");
       }
+      
+      if (organization?.billing_addresses && organization.billing_addresses.length > 0) {
+        const defaultProfile = organization.billing_addresses.find((b: any) => b.is_default) || organization.billing_addresses[0];
+        setSelectedBillingProfileId(defaultProfile.id);
+      } else {
+        setSelectedBillingProfileId("");
+      }
     }
-  }, [open, poFormats]);
+  }, [open, poFormats, organization]);
 
   const updateItem = (index: number, patch: Partial<LineItem>) => {
     setLineItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)));
@@ -270,7 +278,14 @@ function ClientPurchaseOrdersPage() {
       documentMethod,
       documentUrl: finalDocumentUrl || null,
       poFormatId: documentMethod === "generate" ? selectedPoFormatId : null,
-      poFormatData: documentMethod === "generate" ? { html_content: poFormatText } : null,
+      poFormatData: documentMethod === "generate" 
+        ? { 
+            html_content: poFormatText,
+            billing_profile_id: selectedBillingProfileId,
+            billing_address: organization?.billing_addresses?.find((b: any) => b.id === selectedBillingProfileId)?.billing_address || organization?.billing_address || "",
+            gst_number: organization?.billing_addresses?.find((b: any) => b.id === selectedBillingProfileId)?.gst_number || organization?.gst_number || ""
+          } 
+        : null,
     });
   }
 
@@ -480,6 +495,28 @@ function ClientPurchaseOrdersPage() {
                     <p className="text-[11px] text-muted-foreground mt-1">
                       Address is selected from your pre-configured delivery locations.
                     </p>
+                  )}
+
+                  {documentMethod === "generate" && organization?.billing_addresses && organization.billing_addresses.length > 0 && (
+                    <div className="space-y-1 mt-4">
+                      <Label>Billing Profile *</Label>
+                      <Select 
+                        value={selectedBillingProfileId} 
+                        onValueChange={setSelectedBillingProfileId} 
+                        required={documentMethod === "generate"}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a billing profile..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {organization.billing_addresses.map((profile: any) => (
+                            <SelectItem key={profile.id} value={profile.id}>
+                              {profile.gst_number ? `GST: ${profile.gst_number}` : "No GST"} - {profile.billing_address?.substring(0, 40)}{profile.billing_address?.length > 40 ? "..." : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   )}
 
                   {documentMethod === "generate" && (
@@ -734,8 +771,13 @@ function ClientPurchaseOrdersPage() {
                     <h1 className="text-2xl font-bold uppercase text-slate-900 tracking-wide">
                       {viewGeneratedPo.organization?.trade_name || viewGeneratedPo.organization?.legal_name}
                     </h1>
+                    {viewGeneratedPo.po_format_data?.gst_number && (
+                      <p className="text-slate-800 font-semibold text-sm mt-1 ml-auto">
+                        GSTIN: {viewGeneratedPo.po_format_data.gst_number}
+                      </p>
+                    )}
                     <p className="text-slate-600 text-sm mt-1 ml-auto whitespace-pre-wrap">
-                      {viewGeneratedPo.organization?.billing_address || "Billing address not provided"}
+                      {viewGeneratedPo.po_format_data?.billing_address || viewGeneratedPo.organization?.billing_address || "Billing address not provided"}
                     </p>
                   </div>
                 </div>

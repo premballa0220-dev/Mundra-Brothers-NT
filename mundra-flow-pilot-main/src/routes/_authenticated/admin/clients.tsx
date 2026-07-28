@@ -490,7 +490,7 @@ function AdminClientsPage() {
     setIsUploadingStamp(true);
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}-stamp-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
       const filePath = `logos/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
@@ -697,9 +697,6 @@ function AdminClientsPage() {
                             </span>
                           )}
                       </div>
-                            )}
-                      </div>
-
                       <div className="col-span-2 pt-2">
                         <BillingProfilesBuilder
                           profiles={billingProfiles}
@@ -1282,7 +1279,7 @@ function ClientDetailsForm({
     setIsUploadingMStamp(true);
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}-stamp-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
       const filePath = `logos/${fileName}`;
 
       const { error: uploadError } = await supabase.storage

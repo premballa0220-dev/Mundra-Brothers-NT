@@ -146,6 +146,7 @@ function AdminPOQueuePage() {
   const [isExceptionRate, setIsExceptionRate] = useState(false);
   const [siteAddress, setSiteAddress] = useState("");
   const [deliveryContact, setDeliveryContact] = useState("");
+  const [selectedBillingProfileId, setSelectedBillingProfileId] = useState("");
   const [documentMethod, setDocumentMethod] = useState<"upload" | "generate">("upload");
   const [documentUrl, setDocumentUrl] = useState("");
   const [documentFile, setDocumentFile] = useState<File | null>(null);
@@ -213,7 +214,14 @@ function AdminPOQueuePage() {
       setSiteAddress("");
       setDeliveryContact("");
     }
-  }, [deliveryLocations, createPOOpen]);
+    
+    if (selectedClientObject?.billing_addresses && selectedClientObject.billing_addresses.length > 0 && createPOOpen) {
+      const defaultProfile = selectedClientObject.billing_addresses.find((b: any) => b.is_default) || selectedClientObject.billing_addresses[0];
+      setSelectedBillingProfileId(defaultProfile.id);
+    } else {
+      setSelectedBillingProfileId("");
+    }
+  }, [deliveryLocations, createPOOpen, selectedClientObject]);
 
   // Effect to set rate
   useEffect(() => {
@@ -353,7 +361,14 @@ function AdminPOQueuePage() {
       documentMethod,
       documentUrl: finalDocumentUrl,
       poFormatId: documentMethod === "generate" && selectedPoFormatId ? selectedPoFormatId : null,
-      poFormatData: documentMethod === "generate" ? { html_content: poFormatText } : null,
+      poFormatData: documentMethod === "generate" 
+        ? { 
+            html_content: poFormatText, 
+            billing_profile_id: selectedBillingProfileId,
+            billing_address: selectedClientObject?.billing_addresses?.find((b: any) => b.id === selectedBillingProfileId)?.billing_address || selectedClientObject?.billing_address || "",
+            gst_number: selectedClientObject?.billing_addresses?.find((b: any) => b.id === selectedBillingProfileId)?.gst_number || selectedClientObject?.gst_number || ""
+          } 
+        : null,
     });
   };
 
@@ -1150,18 +1165,44 @@ function AdminPOQueuePage() {
                           value={siteAddress}
                           onChange={(e) => setSiteAddress(e.target.value)}
                           required
+                          placeholder="Full delivery address"
                           rows={2}
-                          placeholder="Enter the complete delivery address..."
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Site Contact Information</Label>
+                        <Label>Delivery Contact (Optional)</Label>
                         <Input
                           value={deliveryContact}
                           onChange={(e) => setDeliveryContact(e.target.value)}
                           placeholder="e.g. John Doe (9876543210)"
                         />
                       </div>
+                      
+                      {documentMethod === "generate" && selectedClientObject?.billing_addresses && selectedClientObject.billing_addresses.length > 0 && (
+                        <div className="space-y-2">
+                          <Label>Billing Profile *</Label>
+                          <Select 
+                            value={selectedBillingProfileId} 
+                            onValueChange={setSelectedBillingProfileId} 
+                            required={documentMethod === "generate"}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a billing profile..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {selectedClientObject.billing_addresses.map((profile: any) => (
+                                <SelectItem key={profile.id} value={profile.id}>
+                                  {profile.gst_number ? `GST: ${profile.gst_number}` : "No GST"} - {profile.billing_address?.substring(0, 40)}{profile.billing_address?.length > 40 ? "..." : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-4 pt-2 border-t">
+                      {/* Document Section Placeholder */}
                     </div>
 
                     {documentMethod === "generate" && (
@@ -1321,8 +1362,13 @@ function AdminPOQueuePage() {
                     <h1 className="text-2xl font-bold uppercase text-slate-900 tracking-wide">
                       {viewGeneratedPo.organization?.trade_name || viewGeneratedPo.organization?.legal_name}
                     </h1>
+                    {viewGeneratedPo.po_format_data?.gst_number && (
+                      <p className="text-slate-800 font-semibold text-sm mt-1 ml-auto">
+                        GSTIN: {viewGeneratedPo.po_format_data.gst_number}
+                      </p>
+                    )}
                     <p className="text-slate-600 text-sm mt-1 ml-auto whitespace-pre-wrap">
-                      {viewGeneratedPo.organization?.billing_address || "Billing address not provided"}
+                      {viewGeneratedPo.po_format_data?.billing_address || viewGeneratedPo.organization?.billing_address || "Billing address not provided"}
                     </p>
                   </div>
                 </div>
