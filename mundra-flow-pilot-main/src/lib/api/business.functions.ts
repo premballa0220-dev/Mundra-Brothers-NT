@@ -488,10 +488,11 @@ export const getClients = createServerFn({ method: "GET" })
     let allDispatches: any[] = [];
     let allPayments: any[] = [];
     let allInvoices: any[] = [];
+    let billingAddresses: any[] = [];
     let obAllocationsByOrg = new Map<string, number>();
 
     if (orgIds.length > 0) {
-      const [{ data: p }, { data: l }, { data: pr }, { data: c }, { data: dr }, { data: pay }, { data: inv }, { data: obAlloc }] =
+      const [{ data: p }, { data: l }, { data: pr }, { data: c }, { data: dr }, { data: pay }, { data: inv }, { data: obAlloc }, { data: ba }] =
         await Promise.all([
           supabase.from("client_commercial_profiles").select("*").in("organization_id", orgIds),
           supabase.from("client_delivery_locations").select("*").in("organization_id", orgIds),
@@ -522,6 +523,7 @@ export const getClients = createServerFn({ method: "GET" })
             .select("allocated_amount, invoices!inner(organization_id, is_opening_balance)")
             .in("invoices.organization_id", orgIds)
             .eq("invoices.is_opening_balance", true),
+          supabase.from("client_billing_addresses").select("*").in("organization_id", orgIds),
         ]);
       profiles = p || [];
       locations = l || [];
@@ -530,6 +532,7 @@ export const getClients = createServerFn({ method: "GET" })
       allDispatches = dr || [];
       allPayments = pay || [];
       allInvoices = inv || [];
+      billingAddresses = ba || [];
       
       for (const alloc of obAlloc || []) {
         const orgId = (alloc.invoices as any)?.organization_id;
@@ -593,6 +596,7 @@ export const getClients = createServerFn({ method: "GET" })
           ? { ...profile, available_credit: availableCredit, current_exposure: total_exposure }
           : null,
         delivery_locations: locations.filter((loc) => loc.organization_id === org.id),
+        billing_addresses: billingAddresses.filter((ba) => ba.organization_id === org.id),
         approved_products: products.filter((prod) => prod.organization_id === org.id),
         credit_history: creditHistory.filter((hist) => hist.organization_id === org.id),
         invoices: allInvoices.filter((inv) => inv.organization_id === org.id),
@@ -648,6 +652,16 @@ export const createClient = createServerFn({ method: "POST" })
             isDefault: z.boolean().default(false),
             contactPerson: z.string().optional(),
             contactPhone: z.string().optional(),
+          }),
+        )
+        .optional(),
+      billingProfiles: z
+        .array(
+          z.object({
+            id: z.string().optional(),
+            gstNumber: z.string().optional(),
+            billingAddress: z.string().optional(),
+            isDefault: z.boolean().default(false),
           }),
         )
         .optional(),
@@ -738,6 +752,24 @@ export const createClient = createServerFn({ method: "POST" })
       }));
       await supabase.from("client_delivery_locations").insert(locations);
     }
+    
+    if (data.billingProfiles && data.billingProfiles.length > 0) {
+      const profiles = data.billingProfiles.map((p) => ({
+        id: crypto.randomUUID(),
+        organization_id: orgId,
+        gst_number: p.gstNumber || null,
+        billing_address: p.billingAddress || null,
+        is_default: p.isDefault,
+      }));
+      await supabase.from("client_billing_addresses").insert(profiles);
+      
+      // Update root organization with default profile if trigger hasn't fired yet
+      const defaultProfile = profiles.find((p) => p.is_default) || profiles[0];
+      if (defaultProfile) {
+        org.gst_number = defaultProfile.gst_number;
+        org.billing_address = defaultProfile.billing_address;
+      }
+    }
     await createAuditLog(context.userId, "CREATE_CLIENT", "organizations", org.id, null, {
       org,
       profile,
@@ -799,6 +831,16 @@ export const updateClient = createServerFn({ method: "POST" })
           }),
         )
         .optional(),
+      billingProfiles: z
+        .array(
+          z.object({
+            id: z.string().optional(),
+            gstNumber: z.string().optional(),
+            billingAddress: z.string().optional(),
+            isDefault: z.boolean().default(false),
+          }),
+        )
+        .optional(),
       logoUrl: z.string().optional().nullable(),
       stampUrl: z.string().optional().nullable(),
     }),
@@ -849,6 +891,23 @@ export const updateClient = createServerFn({ method: "POST" })
             .from("client_delivery_locations")
             .insert(locations);
           if (insertError) throw new Error("Failed to insert locations: " + insertError.message);
+        }
+      }
+
+      if (data.billingProfiles) {
+        await supabase
+          .from("client_billing_addresses")
+          .delete()
+          .eq("organization_id", data.organizationId);
+        if (data.billingProfiles.length > 0) {
+          const profiles = data.billingProfiles.map((p) => ({
+            id: crypto.randomUUID(),
+            organization_id: data.organizationId,
+            gst_number: p.gstNumber || null,
+            billing_address: p.billingAddress || null,
+            is_default: p.isDefault,
+          }));
+          await supabase.from("client_billing_addresses").insert(profiles);
         }
       }
 

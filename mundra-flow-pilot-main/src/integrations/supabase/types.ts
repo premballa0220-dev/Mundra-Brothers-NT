@@ -235,6 +235,41 @@ export type Database = {
           },
         ]
       }
+      client_billing_addresses: {
+        Row: {
+          id: string
+          organization_id: string
+          gst_number: string | null
+          billing_address: string | null
+          is_default: boolean | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          gst_number?: string | null
+          billing_address?: string | null
+          is_default?: boolean | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          gst_number?: string | null
+          billing_address?: string | null
+          is_default?: boolean | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_billing_addresses_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       client_credit_history: {
         Row: {
           created_at: string

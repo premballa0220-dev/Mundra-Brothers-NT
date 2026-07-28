@@ -183,6 +183,105 @@ function DeliveryLocationsBuilder({
   );
 }
 
+function BillingProfilesBuilder({
+  profiles,
+  setProfiles,
+}: {
+  profiles: any[];
+  setProfiles: any;
+}) {
+  const addProfile = () =>
+    setProfiles([
+      ...profiles,
+      {
+        gstNumber: "",
+        billingAddress: "",
+        isDefault: profiles.length === 0,
+      },
+    ]);
+  const updateProfile = (index: number, key: string, value: any) => {
+    const newProfiles = [...profiles];
+    if (key === "isDefault" && value === true) {
+      newProfiles.forEach((p) => (p.isDefault = false));
+    }
+    newProfiles[index][key] = value;
+    setProfiles(newProfiles);
+  };
+  const removeProfile = (index: number) => {
+    const newProfiles = profiles.filter((_, i) => i !== index);
+    if (profiles[index].isDefault && newProfiles.length > 0) {
+      newProfiles[0].isDefault = true;
+    }
+    setProfiles(newProfiles);
+  };
+
+  return (
+    <div className="col-span-2 space-y-3">
+      <div className="flex items-center justify-between">
+        <Label className="font-semibold text-sm">GST & Billing Profiles</Label>
+        <Button type="button" variant="outline" size="sm" onClick={addProfile}>
+          <Plus className="h-3 w-3 mr-1" /> Add Billing Profile
+        </Button>
+      </div>
+      {profiles.length === 0 && (
+        <p className="text-xs text-muted-foreground italic">
+          No billing profiles added. You must add at least one to generate POs.
+        </p>
+      )}
+      {profiles.map((profile, i) => (
+        <div key={i} className="flex items-start gap-3 p-3 border rounded-md relative bg-muted/10">
+          <div className="flex-1 space-y-3">
+            <div className="flex gap-3">
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs">GST Number *</Label>
+                <Input
+                  value={profile.gstNumber}
+                  onChange={(e) => updateProfile(i, "gstNumber", e.target.value)}
+                  required
+                  placeholder="e.g. 27AAAAA1234A1ZA"
+                />
+              </div>
+              <div className="flex items-end pb-2">
+                <Label className="flex items-center gap-2 cursor-pointer text-xs bg-background border px-3 py-2 rounded-md">
+                  <input
+                    type="radio"
+                    name="defaultBillingProfileNew"
+                    checked={profile.isDefault}
+                    onChange={() => updateProfile(i, "isDefault", true)}
+                    className="w-3.5 h-3.5 accent-primary"
+                  />
+                  Set as Default
+                </Label>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Billing Address *</Label>
+              <Textarea
+                value={profile.billingAddress}
+                onChange={(e) => updateProfile(i, "billingAddress", e.target.value)}
+                required
+                rows={2}
+                placeholder="Enter complete billing address for this GST..."
+              />
+            </div>
+          </div>
+          {profiles.length > 1 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 right-2 h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50"
+              onClick={() => removeProfile(i)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export const Route = createFileRoute("/_authenticated/admin/clients")({
   ssr: false,
   component: AdminClientsPage,
@@ -205,9 +304,14 @@ function AdminClientsPage() {
   const [tradeName, setTradeName] = useState("");
   const [partyCode, setPartyCode] = useState("");
   const [tpCode, setTpCode] = useState("");
-  const [gstNumber, setGstNumber] = useState("");
   const [panNumber, setPanNumber] = useState("");
-  const [billingAddress, setBillingAddress] = useState("");
+  const [billingProfiles, setBillingProfiles] = useState<
+    {
+      gstNumber: string;
+      billingAddress: string;
+      isDefault: boolean;
+    }[]
+  >([{ gstNumber: "", billingAddress: "", isDefault: true }]);
   const [primaryContactName, setPrimaryContactName] = useState("");
   const [primaryContactEmail, setPrimaryContactEmail] = useState("");
   const [primaryContactPhone, setPrimaryContactPhone] = useState("");
@@ -326,9 +430,8 @@ function AdminClientsPage() {
     setTradeName("");
     setPartyCode("");
     setTpCode("");
-    setGstNumber("");
     setPanNumber("");
-    setBillingAddress("");
+    setBillingProfiles([{ gstNumber: "", billingAddress: "", isDefault: true }]);
     setPrimaryContactName("");
     setPrimaryContactEmail("");
     setPrimaryContactPhone("");
@@ -426,9 +529,7 @@ function AdminClientsPage() {
       tradeName,
       partyCode,
       tpCode,
-      gstNumber,
       panNumber,
-      billingAddress,
       primaryContactName,
       primaryContactEmail,
       primaryContactPhone,
@@ -444,6 +545,7 @@ function AdminClientsPage() {
       restrictions,
       commissionPercentage: commissionPercentage === "" ? null : Number(commissionPercentage),
       deliveryLocations: deliveryLocations.map((l) => ({ ...l, isDefault: !!l.isDefault })),
+      billingProfiles,
       initialOpeningBalance: initialOpeningBalance === "" ? undefined : Number(initialOpeningBalance),
       initialOpeningBalanceDate: initialOpeningBalanceDate === "" ? undefined : initialOpeningBalanceDate,
       openingInvoices: openingInvoices.filter(i => i.invoiceNumber && i.amount !== ""),
@@ -510,10 +612,6 @@ function AdminClientsPage() {
                       <div className="space-y-2">
                         <Label>Trade / Short Name</Label>
                         <Input value={tradeName} onChange={(e) => setTradeName(e.target.value)} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>GST Number</Label>
-                        <Input value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} />
                       </div>
                       <div className="space-y-2">
                         <Label>PAN Number</Label>
@@ -599,11 +697,13 @@ function AdminClientsPage() {
                             </span>
                           )}
                       </div>
-                      <div className="space-y-2 col-span-2">
-                        <Label>Billing Address</Label>
-                        <Textarea
-                          value={billingAddress}
-                          onChange={(e) => setBillingAddress(e.target.value)}
+                            )}
+                      </div>
+
+                      <div className="col-span-2 pt-2">
+                        <BillingProfilesBuilder
+                          profiles={billingProfiles}
+                          setProfiles={setBillingProfiles}
                         />
                       </div>
 
@@ -1063,7 +1163,19 @@ function ClientDetailsForm({
   const [mTpCode, setMTpCode] = useState(client.tp_code || "");
   const [mGst, setMGst] = useState(client.gst_number || "");
   const [mPan, setMPan] = useState(client.pan_number || "");
-  const [mBilling, setMBilling] = useState(client.billing_address || "");
+  const [mBillingProfiles, setMBillingProfiles] = useState<
+    {
+      gstNumber: string;
+      billingAddress: string;
+      isDefault: boolean;
+    }[]
+  >(
+    client.billing_addresses?.map((b: any) => ({
+      gstNumber: b.gst_number || "",
+      billingAddress: b.billing_address || "",
+      isDefault: b.is_default,
+    })) || [],
+  );
   const [mContactName, setMContactName] = useState(client.primary_contact_name || "");
   const [mContactEmail, setMContactEmail] = useState(client.primary_contact_email || "");
   const [mContactPhone, setMContactPhone] = useState(client.primary_contact_phone || "");
@@ -1097,7 +1209,13 @@ function ClientDetailsForm({
     setMTpCode(client.tp_code || "");
     setMGst(client.gst_number || "");
     setMPan(client.pan_number || "");
-    setMBilling(client.billing_address || "");
+    setMBillingProfiles(
+      client.billing_addresses?.map((b: any) => ({
+        gstNumber: b.gst_number || "",
+        billingAddress: b.billing_address || "",
+        isDefault: b.is_default,
+      })) || [],
+    );
     setMContactName(client.primary_contact_name || "");
     setMContactEmail(client.primary_contact_email || "");
     setMContactPhone(client.primary_contact_phone || "");
@@ -1195,14 +1313,13 @@ function ClientDetailsForm({
         tradeName: mTrade,
         partyCode: mPartyCode,
         tpCode: mTpCode,
-        gstNumber: mGst,
         panNumber: mPan,
-        billingAddress: mBilling,
         primaryContactName: mContactName,
         primaryContactEmail: mContactEmail,
         primaryContactPhone: mContactPhone,
         logoUrl: mLogo,
         stampUrl: mStamp,
+        billingProfiles: mBillingProfiles,
         deliveryLocations: mDeliveryLocations.map((l) => ({ ...l, isDefault: !!l.isDefault })),
       },
       {
@@ -1270,17 +1387,17 @@ function ClientDetailsForm({
                   <Input value={mTpCode} onChange={(e) => setMTpCode(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label>GST Number</Label>
-                  <Input value={mGst} onChange={(e) => setMGst(e.target.value)} />
-                </div>
-                <div className="space-y-2">
                   <Label>PAN Number</Label>
                   <Input value={mPan} onChange={(e) => setMPan(e.target.value)} />
                 </div>
-                <div className="col-span-2 space-y-2">
-                  <Label>Billing Address</Label>
-                  <Textarea value={mBilling} onChange={(e) => setMBilling(e.target.value)} />
+                
+                <div className="col-span-2 pt-2">
+                  <BillingProfilesBuilder
+                    profiles={mBillingProfiles}
+                    setProfiles={setMBillingProfiles}
+                  />
                 </div>
+                
                 <div className="space-y-2">
                   <Label>Contact Name</Label>
                   <Input value={mContactName} onChange={(e) => setMContactName(e.target.value)} />
