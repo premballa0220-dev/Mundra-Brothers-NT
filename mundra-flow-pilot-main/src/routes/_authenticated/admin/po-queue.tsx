@@ -1202,20 +1202,59 @@ function AdminPOQueuePage() {
                         </div>
 
                         {documentMethod === "upload" && (
-                          <div className="flex flex-col gap-2">
-                            <Input
-                              type="file"
-                              accept=".pdf,.jpg,.jpeg,.png"
-                              onChange={handleFileUpload}
-                              className="cursor-pointer file:cursor-pointer"
-                            />
-                            {documentFile && (
-                              <div className="text-xs text-success flex items-center gap-1 mt-1">
-                                <CheckCircle2 className="h-3 w-3" /> {documentFile.name} ready to
-                                upload
+                          !documentFile ? (
+                            <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-accent/50 transition-colors relative bg-white">
+                              <Input
+                                type="file"
+                                accept=".pdf,image/*"
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    if (file.size > 1024 * 1024) {
+                                      toast.error("File size must be less than 1MB");
+                                      e.target.value = "";
+                                      return;
+                                    }
+                                    setDocumentFile(file);
+                                    setDocumentUrl(URL.createObjectURL(file));
+                                    setDocumentMethod("upload");
+                                  }
+                                }}
+                              />
+                              <UploadCloud className="h-8 w-8 text-muted-foreground mb-2" />
+                              <p className="text-sm font-medium">Click or drag file to upload</p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Supports PDF, PNG, JPG up to 1MB
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between p-3 border rounded-lg bg-white">
+                              <div className="flex items-center space-x-3 overflow-hidden">
+                                <div className="h-10 w-10 shrink-0 bg-primary/10 text-primary rounded flex items-center justify-center">
+                                  <FileText className="h-5 w-5" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium truncate">{documentFile.name}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {(documentFile.size / 1024 / 1024).toFixed(2)} MB
+                                  </p>
+                                </div>
                               </div>
-                            )}
-                          </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                                onClick={() => {
+                                  setDocumentFile(null);
+                                  setDocumentUrl("");
+                                }}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          )
                         )}
                       </div>
                     </div>
