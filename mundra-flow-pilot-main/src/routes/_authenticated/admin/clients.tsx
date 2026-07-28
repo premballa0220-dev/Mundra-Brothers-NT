@@ -1293,6 +1293,16 @@ function ClientDetailsForm({
                   {client.primary_contact_phone && `| ${client.primary_contact_phone}`}
                 </p>
               </div>
+              <div className="col-span-2 mt-2">
+                <p className="font-semibold text-muted-foreground mb-1">Client Logo</p>
+                {client.logo_url ? (
+                  <div className="h-16 w-32 border rounded-md flex items-center justify-center p-2 bg-white">
+                    <img src={client.logo_url} alt="Logo" className="max-h-full max-w-full object-contain" />
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground italic text-xs">No logo uploaded</p>
+                )}
+              </div>
             </div>
           )}
 

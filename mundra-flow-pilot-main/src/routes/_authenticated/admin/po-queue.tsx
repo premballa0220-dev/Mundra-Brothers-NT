@@ -297,7 +297,6 @@ function AdminPOQueuePage() {
     setDocumentFile(null);
     setSelectedPoFormatId("");
     setPoFormatText("");
-    setPoFormatLetterheadUrl("");
   }
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
