@@ -1304,90 +1304,152 @@ function AdminPOQueuePage() {
             {viewGeneratedPo && viewGeneratedPo.po_format_data && (
               <div className="w-[210mm] min-h-[297mm] bg-white shadow-xl p-12 print:shadow-none print:w-full font-sans text-sm border border-slate-200">
                 
-                {/* Header with Logo */}
-                <div className="flex justify-between items-start mb-8 pb-4 border-b-2 border-slate-800">
-                  <div className="max-w-[50%]">
+                {/* Header with Logo and Billing Address */}
+                <div className="flex justify-between items-center mb-6 pb-4 border-b-2 border-slate-800 gap-6">
+                  <div className="flex-shrink-0 w-1/3">
                     {viewGeneratedPo.organization?.logo_url ? (
                       <img 
                         src={viewGeneratedPo.organization.logo_url} 
                         alt="Client Logo" 
-                        className="max-h-20 object-contain mb-4"
+                        className="max-h-24 w-full object-contain object-left"
                       />
                     ) : (
-                      <div className="h-16 flex items-center text-slate-400 italic">No logo provided</div>
+                      <div className="h-20 w-32 flex items-center justify-center text-slate-400 italic border rounded">No logo</div>
                     )}
-                    <h1 className="text-2xl font-bold uppercase tracking-wide text-slate-800">
-                      Purchase Order
-                    </h1>
                   </div>
-                  <div className="text-right space-y-1">
-                    <p className="font-bold text-lg">{viewGeneratedPo.organization?.trade_name || viewGeneratedPo.organization?.legal_name}</p>
-                    <p className="text-slate-600">PO Number: <span className="font-semibold text-slate-900">{viewGeneratedPo.po_number}</span></p>
-                    <p className="text-slate-600">Date: <span className="font-semibold text-slate-900">{new Date(viewGeneratedPo.created_at || Date.now()).toLocaleDateString()}</span></p>
+                  <div className="text-right flex-1">
+                    <h1 className="text-2xl font-bold uppercase text-slate-900 tracking-wide">
+                      {viewGeneratedPo.organization?.trade_name || viewGeneratedPo.organization?.legal_name}
+                    </h1>
+                    <p className="text-slate-600 text-sm mt-1 ml-auto whitespace-pre-wrap">
+                      {viewGeneratedPo.organization?.billing_address || "Billing address not provided"}
+                    </p>
                   </div>
                 </div>
 
-                {/* Body Content */}
-                <div className="space-y-6">
-                  {/* Template Text */}
+                {/* PO No and Date */}
+                <div className="flex justify-between font-bold text-slate-800 mb-6">
+                  <div>P.O.NO : {viewGeneratedPo.po_number}</div>
+                  <div>DATE : {new Date(viewGeneratedPo.created_at || Date.now()).toLocaleDateString('en-GB')}</div>
+                </div>
+
+                {/* To Address */}
+                <div className="mb-6 text-slate-800">
+                  <p>To,</p>
+                  <p className="font-bold">ULTRATECH CEMENT LIMITED</p>
+                  <p className="whitespace-pre-wrap">A wing, Ahura Centre,
+1st Floor Mahakali Caves Rd
+Andheri (E)
+Mumbai 400093</p>
+                </div>
+
+                <div className="mb-4 text-slate-800">
+                  <p>Dear Sir,</p>
+                  <p>We are pleased to submit you Purchase Order as follows:</p>
+                </div>
+
+                {/* Items Table */}
+                <div className="mb-6 border border-slate-800">
+                  <Table className="border-collapse">
+                    <TableHeader className="bg-slate-100 border-b border-slate-800">
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="w-[80px] font-bold text-slate-800 text-center border-r border-slate-800 h-auto py-2">Sr.No.</TableHead>
+                        <TableHead className="font-bold text-slate-800 text-center border-r border-slate-800 h-auto py-2">Description</TableHead>
+                        <TableHead className="font-bold text-slate-800 text-center border-r border-slate-800 h-auto py-2">Qty (MT)</TableHead>
+                        <TableHead className="font-bold text-slate-800 text-center border-r border-slate-800 h-auto py-2">Rate Per MT</TableHead>
+                        <TableHead className="font-bold text-slate-800 text-center h-auto py-2">Total Value</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(viewGeneratedPo.items && viewGeneratedPo.items.length > 0
+                        ? viewGeneratedPo.items
+                        : [
+                            {
+                              product: viewGeneratedPo.product,
+                              original_quantity: viewGeneratedPo.original_quantity,
+                              locked_rate: viewGeneratedPo.locked_rate,
+                            },
+                          ]
+                      ).map((it: any, i: number) => (
+                        <TableRow key={i} className="hover:bg-transparent border-b border-slate-800">
+                          <TableCell className="text-center border-r border-slate-800 py-2">{i + 1}</TableCell>
+                          <TableCell className="text-center border-r border-slate-800 py-2">{it.product?.name || "UltraTech Cement - PPC"}</TableCell>
+                          <TableCell className="text-center border-r border-slate-800 py-2">
+                            {Number(it.original_quantity).toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-center border-r border-slate-800 py-2">
+                            {formatCurrency(it.locked_rate)}
+                          </TableCell>
+                          <TableCell className="text-center py-2 font-medium">
+                            {formatCurrency(it.original_quantity * it.locked_rate)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {/* Total Row */}
+                      <TableRow className="hover:bg-transparent bg-slate-50 font-bold">
+                        <TableCell colSpan={4} className="text-right border-r border-slate-800 py-2">Total</TableCell>
+                        <TableCell className="text-center py-2">{formatCurrency(viewGeneratedPo.total_value)}</TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Terms and Conditions */}
+                <div className="mb-6 text-slate-800">
                   <div 
-                    className="whitespace-pre-wrap leading-relaxed text-slate-700"
+                    className="whitespace-pre-wrap leading-relaxed prose prose-sm max-w-none prose-p:my-1"
                     dangerouslySetInnerHTML={{
-                      __html: (viewGeneratedPo.po_format_data.html_content || "")
+                      __html: (viewGeneratedPo.po_format_data?.html_content || "<b>Terms & Conditions.</b>\n\n1. Above rate is inclusive of GST and Transport Charges\n2. Above price is exclusive of TCS.\n\n<b>Payment Terms :</b> 30 days PDC from date of delivery")
                         .replace(/\{\{PO_NUMBER\}\}/g, viewGeneratedPo.po_number || "")
                         .replace(/\{\{CLIENT_NAME\}\}/g, viewGeneratedPo.organization?.trade_name || viewGeneratedPo.organization?.legal_name || "")
-                        .replace(/\{\{DATE\}\}/g, new Date(viewGeneratedPo.created_at || Date.now()).toLocaleDateString())
+                        .replace(/\{\{DATE\}\}/g, new Date(viewGeneratedPo.created_at || Date.now()).toLocaleDateString('en-GB'))
                     }}
                   />
-                  
-                  {/* Items Table */}
-                  <div className="mt-8 border rounded-lg overflow-hidden border-slate-300">
-                    <Table>
-                      <TableHeader className="bg-slate-100">
-                        <TableRow>
-                          <TableHead className="w-[50px] font-bold text-slate-800 border-r border-slate-300">S.No</TableHead>
-                          <TableHead className="font-bold text-slate-800 border-r border-slate-300">Product</TableHead>
-                          <TableHead className="text-right font-bold text-slate-800 border-r border-slate-300">Quantity (MT)</TableHead>
-                          <TableHead className="text-right font-bold text-slate-800 border-r border-slate-300">Rate</TableHead>
-                          <TableHead className="text-right font-bold text-slate-800">Total Value</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {(viewGeneratedPo.items && viewGeneratedPo.items.length > 0
-                          ? viewGeneratedPo.items
-                          : [
-                              {
-                                product: viewGeneratedPo.product,
-                                original_quantity: viewGeneratedPo.original_quantity,
-                                locked_rate: viewGeneratedPo.locked_rate,
-                              },
-                            ]
-                        ).map((it: any, i: number) => (
-                          <TableRow key={i} className="border-b border-slate-200">
-                            <TableCell className="border-r border-slate-300 font-medium">{i + 1}</TableCell>
-                            <TableCell className="border-r border-slate-300">{it.product?.name || "—"}</TableCell>
-                            <TableCell className="text-right border-r border-slate-300">
-                              {Number(it.original_quantity).toFixed(2)}
-                            </TableCell>
-                            <TableCell className="text-right border-r border-slate-300">
-                              {formatCurrency(it.locked_rate)}
-                            </TableCell>
-                            <TableCell className="text-right font-semibold">
-                              {formatCurrency(it.original_quantity * it.locked_rate)}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                </div>
+
+                {/* Delivery Address */}
+                <div className="mb-8 text-slate-800 space-y-4">
+                  <div className="flex gap-2 items-start">
+                    <span className="font-bold whitespace-nowrap">Delivery Address:</span>
+                    <span className="whitespace-pre-wrap leading-tight">{viewGeneratedPo.site_address || "—"}</span>
                   </div>
-                  
-                  {/* Footer Totals */}
-                  <div className="flex justify-end pt-4">
-                    <div className="w-64 space-y-2 border-t-2 border-slate-800 pt-2">
-                      <div className="flex justify-between font-bold text-lg">
-                        <span>Total:</span>
-                        <span>{formatCurrency(viewGeneratedPo.total_value)}</span>
+                  <div className="flex flex-wrap gap-x-12 gap-y-2">
+                    <div className="flex gap-2">
+                      <span className="font-bold">Contact Person:</span>
+                      <span>{viewGeneratedPo.delivery_contact ? viewGeneratedPo.delivery_contact.split('(')[0]?.replace(/[-:]/g, '')?.trim() : "—"}</span>
+                    </div>
+                    {viewGeneratedPo.delivery_contact && viewGeneratedPo.delivery_contact.includes('(') && (
+                      <div className="flex gap-2">
+                        <span className="font-bold">Mobile No:</span>
+                        <span>{viewGeneratedPo.delivery_contact.match(/\((.*?)\)/)?.[1] || "—"}</span>
                       </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Footer Declarations */}
+                <div className="text-slate-800 pb-10">
+                  <p className="mb-4">Kindly send the above material as early as possible.</p>
+                  <p className="mb-16">We declare that the cement purchased by us from "Ultratech Cement Ltd" under this purchase order is for our own usage and not for resale.</p>
+                  <div className="flex justify-between items-end">
+                    <div>
+                      <p className="mb-12">Yours Faithfully,</p>
+                      <p className="font-medium">(Authorized Signatory)</p>
+                    </div>
+                    <div>
+                      {viewGeneratedPo.organization?.stamp_url ? (
+                        <div className="h-24 w-24 flex items-center justify-center">
+                          <img 
+                            src={viewGeneratedPo.organization.stamp_url} 
+                            alt="Company Stamp" 
+                            className="max-h-full max-w-full object-contain"
+                          />
+                        </div>
+                      ) : (
+                        <div className="h-24 w-24 rounded-full border-2 border-slate-300 flex items-center justify-center opacity-40">
+                          <span className="text-xs text-center font-medium">Company<br/>Stamp</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

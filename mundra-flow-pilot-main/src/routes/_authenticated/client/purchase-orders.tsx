@@ -850,9 +850,19 @@ Mumbai 400093</p>
                       <p className="font-medium">(Authorized Signatory)</p>
                     </div>
                     <div>
-                      <div className="h-24 w-24 rounded-full border-2 border-slate-300 flex items-center justify-center opacity-40">
-                        <span className="text-xs text-center font-medium">Company<br/>Stamp</span>
-                      </div>
+                      {viewGeneratedPo.organization?.stamp_url ? (
+                        <div className="h-24 w-24 flex items-center justify-center">
+                          <img 
+                            src={viewGeneratedPo.organization.stamp_url} 
+                            alt="Company Stamp" 
+                            className="max-h-full max-w-full object-contain"
+                          />
+                        </div>
+                      ) : (
+                        <div className="h-24 w-24 rounded-full border-2 border-slate-300 flex items-center justify-center opacity-40">
+                          <span className="text-xs text-center font-medium">Company<br/>Stamp</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

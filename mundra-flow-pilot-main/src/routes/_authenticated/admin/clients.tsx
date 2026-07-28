@@ -212,7 +212,9 @@ function AdminClientsPage() {
   const [primaryContactEmail, setPrimaryContactEmail] = useState("");
   const [primaryContactPhone, setPrimaryContactPhone] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
+  const [stampUrl, setStampUrl] = useState("");
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [isUploadingStamp, setIsUploadingStamp] = useState(false);
 
   const [initialOpeningBalance, setInitialOpeningBalance] = useState<number | "">("");
   const [initialOpeningBalanceDate, setInitialOpeningBalanceDate] = useState("");
@@ -331,6 +333,7 @@ function AdminClientsPage() {
     setPrimaryContactEmail("");
     setPrimaryContactPhone("");
     setLogoUrl("");
+    setStampUrl("");
     setInitialOpeningBalance("");
     setInitialOpeningBalanceDate("");
     setOpeningInvoices([]);
@@ -359,13 +362,13 @@ function AdminClientsPage() {
       const filePath = `logos/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('documents')
+        .from('po_container')
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
       const { data } = supabase.storage
-        .from('documents')
+        .from('po_container')
         .getPublicUrl(filePath);
 
       setLogoUrl(data.publicUrl);
@@ -374,6 +377,35 @@ function AdminClientsPage() {
       toast.error("Error uploading logo: " + err.message);
     } finally {
       setIsUploadingLogo(false);
+    }
+  };
+
+  const handleStampUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingStamp(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-stamp-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+      const filePath = `logos/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('po_container')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('po_container')
+        .getPublicUrl(filePath);
+
+      setStampUrl(data.publicUrl);
+      toast.success("Stamp uploaded successfully");
+    } catch (err: any) {
+      toast.error("Error uploading stamp: " + err.message);
+    } finally {
+      setIsUploadingStamp(false);
     }
   };
 
@@ -401,6 +433,7 @@ function AdminClientsPage() {
       primaryContactEmail,
       primaryContactPhone,
       logoUrl,
+      stampUrl,
       creditLimit: creditLimit === "" ? 0 : creditLimit,
       annualInterestRate: annualInterestRate === "" ? 0 : annualInterestRate,
       paymentTermsDays: paymentTermsDays === "" ? 30 : paymentTermsDays,
@@ -504,6 +537,20 @@ function AdminClientsPage() {
                           <div className="mt-2 text-sm">
                             <a href={logoUrl} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">
                               View Uploaded Logo
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-2 col-span-2">
+                        <Label>Official Stamp (Optional)</Label>
+                        <div className="flex items-center gap-4">
+                          <Input type="file" accept="image/*" onChange={handleStampUpload} disabled={isUploadingStamp} />
+                          {isUploadingStamp && <Loader2 className="h-4 w-4 animate-spin" />}
+                        </div>
+                        {stampUrl && (
+                          <div className="mt-2 text-sm">
+                            <a href={stampUrl} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">
+                              View Uploaded Stamp
                             </a>
                           </div>
                         )}
@@ -1021,7 +1068,9 @@ function ClientDetailsForm({
   const [mContactEmail, setMContactEmail] = useState(client.primary_contact_email || "");
   const [mContactPhone, setMContactPhone] = useState(client.primary_contact_phone || "");
   const [mLogo, setMLogo] = useState(client.logo_url || "");
+  const [mStamp, setMStamp] = useState(client.stamp_url || "");
   const [isUploadingMLogo, setIsUploadingMLogo] = useState(false);
+  const [isUploadingMStamp, setIsUploadingMStamp] = useState(false);
   const [mDeliveryLocations, setMDeliveryLocations] = useState<
     {
       id?: string;
@@ -1053,6 +1102,7 @@ function ClientDetailsForm({
     setMContactEmail(client.primary_contact_email || "");
     setMContactPhone(client.primary_contact_phone || "");
     setMLogo(client.logo_url || "");
+    setMStamp(client.stamp_url || "");
     setMDeliveryLocations(
       client.delivery_locations?.map((l: any) => ({
         ...l,
@@ -1089,13 +1139,13 @@ function ClientDetailsForm({
       const filePath = `logos/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('documents')
+        .from('po_container')
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
       const { data } = supabase.storage
-        .from('documents')
+        .from('po_container')
         .getPublicUrl(filePath);
 
       setMLogo(data.publicUrl);
@@ -1104,6 +1154,35 @@ function ClientDetailsForm({
       toast.error("Error uploading logo: " + err.message);
     } finally {
       setIsUploadingMLogo(false);
+    }
+  };
+
+  const handleMStampUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingMStamp(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-stamp-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+      const filePath = `logos/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('po_container')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('po_container')
+        .getPublicUrl(filePath);
+
+      setMStamp(data.publicUrl);
+      toast.success("Stamp uploaded successfully");
+    } catch (err: any) {
+      toast.error("Error uploading stamp: " + err.message);
+    } finally {
+      setIsUploadingMStamp(false);
     }
   };
 
@@ -1123,6 +1202,7 @@ function ClientDetailsForm({
         primaryContactEmail: mContactEmail,
         primaryContactPhone: mContactPhone,
         logoUrl: mLogo,
+        stampUrl: mStamp,
         deliveryLocations: mDeliveryLocations.map((l) => ({ ...l, isDefault: !!l.isDefault })),
       },
       {
@@ -1243,6 +1323,20 @@ function ClientDetailsForm({
                     </div>
                   )}
                 </div>
+                <div className="col-span-2 space-y-2">
+                  <Label>Official Stamp</Label>
+                  <div className="flex items-center gap-4">
+                    <Input type="file" accept="image/*" onChange={handleMStampUpload} disabled={isUploadingMStamp} />
+                    {isUploadingMStamp && <Loader2 className="h-4 w-4 animate-spin" />}
+                  </div>
+                  {mStamp && (
+                    <div className="mt-2 text-sm">
+                      <a href={mStamp} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">
+                        View Uploaded Stamp
+                      </a>
+                    </div>
+                  )}
+                </div>
 
                 <div className="col-span-2 pt-2 border-t mt-2">
                   <DeliveryLocationsBuilder
@@ -1301,6 +1395,16 @@ function ClientDetailsForm({
                   </div>
                 ) : (
                   <p className="text-muted-foreground italic text-xs">No logo uploaded</p>
+                )}
+              </div>
+              <div className="col-span-2 mt-2">
+                <p className="font-semibold text-muted-foreground mb-1">Official Stamp</p>
+                {client.stamp_url ? (
+                  <div className="h-16 w-32 border rounded-md flex items-center justify-center p-2 bg-white">
+                    <img src={client.stamp_url} alt="Stamp" className="max-h-full max-w-full object-contain" />
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground italic text-xs">No stamp uploaded</p>
                 )}
               </div>
             </div>
