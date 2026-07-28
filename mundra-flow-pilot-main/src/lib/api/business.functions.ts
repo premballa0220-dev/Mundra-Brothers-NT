@@ -651,6 +651,7 @@ export const createClient = createServerFn({ method: "POST" })
           }),
         )
         .optional(),
+      logoUrl: z.string().optional().nullable(),
       initialOpeningBalance: z.number().optional(),
       initialOpeningBalanceDate: z.string().optional(),
       openingInvoices: z
@@ -686,6 +687,7 @@ export const createClient = createServerFn({ method: "POST" })
       primary_contact_name: data.primaryContactName || null,
       primary_contact_email: data.primaryContactEmail || null,
       primary_contact_phone: data.primaryContactPhone || null,
+      logo_url: data.logoUrl || null,
       status: "active" as const,
       status_reason: null,
     };
@@ -795,6 +797,7 @@ export const updateClient = createServerFn({ method: "POST" })
           }),
         )
         .optional(),
+      logoUrl: z.string().optional().nullable(),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -813,6 +816,7 @@ export const updateClient = createServerFn({ method: "POST" })
         primary_contact_name: data.primaryContactName || null,
         primary_contact_email: data.primaryContactEmail || null,
         primary_contact_phone: data.primaryContactPhone || null,
+        logo_url: data.logoUrl || null,
         updated_at: new Date().toISOString(),
       };
 

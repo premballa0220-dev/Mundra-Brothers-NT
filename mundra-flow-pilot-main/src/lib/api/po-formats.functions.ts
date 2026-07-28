@@ -11,10 +11,12 @@ function ensureMundraOrg(orgType: string) {
 
 export const getPoFormats = createServerFn({ method: "GET" })
   .middleware([requireAuth])
-  .validator(z.object({ organization_id: z.string().uuid() }))
+  .validator(z.object({ organization_id: z.string().uuid().optional() }).optional())
   .handler(async ({ data, context }) => {
+    const targetOrgId = data?.organization_id || context.organizationId;
+    
     // Mundra staff can view any client's format; a client can only view its own.
-    if (context.orgType !== "mundra" && context.organizationId !== data.organization_id) {
+    if (context.orgType !== "mundra" && context.organizationId !== targetOrgId) {
       throw new Error("Unauthorized: cannot view another organization's PO format.");
     }
 
@@ -22,7 +24,7 @@ export const getPoFormats = createServerFn({ method: "GET" })
     const { data: formats, error } = await supabase
       .from("po_formats")
       .select("*")
-      .eq("organization_id", data.organization_id)
+      .eq("organization_id", targetOrgId)
       .eq("is_active", true);
 
     if (error) throw new Error("Failed to fetch PO formats: " + error.message);
