@@ -152,7 +152,6 @@ function AdminPOQueuePage() {
   const [isUploading, setIsUploading] = useState(false);
   const [selectedPoFormatId, setSelectedPoFormatId] = useState("");
   const [poFormatText, setPoFormatText] = useState("");
-  const [poFormatLetterheadUrl, setPoFormatLetterheadUrl] = useState("");
 
   const { data: clients } = useQuery({
     queryKey: ["admin-clients"],
@@ -187,12 +186,10 @@ function AdminPOQueuePage() {
       const format = poFormats[0];
       setSelectedPoFormatId(format.id);
       setPoFormatText(format.template_schema?.template_text || "");
-      setPoFormatLetterheadUrl(format.template_schema?.letterhead_url || "");
       setDocumentMethod("generate");
     } else {
       setSelectedPoFormatId("");
       setPoFormatText("");
-      setPoFormatLetterheadUrl("");
       setDocumentMethod("upload");
     }
   }, [poFormats, selectedClientId]);
@@ -354,7 +351,7 @@ function AdminPOQueuePage() {
       documentMethod,
       documentUrl: finalDocumentUrl,
       poFormatId: selectedPoFormatId || null,
-      poFormatData: selectedPoFormatId ? { html_content: poFormatText, letterhead_url: poFormatLetterheadUrl } : null,
+      poFormatData: selectedPoFormatId ? { html_content: poFormatText } : null,
     });
   };
 
@@ -1264,30 +1261,95 @@ function AdminPOQueuePage() {
           
           <div className="flex-1 overflow-y-auto p-8 bg-slate-100 flex justify-center print:p-0 print:bg-white">
             {viewGeneratedPo && viewGeneratedPo.po_format_data && (
-              <div 
-                className="w-[210mm] min-h-[297mm] bg-white shadow-xl relative print:shadow-none print:w-full"
-                style={{
-                  backgroundImage: viewGeneratedPo.po_format_data.letterhead_url ? `url(${viewGeneratedPo.po_format_data.letterhead_url})` : 'none',
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                  backgroundRepeat: 'no-repeat'
-                }}
-              >
-                {/* We render the HTML on top, with padding so it doesn't overlap the header/footer of the letterhead. 
-                    Usually letterheads have ~40-50mm top/bottom margins. */}
-                <div 
-                  className="pt-[45mm] pb-[45mm] px-[25mm] text-sm whitespace-pre-wrap font-sans"
-                  dangerouslySetInnerHTML={{
-                    __html: (viewGeneratedPo.po_format_data.html_content || "")
-                      .replace(/\{\{PO_NUMBER\}\}/g, viewGeneratedPo.po_number || "")
-                      .replace(/\{\{CLIENT_NAME\}\}/g, viewGeneratedPo.organization?.trade_name || viewGeneratedPo.organization?.legal_name || "")
-                      .replace(/\{\{PRODUCT_NAME\}\}/g, viewGeneratedPo.product?.name || "")
-                      .replace(/\{\{QUANTITY\}\}/g, Number(viewGeneratedPo.original_quantity).toFixed(2))
-                      .replace(/\{\{RATE\}\}/g, formatCurrency(viewGeneratedPo.locked_rate))
-                      .replace(/\{\{TOTAL_VALUE\}\}/g, formatCurrency(viewGeneratedPo.total_value))
-                      .replace(/\{\{DATE\}\}/g, new Date(viewGeneratedPo.created_at || Date.now()).toLocaleDateString())
-                  }}
-                />
+              <div className="w-[210mm] min-h-[297mm] bg-white shadow-xl p-12 print:shadow-none print:w-full font-sans text-sm border border-slate-200">
+                
+                {/* Header with Logo */}
+                <div className="flex justify-between items-start mb-8 pb-4 border-b-2 border-slate-800">
+                  <div className="max-w-[50%]">
+                    {viewGeneratedPo.organization?.logo_url ? (
+                      <img 
+                        src={viewGeneratedPo.organization.logo_url} 
+                        alt="Client Logo" 
+                        className="max-h-20 object-contain mb-4"
+                      />
+                    ) : (
+                      <div className="h-16 flex items-center text-slate-400 italic">No logo provided</div>
+                    )}
+                    <h1 className="text-2xl font-bold uppercase tracking-wide text-slate-800">
+                      Purchase Order
+                    </h1>
+                  </div>
+                  <div className="text-right space-y-1">
+                    <p className="font-bold text-lg">{viewGeneratedPo.organization?.trade_name || viewGeneratedPo.organization?.legal_name}</p>
+                    <p className="text-slate-600">PO Number: <span className="font-semibold text-slate-900">{viewGeneratedPo.po_number}</span></p>
+                    <p className="text-slate-600">Date: <span className="font-semibold text-slate-900">{new Date(viewGeneratedPo.created_at || Date.now()).toLocaleDateString()}</span></p>
+                  </div>
+                </div>
+
+                {/* Body Content */}
+                <div className="space-y-6">
+                  {/* Template Text */}
+                  <div 
+                    className="whitespace-pre-wrap leading-relaxed text-slate-700"
+                    dangerouslySetInnerHTML={{
+                      __html: (viewGeneratedPo.po_format_data.html_content || "")
+                        .replace(/\{\{PO_NUMBER\}\}/g, viewGeneratedPo.po_number || "")
+                        .replace(/\{\{CLIENT_NAME\}\}/g, viewGeneratedPo.organization?.trade_name || viewGeneratedPo.organization?.legal_name || "")
+                        .replace(/\{\{DATE\}\}/g, new Date(viewGeneratedPo.created_at || Date.now()).toLocaleDateString())
+                    }}
+                  />
+                  
+                  {/* Items Table */}
+                  <div className="mt-8 border rounded-lg overflow-hidden border-slate-300">
+                    <Table>
+                      <TableHeader className="bg-slate-100">
+                        <TableRow>
+                          <TableHead className="w-[50px] font-bold text-slate-800 border-r border-slate-300">S.No</TableHead>
+                          <TableHead className="font-bold text-slate-800 border-r border-slate-300">Product</TableHead>
+                          <TableHead className="text-right font-bold text-slate-800 border-r border-slate-300">Quantity (MT)</TableHead>
+                          <TableHead className="text-right font-bold text-slate-800 border-r border-slate-300">Rate</TableHead>
+                          <TableHead className="text-right font-bold text-slate-800">Total Value</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {(viewGeneratedPo.items && viewGeneratedPo.items.length > 0
+                          ? viewGeneratedPo.items
+                          : [
+                              {
+                                product: viewGeneratedPo.product,
+                                original_quantity: viewGeneratedPo.original_quantity,
+                                locked_rate: viewGeneratedPo.locked_rate,
+                              },
+                            ]
+                        ).map((it: any, i: number) => (
+                          <TableRow key={i} className="border-b border-slate-200">
+                            <TableCell className="border-r border-slate-300 font-medium">{i + 1}</TableCell>
+                            <TableCell className="border-r border-slate-300">{it.product?.name || "—"}</TableCell>
+                            <TableCell className="text-right border-r border-slate-300">
+                              {Number(it.original_quantity).toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right border-r border-slate-300">
+                              {formatCurrency(it.locked_rate)}
+                            </TableCell>
+                            <TableCell className="text-right font-semibold">
+                              {formatCurrency(it.original_quantity * it.locked_rate)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  
+                  {/* Footer Totals */}
+                  <div className="flex justify-end pt-4">
+                    <div className="w-64 space-y-2 border-t-2 border-slate-800 pt-2">
+                      <div className="flex justify-between font-bold text-lg">
+                        <span>Total:</span>
+                        <span>{formatCurrency(viewGeneratedPo.total_value)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>

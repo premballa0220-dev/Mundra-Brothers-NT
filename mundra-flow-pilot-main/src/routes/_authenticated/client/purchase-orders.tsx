@@ -471,61 +471,101 @@ function ClientPurchaseOrdersPage() {
                     </p>
                   )}
 
-                  <div className="space-y-2 pt-3 border-t mt-1">
-                    <Label>PO Document (PDF/Image)</Label>
-                    {!documentFile ? (
-                      <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-accent/50 transition-colors relative">
-                        <Input
-                          type="file"
-                          accept=".pdf,image/*"
-                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              if (file.size > 1024 * 1024) {
-                                toast.error("File size must be less than 1MB");
-                                e.target.value = "";
-                                return;
-                              }
-                              setDocumentFile(file);
-                              setDocumentUrl(URL.createObjectURL(file));
-                              setDocumentMethod("upload");
-                            }
-                          }}
-                        />
-                        <UploadCloud className="h-8 w-8 text-muted-foreground mb-2" />
-                        <p className="text-sm font-medium">Click or drag file to upload</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Supports PDF, PNG, JPG up to 1MB
-                        </p>
+                  {selectedPoFormatId && (
+                    <div className="space-y-2 pt-4 border-t">
+                      <Label>Format Editor</Label>
+                      <Textarea 
+                        value={poFormatText}
+                        onChange={(e) => setPoFormatText(e.target.value)}
+                        rows={8}
+                        placeholder="Edit the PO template here..."
+                      />
+                    </div>
+                  )}
+
+                  <div className="space-y-3 pt-2 border-t mt-1">
+                    <Label>PO Document</Label>
+                    <div className="border rounded-md p-4 bg-muted/10 space-y-4">
+                      <div className="flex gap-4">
+                        <Label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="docMethod"
+                            checked={documentMethod === "upload"}
+                            onChange={() => setDocumentMethod("upload")}
+                            className="accent-primary"
+                          />
+                          Upload PO PDF
+                        </Label>
+                        <Label className={`flex items-center gap-2 cursor-pointer ${!selectedPoFormatId ? 'text-muted-foreground' : ''}`}>
+                          <input
+                            type="radio"
+                            name="docMethod"
+                            checked={documentMethod === "generate"}
+                            onChange={() => setDocumentMethod("generate")}
+                            className="accent-primary"
+                            disabled={!selectedPoFormatId}
+                          />
+                          Generate Proforma {(!selectedPoFormatId) && "(Format Required)"}
+                        </Label>
                       </div>
-                    ) : (
-                      <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/30">
-                        <div className="flex items-center space-x-3 overflow-hidden">
-                          <div className="h-10 w-10 shrink-0 bg-primary/10 text-primary rounded flex items-center justify-center">
-                            <FileIcon className="h-5 w-5" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium truncate">{documentFile.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {(documentFile.size / 1024 / 1024).toFixed(2)} MB
+
+                      {documentMethod === "upload" && (
+                        !documentFile ? (
+                          <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-accent/50 transition-colors relative bg-white">
+                            <Input
+                              type="file"
+                              accept=".pdf,image/*"
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  if (file.size > 1024 * 1024) {
+                                    toast.error("File size must be less than 1MB");
+                                    e.target.value = "";
+                                    return;
+                                  }
+                                  setDocumentFile(file);
+                                  setDocumentUrl(URL.createObjectURL(file));
+                                  setDocumentMethod("upload");
+                                }
+                              }}
+                            />
+                            <UploadCloud className="h-8 w-8 text-muted-foreground mb-2" />
+                            <p className="text-sm font-medium">Click or drag file to upload</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Supports PDF, PNG, JPG up to 1MB
                             </p>
                           </div>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
-                          onClick={() => {
-                            setDocumentFile(null);
-                            setDocumentUrl("");
-                          }}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    )}
+                        ) : (
+                          <div className="flex items-center justify-between p-3 border rounded-lg bg-white">
+                            <div className="flex items-center space-x-3 overflow-hidden">
+                              <div className="h-10 w-10 shrink-0 bg-primary/10 text-primary rounded flex items-center justify-center">
+                                <FileIcon className="h-5 w-5" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">{documentFile.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {(documentFile.size / 1024 / 1024).toFixed(2)} MB
+                                </p>
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                              onClick={() => {
+                                setDocumentFile(null);
+                                setDocumentUrl("");
+                              }}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )
+                      )}
+                    </div>
                   </div>
                 </div>
                 <DialogFooter>
@@ -618,9 +658,16 @@ function ClientPurchaseOrdersPage() {
                           {formatCurrency(po.total_value)}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={po.status === "approved" ? "default" : "secondary"}>
-                            {po.status.replace("_", " ")}
-                          </Badge>
+                          <div className="flex flex-col items-start gap-1">
+                            <Badge variant={po.status === "approved" ? "default" : "secondary"}>
+                              {po.status.replace("_", " ")}
+                            </Badge>
+                            {po.document_method === "generate" && po.po_format_data && (
+                              <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => setViewGeneratedPo(po)}>
+                                View PO
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
@@ -637,6 +684,119 @@ function ClientPurchaseOrdersPage() {
           </Card>
         )}
       </div>
+
+      {/* Generated PO Viewer Dialog - Structured Layout */}
+      <Dialog open={!!viewGeneratedPo} onOpenChange={(open) => !open && setViewGeneratedPo(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden flex flex-col bg-slate-50">
+          <div className="p-4 border-b bg-white flex justify-between items-center shadow-sm z-10">
+            <div>
+              <DialogTitle className="text-lg">Generated Purchase Order</DialogTitle>
+              <DialogDescription>
+                {viewGeneratedPo?.po_number} - {viewGeneratedPo?.organization?.trade_name || viewGeneratedPo?.organization?.legal_name}
+              </DialogDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => window.print()}>
+              <FileText className="h-4 w-4 mr-2" />
+              Print / Save PDF
+            </Button>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-8 bg-slate-100 flex justify-center print:p-0 print:bg-white">
+            {viewGeneratedPo && viewGeneratedPo.po_format_data && (
+              <div className="w-[210mm] min-h-[297mm] bg-white shadow-xl p-12 print:shadow-none print:w-full font-sans text-sm border border-slate-200">
+                
+                {/* Header with Logo */}
+                <div className="flex justify-between items-start mb-8 pb-4 border-b-2 border-slate-800">
+                  <div className="max-w-[50%]">
+                    {viewGeneratedPo.organization?.logo_url ? (
+                      <img 
+                        src={viewGeneratedPo.organization.logo_url} 
+                        alt="Client Logo" 
+                        className="max-h-20 object-contain mb-4"
+                      />
+                    ) : (
+                      <div className="h-16 flex items-center text-slate-400 italic">No logo provided</div>
+                    )}
+                    <h1 className="text-2xl font-bold uppercase tracking-wide text-slate-800">
+                      Purchase Order
+                    </h1>
+                  </div>
+                  <div className="text-right space-y-1">
+                    <p className="font-bold text-lg">{viewGeneratedPo.organization?.trade_name || viewGeneratedPo.organization?.legal_name}</p>
+                    <p className="text-slate-600">PO Number: <span className="font-semibold text-slate-900">{viewGeneratedPo.po_number}</span></p>
+                    <p className="text-slate-600">Date: <span className="font-semibold text-slate-900">{new Date(viewGeneratedPo.created_at || Date.now()).toLocaleDateString()}</span></p>
+                  </div>
+                </div>
+
+                {/* Body Content */}
+                <div className="space-y-6">
+                  {/* Template Text */}
+                  <div 
+                    className="whitespace-pre-wrap leading-relaxed text-slate-700"
+                    dangerouslySetInnerHTML={{
+                      __html: (viewGeneratedPo.po_format_data.html_content || "")
+                        .replace(/\{\{PO_NUMBER\}\}/g, viewGeneratedPo.po_number || "")
+                        .replace(/\{\{CLIENT_NAME\}\}/g, viewGeneratedPo.organization?.trade_name || viewGeneratedPo.organization?.legal_name || "")
+                        .replace(/\{\{DATE\}\}/g, new Date(viewGeneratedPo.created_at || Date.now()).toLocaleDateString())
+                    }}
+                  />
+                  
+                  {/* Items Table */}
+                  <div className="mt-8 border rounded-lg overflow-hidden border-slate-300">
+                    <Table>
+                      <TableHeader className="bg-slate-100">
+                        <TableRow>
+                          <TableHead className="w-[50px] font-bold text-slate-800 border-r border-slate-300">S.No</TableHead>
+                          <TableHead className="font-bold text-slate-800 border-r border-slate-300">Product</TableHead>
+                          <TableHead className="text-right font-bold text-slate-800 border-r border-slate-300">Quantity (MT)</TableHead>
+                          <TableHead className="text-right font-bold text-slate-800 border-r border-slate-300">Rate</TableHead>
+                          <TableHead className="text-right font-bold text-slate-800">Total Value</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {(viewGeneratedPo.items && viewGeneratedPo.items.length > 0
+                          ? viewGeneratedPo.items
+                          : [
+                              {
+                                product: viewGeneratedPo.product,
+                                original_quantity: viewGeneratedPo.original_quantity,
+                                locked_rate: viewGeneratedPo.locked_rate,
+                              },
+                            ]
+                        ).map((it: any, i: number) => (
+                          <TableRow key={i} className="border-b border-slate-200">
+                            <TableCell className="border-r border-slate-300 font-medium">{i + 1}</TableCell>
+                            <TableCell className="border-r border-slate-300">{it.product?.name || "—"}</TableCell>
+                            <TableCell className="text-right border-r border-slate-300">
+                              {Number(it.original_quantity).toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right border-r border-slate-300">
+                              {formatCurrency(it.locked_rate)}
+                            </TableCell>
+                            <TableCell className="text-right font-semibold">
+                              {formatCurrency(it.original_quantity * it.locked_rate)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  
+                  {/* Footer Totals */}
+                  <div className="flex justify-end pt-4">
+                    <div className="w-64 space-y-2 border-t-2 border-slate-800 pt-2">
+                      <div className="flex justify-between font-bold text-lg">
+                        <span>Total:</span>
+                        <span>{formatCurrency(viewGeneratedPo.total_value)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
