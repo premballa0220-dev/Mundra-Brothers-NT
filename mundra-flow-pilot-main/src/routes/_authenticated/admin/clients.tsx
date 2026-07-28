@@ -52,6 +52,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Building2, Plus, Loader2, MoreVertical, Ban, CheckCircle2, X, Trash2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 function DeliveryLocationsBuilder({
   locations,
@@ -210,6 +211,8 @@ function AdminClientsPage() {
   const [primaryContactName, setPrimaryContactName] = useState("");
   const [primaryContactEmail, setPrimaryContactEmail] = useState("");
   const [primaryContactPhone, setPrimaryContactPhone] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   const [initialOpeningBalance, setInitialOpeningBalance] = useState<number | "">("");
   const [initialOpeningBalanceDate, setInitialOpeningBalanceDate] = useState("");
@@ -327,6 +330,7 @@ function AdminClientsPage() {
     setPrimaryContactName("");
     setPrimaryContactEmail("");
     setPrimaryContactPhone("");
+    setLogoUrl("");
     setInitialOpeningBalance("");
     setInitialOpeningBalanceDate("");
     setOpeningInvoices([]);
@@ -343,6 +347,35 @@ function AdminClientsPage() {
       { label: "", address: "", isDefault: true, contactPerson: "", contactPhone: "" },
     ]);
   }
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingLogo(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+      const filePath = `logos/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('documents')
+        .getPublicUrl(filePath);
+
+      setLogoUrl(data.publicUrl);
+      toast.success("Logo uploaded successfully");
+    } catch (err: any) {
+      toast.error("Error uploading logo: " + err.message);
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -367,6 +400,7 @@ function AdminClientsPage() {
       primaryContactName,
       primaryContactEmail,
       primaryContactPhone,
+      logoUrl,
       creditLimit: creditLimit === "" ? 0 : creditLimit,
       annualInterestRate: annualInterestRate === "" ? 0 : annualInterestRate,
       paymentTermsDays: paymentTermsDays === "" ? 30 : paymentTermsDays,
@@ -459,6 +493,20 @@ function AdminClientsPage() {
                       <div className="space-y-2">
                         <Label>TP Code</Label>
                         <Input value={tpCode} onChange={(e) => setTpCode(e.target.value)} />
+                      </div>
+                      <div className="space-y-2 col-span-2">
+                        <Label>Client Logo (Optional)</Label>
+                        <div className="flex items-center gap-4">
+                          <Input type="file" accept="image/*" onChange={handleLogoUpload} disabled={isUploadingLogo} />
+                          {isUploadingLogo && <Loader2 className="h-4 w-4 animate-spin" />}
+                        </div>
+                        {logoUrl && (
+                          <div className="mt-2 text-sm">
+                            <a href={logoUrl} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">
+                              View Uploaded Logo
+                            </a>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -972,6 +1020,8 @@ function ClientDetailsForm({
   const [mContactName, setMContactName] = useState(client.primary_contact_name || "");
   const [mContactEmail, setMContactEmail] = useState(client.primary_contact_email || "");
   const [mContactPhone, setMContactPhone] = useState(client.primary_contact_phone || "");
+  const [mLogo, setMLogo] = useState(client.logo_url || "");
+  const [isUploadingMLogo, setIsUploadingMLogo] = useState(false);
   const [mDeliveryLocations, setMDeliveryLocations] = useState<
     {
       id?: string;
@@ -1002,6 +1052,7 @@ function ClientDetailsForm({
     setMContactName(client.primary_contact_name || "");
     setMContactEmail(client.primary_contact_email || "");
     setMContactPhone(client.primary_contact_phone || "");
+    setMLogo(client.logo_url || "");
     setMDeliveryLocations(
       client.delivery_locations?.map((l: any) => ({
         ...l,
@@ -1027,6 +1078,35 @@ function ClientDetailsForm({
     });
   };
 
+  const handleMLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingMLogo(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+      const filePath = `logos/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('documents')
+        .getPublicUrl(filePath);
+
+      setMLogo(data.publicUrl);
+      toast.success("Logo uploaded successfully");
+    } catch (err: any) {
+      toast.error("Error uploading logo: " + err.message);
+    } finally {
+      setIsUploadingMLogo(false);
+    }
+  };
+
   const handleSaveMaster = () => {
     masterMutation.mutate(
       {
@@ -1042,6 +1122,7 @@ function ClientDetailsForm({
         primaryContactName: mContactName,
         primaryContactEmail: mContactEmail,
         primaryContactPhone: mContactPhone,
+        logoUrl: mLogo,
         deliveryLocations: mDeliveryLocations.map((l) => ({ ...l, isDefault: !!l.isDefault })),
       },
       {
@@ -1146,6 +1227,20 @@ function ClientDetailsForm({
                     <span className="text-[10px] text-destructive block mt-1">
                       Must be exactly 10 digits
                     </span>
+                  )}
+                </div>
+                <div className="col-span-2 space-y-2">
+                  <Label>Client Logo</Label>
+                  <div className="flex items-center gap-4">
+                    <Input type="file" accept="image/*" onChange={handleMLogoUpload} disabled={isUploadingMLogo} />
+                    {isUploadingMLogo && <Loader2 className="h-4 w-4 animate-spin" />}
+                  </div>
+                  {mLogo && (
+                    <div className="mt-2 text-sm">
+                      <a href={mLogo} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">
+                        View Uploaded Logo
+                      </a>
+                    </div>
                   )}
                 </div>
 

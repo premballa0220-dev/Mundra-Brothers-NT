@@ -1880,6 +1880,8 @@ export const createPurchaseOrder = createServerFn({ method: "POST" })
       deliveryContact: z.string().optional(),
       documentMethod: z.enum(["upload", "generate"]),
       documentUrl: z.string().optional(),
+      poFormatId: z.string().uuid().optional().nullable(),
+      poFormatData: z.record(z.unknown()).optional().nullable(),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -1911,6 +1913,8 @@ export const createPurchaseOrder = createServerFn({ method: "POST" })
       delivery_contact: data.deliveryContact || null,
       document_method: data.documentMethod,
       document_url: data.documentUrl || null,
+      po_format_id: data.poFormatId || null,
+      po_format_data: data.poFormatData || null,
       status: "pending_approval",
       created_by: context.userId,
       approved_by: null,
