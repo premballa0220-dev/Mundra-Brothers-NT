@@ -232,9 +232,51 @@ function AdminPaymentsPage() {
       maximumFractionDigits: 0,
     }).format(val);
 
+  // Pre-calculate Client to UTCL coverage for dispatches (FIFO allocation)
+  const dispatchFullyCovered = new Map<string, boolean>();
+  if (dispatches) {
+    const poClientUtclBalance = new Map<string, number>();
+    dispatches.forEach((d: any) => {
+      const po = d.purchase_order || d.purchase_orders;
+      if (po && po.id && !poClientUtclBalance.has(po.id)) {
+        const clientToUtclPayments = po.payments?.filter(
+          (p: any) =>
+            p.is_utcl_payment &&
+            p.is_client_to_utcl &&
+            (p.status === "approved" || p.status === "verified")
+        ) || [];
+        const paidByClient = clientToUtclPayments.reduce(
+          (acc: number, curr: any) => acc + (curr.amount || 0),
+          0
+        );
+        poClientUtclBalance.set(po.id, paidByClient);
+      }
+    });
+
+    const sortedDispatches = [...dispatches].sort((a: any, b: any) => 
+       new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+    
+    sortedDispatches.forEach((d: any) => {
+       const po = d.purchase_order || d.purchase_orders;
+       if (po && po.id) {
+          const balance = poClientUtclBalance.get(po.id) || 0;
+          const dispatchValue = d.quantity * (po.locked_rate || 0);
+          if (dispatchValue > 0 && balance >= dispatchValue) {
+             dispatchFullyCovered.set(d.id, true);
+             poClientUtclBalance.set(po.id, balance - dispatchValue);
+          } else {
+             dispatchFullyCovered.set(d.id, false);
+             poClientUtclBalance.set(po.id, Math.max(0, balance - dispatchValue));
+          }
+       }
+    });
+  }
+
   let filteredDispatches =
     dispatches?.filter((d: any) => {
       if (d.utcl_payment_id) return false; // Already paid
+      if (dispatchFullyCovered.get(d.id)) return false; // Fully paid by Client to UTCL pool
 
       const search = searchQuery.toLowerCase();
       return (

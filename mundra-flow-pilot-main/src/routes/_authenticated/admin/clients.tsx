@@ -327,7 +327,7 @@ function AdminClientsPage() {
     if (openingInvoices.length > 0) {
       const sum = openingInvoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
       setInitialOpeningBalance(sum || "");
-      
+
       const validDates = openingInvoices.map(inv => inv.date).filter(Boolean);
       if (validDates.length > 0) {
         const latestDate = validDates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
@@ -734,7 +734,7 @@ function AdminClientsPage() {
                         <div key={idx} className="flex gap-3 items-end p-3 border rounded-md bg-muted/20">
                           <div className="flex-1 space-y-1">
                             <Label className="text-xs">Invoice Number *</Label>
-                            <Input 
+                            <Input
                               value={inv.invoiceNumber}
                               onChange={(e) => {
                                 const newInvs = [...openingInvoices];
@@ -746,7 +746,7 @@ function AdminClientsPage() {
                           </div>
                           <div className="flex-1 space-y-1">
                             <Label className="text-xs">Amount (₹) *</Label>
-                            <Input 
+                            <Input
                               type="number"
                               value={inv.amount}
                               onChange={(e) => {
@@ -759,7 +759,7 @@ function AdminClientsPage() {
                           </div>
                           <div className="flex-1 space-y-1">
                             <Label className="text-xs">Date *</Label>
-                            <Input 
+                            <Input
                               type="date"
                               value={inv.date}
                               onChange={(e) => {
@@ -770,10 +770,10 @@ function AdminClientsPage() {
                               required
                             />
                           </div>
-                          <Button 
-                            type="button" 
-                            variant="ghost" 
-                            size="icon" 
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
                             className="text-destructive h-9 w-9 mb-0.5"
                             onClick={() => setOpeningInvoices(openingInvoices.filter((_, i) => i !== idx))}
                           >
@@ -790,7 +790,7 @@ function AdminClientsPage() {
                         </div>
                       )}
                     </div>
-                    
+
                     <hr className="border-border my-4" />
 
                     <h4 className="text-sm font-medium">Commercial Terms & Balances</h4>
@@ -1387,14 +1387,14 @@ function ClientDetailsForm({
                   <Label>PAN Number</Label>
                   <Input value={mPan} onChange={(e) => setMPan(e.target.value)} />
                 </div>
-                
+
                 <div className="col-span-2 pt-2">
                   <BillingProfilesBuilder
                     profiles={mBillingProfiles}
                     setProfiles={setMBillingProfiles}
                   />
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label>Contact Name</Label>
                   <Input value={mContactName} onChange={(e) => setMContactName(e.target.value)} />
@@ -1684,15 +1684,15 @@ function ClientDetailsForm({
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>Amount (₹) *</Label>
-                <Input 
-                  type="number" 
+                <Input
+                  type="number"
                   value={obAmount}
                   onChange={e => setObAmount(e.target.value === "" ? "" : Number(e.target.value))}
                 />
               </div>
               <div className="space-y-2">
                 <Label>Date *</Label>
-                <Input 
+                <Input
                   type="date"
                   value={obDate}
                   onChange={e => setObDate(e.target.value)}
@@ -1700,15 +1700,15 @@ function ClientDetailsForm({
               </div>
               <div className="space-y-2">
                 <Label>Reference</Label>
-                <Input 
+                <Input
                   value={obReference}
                   onChange={e => setObReference(e.target.value)}
                   placeholder="Optional reference"
                 />
               </div>
             </div>
-            <Button 
-              onClick={() => obMutation.mutate({ 
+            <Button
+              onClick={() => obMutation.mutate({
                 organizationId: client.id,
                 amount: obAmount,
                 invoiceDate: obDate,
@@ -1748,8 +1748,8 @@ function ClientDetailsForm({
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Button 
-                            variant="destructive" 
+                          <Button
+                            variant="destructive"
                             size="sm"
                             disabled={cancelObMutation.isPending || inv.status === 'paid' || inv.status === 'partially_paid'}
                             onClick={() => cancelObMutation.mutate({ invoiceId: inv.id })}

@@ -2198,7 +2198,7 @@ export const getDispatchRequests = createServerFn({ method: "GET" })
     if (purchaseOrderIds.length > 0) {
       const { data } = await supabase
         .from("purchase_orders")
-        .select("*, payments(amount, status, is_utcl_payment)")
+        .select("*, payments(amount, status, is_utcl_payment, is_client_to_utcl)")
         .in("id", purchaseOrderIds);
       purchaseOrders = data || [];
     }
@@ -2324,6 +2324,57 @@ export const updateDispatchRequestStatus = createServerFn({ method: "POST" })
       .from("dispatch_requests")
       .update({ status: data.status, approved_by: context.userId })
       .eq("id", data.id);
+
+    // Auto-generate invoice if the dispatch is approved
+    if (data.status === "approved" && prevDr.status !== "approved") {
+      const { data: existingInvoice } = await supabase
+        .from("invoices")
+        .select("id")
+        .eq("dispatch_request_id", data.id)
+        .single();
+
+      if (!existingInvoice) {
+        const { data: poItem } = await supabase
+          .from("purchase_order_items")
+          .select("locked_rate")
+          .eq("id", prevDr.purchase_order_item_id)
+          .single();
+
+        if (poItem) {
+          const invoiceAmount = Number(prevDr.quantity) * Number(poItem.locked_rate);
+          const invoiceNumber = prevDr.invoice_number || `INV-${Date.now().toString().slice(-6)}-${data.id.slice(0, 4).toUpperCase()}`;
+
+          // Fetch payment terms for the client to calculate due_date correctly
+          const { data: profile } = await supabase
+            .from("client_commercial_profiles")
+            .select("payment_terms_days")
+            .eq("organization_id", prevDr.organization_id)
+            .single();
+            
+          const termsDays = profile?.payment_terms_days || 0;
+          const invoiceDate = new Date(prevDr.requested_date);
+          const dueDate = new Date(invoiceDate);
+          dueDate.setDate(dueDate.getDate() + termsDays);
+
+          const { error: invError } = await supabase.from("invoices").insert({
+            id: crypto.randomUUID(),
+            organization_id: prevDr.organization_id,
+            dispatch_request_id: data.id,
+            invoice_number: invoiceNumber,
+            invoice_date: prevDr.requested_date,
+            due_date: dueDate.toISOString().split('T')[0],
+            amount: invoiceAmount,
+            status: "unpaid",
+            is_opening_balance: false,
+          });
+          
+          if (invError) {
+             console.error("Failed to auto-generate invoice:", invError);
+          }
+        }
+      }
+    }
+
     const { data: dr } = await supabase
       .from("dispatch_requests")
       .select("*")
@@ -4318,7 +4369,7 @@ export const getAdminOverdueReport = createServerFn({ method: "POST" })
           allocated_amount
         )
       `)
-      .in("status", ["pending", "partially_paid"])
+      .in("status", ["unpaid", "partially_paid"])
       .neq("is_opening_balance", true);
 
     if (data.clientId && data.clientId !== "all") {
