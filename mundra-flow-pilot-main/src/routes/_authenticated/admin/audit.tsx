@@ -866,13 +866,14 @@ function AuditJournalPage() {
                   <TableHead>Due Date</TableHead>
                   <TableHead className="text-right">Unpaid Amount</TableHead>
                   <TableHead className="text-right">Overdue Days</TableHead>
+                  <TableHead className="text-right">Accrued Interest</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {overdueLoading ? (
                   <TableRow>
-                    <TableCell colSpan={clientFilter === "all" ? 7 : 6} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={clientFilter === "all" ? 8 : 7} className="text-center py-10 text-muted-foreground">
                       <Loader2 className="h-5 w-5 animate-spin mx-auto" />
                     </TableCell>
                   </TableRow>
@@ -894,6 +895,9 @@ function AuditJournalPage() {
                         ) : (
                           <span className="text-muted-foreground">Not Overdue</span>
                         )}
+                      </TableCell>
+                      <TableCell className="text-right text-destructive font-semibold">
+                        {inv.accrued_interest > 0 ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(inv.accrued_interest) : "—"}
                       </TableCell>
                       <TableCell>
                         <Badge variant={inv.overdue_days > 0 ? (inv.is_in_grace_period ? "outline" : "destructive") : "secondary"} className="text-[10px] capitalize">

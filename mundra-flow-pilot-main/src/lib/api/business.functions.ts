@@ -4382,7 +4382,7 @@ export const getAdminOverdueReport = createServerFn({ method: "POST" })
     const orgIds = Array.from(new Set(invoices.map((i: any) => i.organization_id)));
     const { data: profiles } = await supabase
       .from("client_commercial_profiles")
-      .select("organization_id, grace_period_days")
+      .select("organization_id, grace_period_days, annual_interest_rate")
       .in("organization_id", orgIds);
 
     const profileMap = new Map((profiles || []).map((p: any) => [p.organization_id, p]));
@@ -4396,17 +4396,22 @@ export const getAdminOverdueReport = createServerFn({ method: "POST" })
       const dueDate = new Date(inv.due_date);
       const profile = profileMap.get(inv.organization_id);
       const graceDays = Number(profile?.grace_period_days || 0);
+      const rate = Number(profile?.annual_interest_rate || 0);
       
       const graceCutoff = new Date(dueDate);
       graceCutoff.setDate(graceCutoff.getDate() + graceDays);
 
       let overdueDays = 0;
       let isInGracePeriod = false;
+      let accruedInterest = 0;
 
       if (today > dueDate) {
         overdueDays = Math.max(0, Math.ceil((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)));
         if (today <= graceCutoff) {
           isInGracePeriod = true;
+        } else if (unpaidAmount > 0) {
+          // Calculate interest from day 31 (due date) if they exceed grace period
+          accruedInterest = unpaidAmount * (rate / 100) * (overdueDays / 365);
         }
       }
 
@@ -4420,6 +4425,7 @@ export const getAdminOverdueReport = createServerFn({ method: "POST" })
         unpaid_amount: unpaidAmount,
         overdue_days: overdueDays,
         is_in_grace_period: isInGracePeriod,
+        accrued_interest: accruedInterest,
         status: inv.status
       };
     }).filter((r: any) => r.unpaid_amount > 0);
