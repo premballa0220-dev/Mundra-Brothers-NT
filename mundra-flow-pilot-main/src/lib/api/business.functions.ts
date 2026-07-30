@@ -942,6 +942,17 @@ export const updateClient = createServerFn({ method: "POST" })
         if (notifError) console.error("Failed to insert notifications:", notifError);
       }
 
+      // Notify the admin team
+      const { data: org } = await supabase.from("organizations").select("legal_name").eq("id", data.organizationId).single();
+      const clientName = org?.legal_name || "A client";
+      await broadcastNotification(
+        supabase,
+        "Client Profile Updated",
+        `${clientName} profile was updated.`,
+        "/admin/clients",
+        context.organizationId
+      );
+
       return { success: true };
     } catch (err: any) {
       console.error("updateClient failed:", err);
@@ -1854,6 +1865,14 @@ export const approveProductRate = createServerFn({ method: "POST" })
         "/client",
         proposedRate.organization_id,
       );
+
+      await broadcastNotification(
+        supabase,
+        title,
+        message,
+        "/admin/settings",
+        context.organizationId
+      );
     }
 
     return { success: true };
@@ -1997,6 +2016,20 @@ export const createPurchaseOrder = createServerFn({ method: "POST" })
       ...purchaseOrder,
       items: itemRows,
     });
+
+    const { data: mundraOrg } = await supabase.from("organizations").select("id").eq("type", "mundra").single();
+    if (mundraOrg) {
+      const { data: clientOrg } = await supabase.from("organizations").select("legal_name").eq("id", context.organizationId).single();
+      const clientName = clientOrg?.legal_name || "A client";
+      await broadcastNotification(
+        supabase,
+        "New Purchase Order Submitted",
+        `${clientName} has submitted Purchase Order ${data.poNumber}.`,
+        "/admin/po-queue",
+        mundraOrg.id
+      );
+    }
+
     return { ...purchaseOrder, items: itemRows };
   });
 
@@ -2173,6 +2206,18 @@ export const updatePurchaseOrderStatus = createServerFn({ method: "POST" })
         message,
         "/client/purchase-orders",
         updatedPO.organization_id,
+      );
+
+      const { data: org } = await supabase.from("organizations").select("legal_name").eq("id", updatedPO.organization_id).single();
+      const clientName = org?.legal_name || "a client";
+      const adminMessage = `Purchase Order ${updatedPO.po_number} for ${clientName} has been ${data.status.replace("_", " ")}.`;
+      
+      await broadcastNotification(
+        supabase,
+        title,
+        adminMessage,
+        "/admin/po-queue",
+        context.organizationId
       );
     }
 
@@ -2422,6 +2467,18 @@ export const updateDispatchRequestStatus = createServerFn({ method: "POST" })
         message,
         "/client", 
         dr.organization_id,
+      );
+
+      const { data: org } = await supabase.from("organizations").select("legal_name").eq("id", dr.organization_id).single();
+      const clientName = org?.legal_name || "a client";
+      const adminMessage = `Dispatch Request for ${clientName} has been marked as ${data.status.replace("_", " ")}.`;
+
+      await broadcastNotification(
+        supabase,
+        title,
+        adminMessage,
+        "/admin/dispatches",
+        context.organizationId
       );
     }
     
