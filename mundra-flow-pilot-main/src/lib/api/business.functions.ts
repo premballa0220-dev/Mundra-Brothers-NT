@@ -2291,6 +2291,29 @@ export const createDispatchRequest = createServerFn({ method: "POST" })
       created.push(dispatchRequest);
     }
 
+    const { data: mundraOrg } = await supabase
+      .from("organizations")
+      .select("id")
+      .eq("type", "mundra")
+      .single();
+
+    if (mundraOrg) {
+      const { data: clientOrg } = await supabase
+        .from("organizations")
+        .select("legal_name")
+        .eq("id", context.organizationId)
+        .single();
+      const clientName = clientOrg?.legal_name || "a client";
+      
+      await broadcastNotification(
+        supabase,
+        "New Dispatch Request",
+        `${data.lines.length} new dispatch request(s) submitted by ${clientName}.`,
+        "/admin/dispatches",
+        mundraOrg.id
+      );
+    }
+
     return created;
   });
 
@@ -2389,6 +2412,19 @@ export const updateDispatchRequestStatus = createServerFn({ method: "POST" })
       prevDr,
       dr,
     );
+
+    if (dr && data.status !== prevDr.status) {
+      const title = `Dispatch Request ${data.status.charAt(0).toUpperCase() + data.status.slice(1).replace("_", " ")}`;
+      const message = `Your dispatch request has been marked as ${data.status.replace("_", " ")} by Mundra.`;
+      await broadcastNotification(
+        supabase,
+        title,
+        message,
+        "/client", 
+        dr.organization_id,
+      );
+    }
+    
     return dr;
   });
 
