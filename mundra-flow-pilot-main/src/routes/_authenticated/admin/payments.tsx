@@ -232,24 +232,23 @@ function AdminPaymentsPage() {
       maximumFractionDigits: 0,
     }).format(val);
 
-  // Pre-calculate Client to UTCL coverage for dispatches (FIFO allocation)
-  const dispatchFullyCovered = new Map<string, boolean>();
+  // Pre-calculate Total UTCL coverage for dispatches (FIFO allocation)
+  const dispatchCoverage = new Map<string, { fullyCovered: boolean; paidAmount: number; remaining: number }>();
   if (dispatches) {
-    const poClientUtclBalance = new Map<string, number>();
+    const poBalance = new Map<string, number>();
     dispatches.forEach((d: any) => {
       const po = d.purchase_order || d.purchase_orders;
-      if (po && po.id && !poClientUtclBalance.has(po.id)) {
-        const clientToUtclPayments = po.payments?.filter(
+      if (po && po.id && !poBalance.has(po.id)) {
+        const utclPayments = po.payments?.filter(
           (p: any) =>
             p.is_utcl_payment &&
-            p.is_client_to_utcl &&
             (p.status === "approved" || p.status === "verified")
         ) || [];
-        const paidByClient = clientToUtclPayments.reduce(
+        const totalPaid = utclPayments.reduce(
           (acc: number, curr: any) => acc + (curr.amount || 0),
           0
         );
-        poClientUtclBalance.set(po.id, paidByClient);
+        poBalance.set(po.id, totalPaid);
       }
     });
 
@@ -260,14 +259,15 @@ function AdminPaymentsPage() {
     sortedDispatches.forEach((d: any) => {
        const po = d.purchase_order || d.purchase_orders;
        if (po && po.id) {
-          const balance = poClientUtclBalance.get(po.id) || 0;
-          const dispatchValue = d.quantity * (po.locked_rate || 0);
+          const balance = poBalance.get(po.id) || 0;
+          const rate = po.locked_rate || d.purchase_order_item?.locked_rate || 0;
+          const dispatchValue = d.quantity * rate;
           if (dispatchValue > 0 && balance >= dispatchValue) {
-             dispatchFullyCovered.set(d.id, true);
-             poClientUtclBalance.set(po.id, balance - dispatchValue);
+             dispatchCoverage.set(d.id, { fullyCovered: true, paidAmount: dispatchValue, remaining: 0 });
+             poBalance.set(po.id, balance - dispatchValue);
           } else {
-             dispatchFullyCovered.set(d.id, false);
-             poClientUtclBalance.set(po.id, Math.max(0, balance - dispatchValue));
+             dispatchCoverage.set(d.id, { fullyCovered: false, paidAmount: balance, remaining: Math.max(0, dispatchValue - balance) });
+             poBalance.set(po.id, Math.max(0, balance - dispatchValue));
           }
        }
     });
@@ -275,8 +275,7 @@ function AdminPaymentsPage() {
 
   let filteredDispatches =
     dispatches?.filter((d: any) => {
-      if (d.utcl_payment_id) return false; // Already paid
-      if (dispatchFullyCovered.get(d.id)) return false; // Fully paid by Client to UTCL pool
+      if (dispatchCoverage.get(d.id)?.fullyCovered) return false;
 
       const search = searchQuery.toLowerCase();
       return (
@@ -294,11 +293,24 @@ function AdminPaymentsPage() {
 
   const toggleDispatchSelection = (dispatch: any) => {
     const exists = selectedDispatches.find((d) => d.id === dispatch.id);
+    let newSelection = [];
     if (exists) {
-      setSelectedDispatches((prev) => prev.filter((d) => d.id !== dispatch.id));
+      newSelection = selectedDispatches.filter((d) => d.id !== dispatch.id);
+      setSelectedDispatches(newSelection);
     } else {
-      setSelectedDispatches((prev) => [...prev, dispatch]);
+      newSelection = [...selectedDispatches, dispatch];
+      setSelectedDispatches(newSelection);
     }
+    
+    // Auto-calculate amount for the payment box
+    const totalAmount = newSelection.reduce((acc, d) => {
+      const rate = (d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0;
+      const val = d.quantity * rate;
+      const remaining = dispatchCoverage.get(d.id)?.remaining ?? val;
+      return acc + remaining;
+    }, 0);
+    setAmount(totalAmount);
+
     toast.success(`Dispatch ${exists ? "removed from" : "added to"} staging`);
   };
 
@@ -516,7 +528,12 @@ function AdminPaymentsPage() {
                         <TableCell>
                           {formatCurrency(
                             selectedDispatches.reduce(
-                              (acc, d) => acc + d.quantity * (d.purchase_order?.locked_rate || 0),
+                              (acc, d) => {
+                                const rate = (d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0;
+                                const val = d.quantity * rate;
+                                const remaining = dispatchCoverage.get(d.id)?.remaining ?? val;
+                                return acc + remaining;
+                              },
                               0,
                             ),
                           )}
@@ -526,92 +543,62 @@ function AdminPaymentsPage() {
                     </TableBody>
                   </Table>
 
-                  <div className="p-4 flex justify-end border-t border-primary/10">
-                    <Dialog
-                      open={openDispatchId === "lumpsum"}
-                      onOpenChange={(isOpen) => {
-                        if (!isOpen) {
-                          setOpenDispatchId(null);
-                          resetForm();
-                        } else {
-                          setOpenDispatchId("lumpsum");
-                          const totalAmount = selectedDispatches.reduce(
-                            (acc, d) => acc + d.quantity * (d.purchase_order?.locked_rate || 0),
-                            0,
-                          );
-                          setAmount(totalAmount);
-                        }
-                      }}
-                    >
-                      <DialogTrigger asChild>
-                        <Button>Record Lumpsum Payment</Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <form onSubmit={handleRecordLumpsumPayment}>
-                          <DialogHeader>
-                            <DialogTitle>Record UTCL Lumpsum Payment</DialogTitle>
-                            <DialogDescription>
-                              Record a single payment sent to UTCL covering{" "}
-                              {selectedDispatches.length} dispatch(es).
-                            </DialogDescription>
-                          </DialogHeader>
-                          <div className="grid gap-4 py-4">
-                            <div className="space-y-1">
-                              <Label>Lumpsum Amount Paid to UTCL (₹) *</Label>
-                              <Input
-                                type="number"
-                                value={amount || ""}
-                                onChange={(e) => setAmount(Number(e.target.value))}
-                                placeholder="0"
-                                required
-                              />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-1">
-                                <Label>Payment Date *</Label>
-                                <Input
-                                  type="date"
-                                  value={paymentDate}
-                                  onChange={(e) => setPaymentDate(e.target.value)}
-                                  required
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label>Mode *</Label>
-                                <Select value={paymentMode} onValueChange={setPaymentMode} required>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select mode" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="RTGS">RTGS</SelectItem>
-                                    <SelectItem value="NEFT">NEFT</SelectItem>
-                                    <SelectItem value="IMPS">IMPS</SelectItem>
-                                    <SelectItem value="Other">Other</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </div>
-                            <div className="space-y-1">
-                              <Label>Reference / UTR Number *</Label>
-                              <Input
-                                value={referenceNumber}
-                                onChange={(e) => setReferenceNumber(e.target.value)}
-                                placeholder="Unique UTR Code"
-                                required
-                              />
-                            </div>
-                          </div>
-                          <DialogFooter>
-                            <Button type="submit" disabled={recordMutation.isPending}>
-                              {recordMutation.isPending && (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              )}
-                              Confirm Payment
-                            </Button>
-                          </DialogFooter>
-                        </form>
-                      </DialogContent>
-                    </Dialog>
+                  <div className="p-4 border-t border-primary/10 bg-muted/10">
+                    <form onSubmit={handleRecordLumpsumPayment}>
+                      <h4 className="font-semibold mb-4 text-primary">Record UTCL Payment for Selected Dispatches</h4>
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-4">
+                        <div className="space-y-1">
+                          <Label>Amount Paid to UTCL (₹) *</Label>
+                          <Input
+                            type="number"
+                            value={amount || ""}
+                            onChange={(e) => setAmount(Number(e.target.value))}
+                            placeholder="0"
+                            required
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Payment Date *</Label>
+                          <Input
+                            type="date"
+                            value={paymentDate}
+                            onChange={(e) => setPaymentDate(e.target.value)}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Mode *</Label>
+                          <Select value={paymentMode} onValueChange={setPaymentMode} required>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select mode" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="RTGS">RTGS</SelectItem>
+                              <SelectItem value="NEFT">NEFT</SelectItem>
+                              <SelectItem value="IMPS">IMPS</SelectItem>
+                              <SelectItem value="Other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Reference / UTR Number *</Label>
+                          <Input
+                            value={referenceNumber}
+                            onChange={(e) => setReferenceNumber(e.target.value)}
+                            placeholder="Unique UTR Code"
+                            required
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-end">
+                        <Button type="submit" disabled={recordMutation.isPending}>
+                          {recordMutation.isPending && (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          )}
+                          Confirm Payment
+                        </Button>
+                      </div>
+                    </form>
                   </div>
                 </CardContent>
               </Card>
@@ -965,6 +952,7 @@ function AdminPaymentsPage() {
                             dispatches?.filter(
                               (d: any) =>
                                 d.organization_id === clientSelectedOrgId &&
+                                !dispatchCoverage.get(d.id)?.fullyCovered &&
                                 [
                                   "approved",
                                   "auto_approved",
@@ -1003,8 +991,12 @@ function AdminPaymentsPage() {
                                                 const drId = ref.replace('dr_', '');
                                                 const dr = openClientDispatches.find((od: any) => od.id === drId);
                                                 if (dr) {
-                                                  return acc + (dr.quantity || 0) * ((dr.purchase_order || dr.purchase_orders)?.locked_rate || 0);
+                                                  const rate = (dr.purchase_order || dr.purchase_orders)?.locked_rate || dr.purchase_order_item?.locked_rate || 0;
+                                                  const val = (dr.quantity || 0) * rate;
+                                                  const remaining = dispatchCoverage.get(drId)?.remaining ?? val;
+                                                  return acc + remaining;
                                                 }
+                                          
                                               }
                                               return acc;
                                             }, 0);
@@ -1015,6 +1007,7 @@ function AdminPaymentsPage() {
                                         />
                                         <Label htmlFor={`ref_${d.id}`} className={`font-normal cursor-pointer text-sm leading-snug ${hasPoSelected ? 'opacity-50' : ''}`}>
                                           Dispatch: Qty {d.quantity} MT {d.invoice_number ? `(Inv: ${d.invoice_number})` : ""} {(d.purchase_order || d.purchase_orders)?.po_number ? `(PO: ${(d.purchase_order || d.purchase_orders).po_number})` : ""}
+                                          {dispatchCoverage.get(d.id)?.paidAmount ? ` - Bal: ${formatCurrency(dispatchCoverage.get(d.id)?.remaining || 0)}` : ""}
                                         </Label>
                                       </div>
                                     )})}
