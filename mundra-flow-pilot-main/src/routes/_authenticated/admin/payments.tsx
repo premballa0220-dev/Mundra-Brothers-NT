@@ -78,17 +78,14 @@ function AdminPaymentsPage() {
 
   // Client to UTCL Payment State
   const [clientUtclModalOpen, setClientUtclModalOpen] = useState(false);
-  const [clientSelectedOrgId, setClientSelectedOrgId] = useState("");
+  const [clientSelectedOrgId, setClientSelectedOrgId] = useState<string>("");
+  const [clientPaymentDate, setClientPaymentDate] = useState(new Date().toISOString().split("T")[0]);
+  const [clientPaymentMode, setClientPaymentMode] = useState<string>("");
+  const [clientReferenceNumber, setClientReferenceNumber] = useState<string>("");
   const [clientAmount, setClientAmount] = useState<number>(0);
-  const [clientPaymentType, setClientPaymentType] = useState<"on_account" | "against_reference">(
-    "against_reference",
-  );
-  const [clientPaymentDate, setClientPaymentDate] = useState(
-    new Date().toISOString().split("T")[0],
-  );
-  const [clientPaymentMode, setClientPaymentMode] = useState("RTGS");
-  const [clientReferenceNumber, setClientReferenceNumber] = useState("");
+  const [clientPaymentType, setClientPaymentType] = useState<"on_account" | "against_reference">("against_reference");
   const [clientSelectedReferences, setClientSelectedReferences] = useState<string[]>([]);
+  const [clientPaymentOpts, setClientPaymentOpts] = useState<Record<string, { isAdvance: boolean, amount: number }>>({});
 
   const { data: pastPayments, isLoading: historyLoading } = useQuery({
     queryKey: ["admin-utcl-payments"],
@@ -165,9 +162,12 @@ function AdminPaymentsPage() {
     setClientAmount(0);
     setClientPaymentType("against_reference");
     setClientPaymentDate(new Date().toISOString().split("T")[0]);
-    setClientPaymentMode("RTGS");
+    setClientPaymentMode("");
     setClientReferenceNumber("");
+    setClientAmount(0);
+    setClientPaymentType("against_reference");
     setClientSelectedReferences([]);
+    setClientPaymentOpts({});
   }
 
   async function handleRecordLumpsumPayment(e: React.FormEvent) {
@@ -215,26 +215,45 @@ function AdminPaymentsPage() {
       return;
     }
 
-    let dispatchRequestIds: string[] | undefined = undefined;
-    let purchaseOrderId: string | undefined = undefined;
-
-    const selectedDrs = clientSelectedReferences.filter(r => r.startsWith("dr_")).map(r => r.replace("dr_", ""));
-    const selectedPos = clientSelectedReferences.filter(r => r.startsWith("po_")).map(r => r.replace("po_", ""));
-
-    if (selectedDrs.length > 0) {
-      dispatchRequestIds = selectedDrs;
-      const dr = dispatches?.find((d: any) => d.id === selectedDrs[0]);
-      if (dr && dr.purchase_order_id) {
-        purchaseOrderId = dr.purchase_order_id;
-      }
-    } else if (selectedPos.length > 0) {
-      purchaseOrderId = selectedPos[0];
+    if (clientPaymentType === "against_reference") {
+      const promises = clientSelectedReferences.map((ref) => {
+        const opt = clientPaymentOpts[ref];
+        if (!opt || opt.amount <= 0) return Promise.resolve();
+        
+        let dispatchRequestIds: string[] | undefined = undefined;
+        let purchaseOrderId: string | undefined = undefined;
+        
+        if (ref.startsWith("dr_")) {
+          const drId = ref.replace("dr_", "");
+          dispatchRequestIds = [drId];
+          const dr = dispatches?.find((d: any) => d.id === drId);
+          if (dr && dr.purchase_order_id) {
+            purchaseOrderId = dr.purchase_order_id;
+          }
+        } else if (ref.startsWith("po_")) {
+          purchaseOrderId = ref.replace("po_", "");
+        }
+        
+        return recordMutation.mutateAsync({
+          organizationId: clientSelectedOrgId,
+          purchaseOrderId,
+          dispatchRequestIds,
+          amount: opt.amount,
+          paymentDate: clientPaymentDate,
+          paymentMode: clientPaymentMode,
+          referenceNumber: clientReferenceNumber,
+          isUtclPayment: true,
+          isClientToUtcl: true,
+          isAdvance: opt.isAdvance,
+        });
+      });
+      await Promise.all(promises);
+      setClientUtclModalOpen(false);
+      return;
     }
 
-    recordMutation.mutate({
+    await recordMutation.mutateAsync({
       organizationId: clientSelectedOrgId,
-      purchaseOrderId,
-      dispatchRequestIds,
       amount: clientAmount,
       paymentDate: clientPaymentDate,
       paymentMode: clientPaymentMode,
@@ -245,6 +264,10 @@ function AdminPaymentsPage() {
     });
     setClientUtclModalOpen(false);
   }
+
+  const derivedClientAmount = clientPaymentType === "against_reference" 
+    ? clientSelectedReferences.reduce((acc, ref) => acc + (clientPaymentOpts[ref]?.amount || 0), 0)
+    : clientAmount;
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat("en-IN", {
@@ -1005,6 +1028,7 @@ function AdminPaymentsPage() {
                             setClientPaymentType(val);
                             if (val === "on_account") {
                               setClientSelectedReferences([]);
+                              setClientPaymentOpts({});
                             }
                           }}
                         >
@@ -1056,44 +1080,72 @@ function AdminPaymentsPage() {
                                     {openClientDispatches.map((d: any) => {
                                       const hasPoSelected = clientSelectedReferences.some(r => r.startsWith('po_'));
                                       return (
-                                      <div key={d.id} className="flex items-center space-x-3">
-                                        <Checkbox
-                                          id={`ref_${d.id}`}
-                                          disabled={hasPoSelected}
-                                          checked={clientSelectedReferences.includes(`dr_${d.id}`)}
-                                          onCheckedChange={(checked) => {
+                                        <div key={d.id} className="flex flex-col">
+                                          <div className="flex items-center space-x-3">
+                                            <Checkbox
+                                              id={`ref_${d.id}`}
+                                              disabled={hasPoSelected}
+                                              checked={clientSelectedReferences.includes(`dr_${d.id}`)}
+                                              onCheckedChange={(checked) => {
                                             let newRefs = [...clientSelectedReferences];
                                             if (checked) {
                                               newRefs = [...newRefs.filter(r => !r.startsWith('po_')), `dr_${d.id}`];
+                                              const rate = (d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0;
+                                              const val = (d.quantity || 0) * rate;
+                                              const remaining = dispatchCoverage.get(d.id)?.remaining ?? val;
+                                              setClientPaymentOpts(prev => ({
+                                                ...prev,
+                                                [`dr_${d.id}`]: { isAdvance: false, amount: remaining }
+                                              }));
                                             } else {
                                               newRefs = newRefs.filter(r => r !== `dr_${d.id}`);
+                                              setClientPaymentOpts(prev => {
+                                                const next = { ...prev };
+                                                delete next[`dr_${d.id}`];
+                                                return next;
+                                              });
                                             }
                                             setClientSelectedReferences(newRefs);
-
-                                            // Calculate total amount for selected dispatches
-                                            const totalAmount = newRefs.reduce((acc, ref) => {
-                                              if (ref.startsWith('dr_')) {
-                                                const drId = ref.replace('dr_', '');
-                                                const dr = openClientDispatches.find((od: any) => od.id === drId);
-                                                if (dr) {
-                                                  const rate = (dr.purchase_order || dr.purchase_orders)?.locked_rate || dr.purchase_order_item?.locked_rate || 0;
-                                                  const val = (dr.quantity || 0) * rate;
-                                                  const remaining = dispatchCoverage.get(drId)?.remaining ?? val;
-                                                  return acc + remaining;
-                                                }
-                                          
-                                              }
-                                              return acc;
-                                            }, 0);
-                                            if (totalAmount > 0 || newRefs.length === 0) {
-                                              setClientAmount(totalAmount);
-                                            }
                                           }}
                                         />
                                         <Label htmlFor={`ref_${d.id}`} className={`font-normal cursor-pointer text-sm leading-snug ${hasPoSelected ? 'opacity-50' : ''}`}>
                                           Dispatch: Qty {d.quantity} MT {d.invoice_number ? `(Inv: ${d.invoice_number})` : ""} {(d.purchase_order || d.purchase_orders)?.po_number ? `(PO: ${(d.purchase_order || d.purchase_orders).po_number})` : ""}
                                           {` - Bal: ${formatCurrency(dispatchCoverage.get(d.id)?.remaining ?? (d.quantity * ((d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0)))}`}
                                         </Label>
+                                      </div>
+                                      
+                                      {clientSelectedReferences.includes(`dr_${d.id}`) && (
+                                        <div className="flex items-center space-x-4 ml-6 mt-2 mb-4 p-2 bg-muted/30 rounded-md">
+                                          <div className="flex items-center space-x-2">
+                                            <Checkbox 
+                                              id={`adv_dr_${d.id}`} 
+                                              checked={clientPaymentOpts[`dr_${d.id}`]?.isAdvance || false} 
+                                              onCheckedChange={(c) => {
+                                                setClientPaymentOpts(prev => ({
+                                                  ...prev,
+                                                  [`dr_${d.id}`]: { ...prev[`dr_${d.id}`], isAdvance: !!c }
+                                                }))
+                                              }}
+                                            />
+                                            <Label htmlFor={`adv_dr_${d.id}`} className="text-sm font-medium">Advance</Label>
+                                          </div>
+                                          <div className="flex items-center space-x-2">
+                                            <Label htmlFor={`amt_dr_${d.id}`} className="text-sm text-muted-foreground">Amount (₹):</Label>
+                                            <Input
+                                              id={`amt_dr_${d.id}`}
+                                              type="number"
+                                              className="w-32 h-8"
+                                              value={clientPaymentOpts[`dr_${d.id}`]?.amount ?? ""}
+                                              onChange={(e) => {
+                                                setClientPaymentOpts(prev => ({
+                                                  ...prev,
+                                                  [`dr_${d.id}`]: { ...prev[`dr_${d.id}`], amount: Number(e.target.value) }
+                                                }))
+                                              }}
+                                            />
+                                          </div>
+                                        </div>
+                                      )}
                                       </div>
                                     )})}
                                   </div>
@@ -1105,7 +1157,8 @@ function AdminPaymentsPage() {
                                     {openClientPos.map((po: any) => {
                                       const hasDrSelected = clientSelectedReferences.some(r => r.startsWith('dr_'));
                                       return (
-                                      <div key={po.id} className="flex items-center space-x-3">
+                                      <div key={po.id} className="flex flex-col">
+                                      <div className="flex items-center space-x-3">
                                         <Checkbox
                                           id={`ref_${po.id}`}
                                           disabled={hasDrSelected}
@@ -1114,16 +1167,52 @@ function AdminPaymentsPage() {
                                             if (checked) {
                                               setClientSelectedReferences([`po_${po.id}`]);
                                               const poAmount = (po.original_quantity || 0) * (po.locked_rate || 0);
-                                              setClientAmount(poAmount);
+                                              setClientPaymentOpts({
+                                                [`po_${po.id}`]: { isAdvance: false, amount: poAmount }
+                                              });
                                             } else {
                                               setClientSelectedReferences((prev) => prev.filter(r => r !== `po_${po.id}`));
-                                              setClientAmount(0);
+                                              setClientPaymentOpts({});
                                             }
                                           }}
                                         />
                                         <Label htmlFor={`ref_${po.id}`} className={`font-normal cursor-pointer text-sm leading-snug ${hasDrSelected ? 'opacity-50' : ''}`}>
                                           PO: {po.po_number || "Unnamed PO"} (Pay against PO)
                                         </Label>
+                                      </div>
+
+                                      {clientSelectedReferences.includes(`po_${po.id}`) && (
+                                        <div className="flex items-center space-x-4 ml-6 mt-2 mb-4 p-2 bg-muted/30 rounded-md">
+                                          <div className="flex items-center space-x-2">
+                                            <Checkbox 
+                                              id={`adv_po_${po.id}`} 
+                                              checked={clientPaymentOpts[`po_${po.id}`]?.isAdvance || false} 
+                                              onCheckedChange={(c) => {
+                                                setClientPaymentOpts(prev => ({
+                                                  ...prev,
+                                                  [`po_${po.id}`]: { ...prev[`po_${po.id}`], isAdvance: !!c }
+                                                }))
+                                              }}
+                                            />
+                                            <Label htmlFor={`adv_po_${po.id}`} className="text-sm font-medium">Advance</Label>
+                                          </div>
+                                          <div className="flex items-center space-x-2">
+                                            <Label htmlFor={`amt_po_${po.id}`} className="text-sm text-muted-foreground">Amount (₹):</Label>
+                                            <Input
+                                              id={`amt_po_${po.id}`}
+                                              type="number"
+                                              className="w-32 h-8"
+                                              value={clientPaymentOpts[`po_${po.id}`]?.amount ?? ""}
+                                              onChange={(e) => {
+                                                setClientPaymentOpts(prev => ({
+                                                  ...prev,
+                                                  [`po_${po.id}`]: { ...prev[`po_${po.id}`], amount: Number(e.target.value) }
+                                                }))
+                                              }}
+                                            />
+                                          </div>
+                                        </div>
+                                      )}
                                       </div>
                                     )})}
                                   </div>
@@ -1137,8 +1226,14 @@ function AdminPaymentsPage() {
                         <Label>Amount Paid to UTCL (₹) *</Label>
                         <Input
                           type="number"
-                          value={clientAmount || ""}
-                          onChange={(e) => setClientAmount(Number(e.target.value))}
+                          value={derivedClientAmount || ""}
+                          onChange={(e) => {
+                            if (clientPaymentType === "on_account") {
+                              setClientAmount(Number(e.target.value));
+                            }
+                          }}
+                          readOnly={clientPaymentType === "against_reference"}
+                          className={clientPaymentType === "against_reference" ? "bg-muted cursor-not-allowed font-medium" : ""}
                           placeholder="0"
                           required
                         />
