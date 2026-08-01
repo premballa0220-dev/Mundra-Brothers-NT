@@ -276,23 +276,39 @@ function AdminPaymentsPage() {
       maximumFractionDigits: 0,
     }).format(val);
 
-  // Pre-calculate Total UTCL coverage for dispatches (Explicit + FIFO allocation)
-  const dispatchCoverage = new Map<string, { fullyCovered: boolean; paidAmount: number; remaining: number }>();
+  // Pre-calculate Total UTCL coverage for dispatches
+  const mundraDispatchCoverage = new Map<string, { fullyCovered: boolean; paidAmount: number; remaining: number }>();
+  const clientDispatchCoverage = new Map<string, { fullyCovered: boolean; paidAmount: number; remaining: number }>();
+  
   if (dispatches) {
-    const explicitDispatchPaid = new Map<string, number>();
-    const generalPoPaid = new Map<string, number>();
+    const explicitMundraPaid = new Map<string, number>();
+    const explicitClientPaid = new Map<string, number>();
+    
+    const generalMundraPaid = new Map<string, number>();
+    const generalClientPaid = new Map<string, number>();
 
     if (pastPayments) {
       pastPayments.forEach((p: any) => {
         if (p.is_utcl_payment && (p.status === "approved" || p.status === "verified")) {
+          const isClient = !!p.is_client_to_utcl;
           const linkedDrs = p.dispatch_requests || [];
+          const amt = p.amount || 0;
+          
           if (linkedDrs.length > 0) {
-            const amtPerDr = (p.amount || 0) / linkedDrs.length;
+            const amtPerDr = amt / linkedDrs.length;
             linkedDrs.forEach((dr: any) => {
-              explicitDispatchPaid.set(dr.id, (explicitDispatchPaid.get(dr.id) || 0) + amtPerDr);
+              if (isClient) {
+                explicitClientPaid.set(dr.id, (explicitClientPaid.get(dr.id) || 0) + amtPerDr);
+              } else {
+                explicitMundraPaid.set(dr.id, (explicitMundraPaid.get(dr.id) || 0) + amtPerDr);
+              }
             });
           } else if (p.purchase_order_id) {
-            generalPoPaid.set(p.purchase_order_id, (generalPoPaid.get(p.purchase_order_id) || 0) + (p.amount || 0));
+            if (isClient) {
+              generalClientPaid.set(p.purchase_order_id, (generalClientPaid.get(p.purchase_order_id) || 0) + amt);
+            } else {
+              generalMundraPaid.set(p.purchase_order_id, (generalMundraPaid.get(p.purchase_order_id) || 0) + amt);
+            }
           }
         }
       });
@@ -307,31 +323,48 @@ function AdminPaymentsPage() {
        const rate = po?.locked_rate || d.purchase_order_item?.locked_rate || 0;
        const dispatchValue = d.quantity * rate;
        
-       let paidForThis = explicitDispatchPaid.get(d.id) || 0;
+       let clientPaidForThis = explicitClientPaid.get(d.id) || 0;
+       let mundraPaidForThis = explicitMundraPaid.get(d.id) || 0;
        
        if (po && po.id) {
-          const genBalance = generalPoPaid.get(po.id) || 0;
-          const stillNeeded = Math.max(0, dispatchValue - paidForThis);
+          // Process Client General PO Payments
+          const clientGenBalance = generalClientPaid.get(po.id) || 0;
+          const clientStillNeeded = Math.max(0, dispatchValue - clientPaidForThis);
+          if (clientStillNeeded > 0 && clientGenBalance > 0) {
+            const applyGen = Math.min(clientStillNeeded, clientGenBalance);
+            clientPaidForThis += applyGen;
+            generalClientPaid.set(po.id, clientGenBalance - applyGen);
+          }
           
-          if (stillNeeded > 0 && genBalance > 0) {
-            const applyGen = Math.min(stillNeeded, genBalance);
-            paidForThis += applyGen;
-            generalPoPaid.set(po.id, genBalance - applyGen);
+          // Process Mundra General PO Payments
+          const mundraGenBalance = generalMundraPaid.get(po.id) || 0;
+          const mundraStillNeeded = Math.max(0, dispatchValue - (clientPaidForThis + mundraPaidForThis));
+          if (mundraStillNeeded > 0 && mundraGenBalance > 0) {
+            const applyGen = Math.min(mundraStillNeeded, mundraGenBalance);
+            mundraPaidForThis += applyGen;
+            generalMundraPaid.set(po.id, mundraGenBalance - applyGen);
           }
        }
        
-       const remaining = Math.max(0, dispatchValue - paidForThis);
-       dispatchCoverage.set(d.id, { 
-         fullyCovered: remaining <= 0, 
-         paidAmount: paidForThis, 
-         remaining: remaining 
+       const clientRemaining = Math.max(0, dispatchValue - clientPaidForThis);
+       clientDispatchCoverage.set(d.id, {
+         fullyCovered: clientRemaining <= 0,
+         paidAmount: clientPaidForThis,
+         remaining: clientRemaining
+       });
+       
+       const mundraRemaining = Math.max(0, dispatchValue - (clientPaidForThis + mundraPaidForThis));
+       mundraDispatchCoverage.set(d.id, {
+         fullyCovered: mundraRemaining <= 0,
+         paidAmount: clientPaidForThis + mundraPaidForThis,
+         remaining: mundraRemaining
        });
     });
   }
 
   let filteredDispatches =
     dispatches?.filter((d: any) => {
-      if (dispatchCoverage.get(d.id)?.fullyCovered) return false;
+      if (mundraDispatchCoverage.get(d.id)?.fullyCovered) return false;
 
       const search = searchQuery.toLowerCase();
       return (
@@ -351,7 +384,7 @@ function AdminPaymentsPage() {
     const exists = selectedDispatches.find((d) => d.id === dispatch.id);
     const rate = (dispatch.purchase_order || dispatch.purchase_orders)?.locked_rate || dispatch.purchase_order_item?.locked_rate || 0;
     const val = dispatch.quantity * rate;
-    const remainingBalance = dispatchCoverage.get(dispatch.id)?.remaining ?? val;
+    const remainingBalance = mundraDispatchCoverage.get(dispatch.id)?.remaining ?? val;
 
     let newSelection = [];
     if (exists) {
@@ -375,7 +408,7 @@ function AdminPaymentsPage() {
     const totalAmountCalc = newSelection.reduce((acc, d) => {
       const drRate = (d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0;
       const drVal = d.quantity * drRate;
-      const drRem = dispatchCoverage.get(d.id)?.remaining ?? drVal;
+      const drRem = mundraDispatchCoverage.get(d.id)?.remaining ?? drVal;
       return acc + drRem;
     }, 0);
     setAmount(totalAmountCalc);
@@ -594,17 +627,8 @@ function AdminPaymentsPage() {
                       {selectedDispatches.map((dispatch) => {
                         const po = dispatch.purchase_order;
                         const dispatchValue = dispatch.quantity * (po?.locked_rate || 0);
-                        const utclPayments =
-                          po?.payments?.filter(
-                            (p: any) =>
-                              p.is_utcl_payment &&
-                              (p.status === "approved" || p.status === "verified"),
-                          ) || [];
-                        const paidToUtcl = utclPayments.reduce(
-                          (acc: number, curr: any) => acc + (curr.amount || 0),
-                          0,
-                        );
-                        const remaining = Math.max(0, dispatchValue - paidToUtcl); // In reality this logic might be flawed if multiple dispatches are paid separately, but we'll adapt to dispatchValue.
+                        const paidToUtcl = mundraDispatchCoverage.get(dispatch.id)?.paidAmount || 0;
+                        const remaining = mundraDispatchCoverage.get(dispatch.id)?.remaining ?? Math.max(0, dispatchValue - paidToUtcl);
 
                         return (
                           <TableRow key={dispatch.id} className="bg-background">
@@ -1094,7 +1118,7 @@ function AdminPaymentsPage() {
                             dispatches?.filter(
                               (d: any) =>
                                 d.organization_id === clientSelectedOrgId &&
-                                !dispatchCoverage.get(d.id)?.fullyCovered &&
+                                !clientDispatchCoverage.get(d.id)?.fullyCovered &&
                                 [
                                   "approved",
                                   "auto_approved",
@@ -1125,7 +1149,7 @@ function AdminPaymentsPage() {
                                               newRefs = [...newRefs.filter(r => !r.startsWith('po_')), `dr_${d.id}`];
                                               const rate = (d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0;
                                               const val = (d.quantity || 0) * rate;
-                                              const remaining = dispatchCoverage.get(d.id)?.remaining ?? val;
+                                              const remaining = clientDispatchCoverage.get(d.id)?.remaining ?? val;
                                               setClientPaymentOpts(prev => ({
                                                 ...prev,
                                                 [`dr_${d.id}`]: { isAdvance: false, amount: remaining }
@@ -1143,7 +1167,7 @@ function AdminPaymentsPage() {
                                         />
                                         <Label htmlFor={`ref_${d.id}`} className={`font-normal cursor-pointer text-sm leading-snug ${hasPoSelected ? 'opacity-50' : ''}`}>
                                           Dispatch: Qty {d.quantity} MT {d.invoice_number ? `(Inv: ${d.invoice_number})` : ""} {(d.purchase_order || d.purchase_orders)?.po_number ? `(PO: ${(d.purchase_order || d.purchase_orders).po_number})` : ""}
-                                          {` - Bal: ${formatCurrency(dispatchCoverage.get(d.id)?.remaining ?? (d.quantity * ((d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0)))}`}
+                                          {` - Bal: ${formatCurrency(clientDispatchCoverage.get(d.id)?.remaining ?? (d.quantity * ((d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0)))}`}
                                         </Label>
                                       </div>
                                       
