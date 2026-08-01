@@ -203,7 +203,7 @@ function AdminPaymentsPage() {
     }
   }
 
-  function handleRecordClientUtclPayment(e: React.FormEvent) {
+  async function handleRecordClientUtclPayment(e: React.FormEvent) {
     e.preventDefault();
     if (!clientSelectedOrgId) {
       toast.error("Please select a client");
@@ -276,25 +276,27 @@ function AdminPaymentsPage() {
       maximumFractionDigits: 0,
     }).format(val);
 
-  // Pre-calculate Total UTCL coverage for dispatches (FIFO allocation)
+  // Pre-calculate Total UTCL coverage for dispatches (Explicit + FIFO allocation)
   const dispatchCoverage = new Map<string, { fullyCovered: boolean; paidAmount: number; remaining: number }>();
   if (dispatches) {
-    const poBalance = new Map<string, number>();
-    dispatches.forEach((d: any) => {
-      const po = d.purchase_order || d.purchase_orders;
-      if (po && po.id && !poBalance.has(po.id)) {
-        const utclPayments = po.payments?.filter(
-          (p: any) =>
-            p.is_utcl_payment &&
-            (p.status === "approved" || p.status === "verified")
-        ) || [];
-        const totalPaid = utclPayments.reduce(
-          (acc: number, curr: any) => acc + (curr.amount || 0),
-          0
-        );
-        poBalance.set(po.id, totalPaid);
-      }
-    });
+    const explicitDispatchPaid = new Map<string, number>();
+    const generalPoPaid = new Map<string, number>();
+
+    if (pastPayments) {
+      pastPayments.forEach((p: any) => {
+        if (p.is_utcl_payment && (p.status === "approved" || p.status === "verified")) {
+          const linkedDrs = p.dispatch_requests || [];
+          if (linkedDrs.length > 0) {
+            const amtPerDr = (p.amount || 0) / linkedDrs.length;
+            linkedDrs.forEach((dr: any) => {
+              explicitDispatchPaid.set(dr.id, (explicitDispatchPaid.get(dr.id) || 0) + amtPerDr);
+            });
+          } else if (p.purchase_order_id) {
+            generalPoPaid.set(p.purchase_order_id, (generalPoPaid.get(p.purchase_order_id) || 0) + (p.amount || 0));
+          }
+        }
+      });
+    }
 
     const sortedDispatches = [...dispatches].sort((a: any, b: any) => 
        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -302,18 +304,28 @@ function AdminPaymentsPage() {
     
     sortedDispatches.forEach((d: any) => {
        const po = d.purchase_order || d.purchase_orders;
+       const rate = po?.locked_rate || d.purchase_order_item?.locked_rate || 0;
+       const dispatchValue = d.quantity * rate;
+       
+       let paidForThis = explicitDispatchPaid.get(d.id) || 0;
+       
        if (po && po.id) {
-          const balance = poBalance.get(po.id) || 0;
-          const rate = po.locked_rate || d.purchase_order_item?.locked_rate || 0;
-          const dispatchValue = d.quantity * rate;
-          if (dispatchValue > 0 && balance >= dispatchValue) {
-             dispatchCoverage.set(d.id, { fullyCovered: true, paidAmount: dispatchValue, remaining: 0 });
-             poBalance.set(po.id, balance - dispatchValue);
-          } else {
-             dispatchCoverage.set(d.id, { fullyCovered: false, paidAmount: balance, remaining: Math.max(0, dispatchValue - balance) });
-             poBalance.set(po.id, Math.max(0, balance - dispatchValue));
+          const genBalance = generalPoPaid.get(po.id) || 0;
+          const stillNeeded = Math.max(0, dispatchValue - paidForThis);
+          
+          if (stillNeeded > 0 && genBalance > 0) {
+            const applyGen = Math.min(stillNeeded, genBalance);
+            paidForThis += applyGen;
+            generalPoPaid.set(po.id, genBalance - applyGen);
           }
        }
+       
+       const remaining = Math.max(0, dispatchValue - paidForThis);
+       dispatchCoverage.set(d.id, { 
+         fullyCovered: remaining <= 0, 
+         paidAmount: paidForThis, 
+         remaining: remaining 
+       });
     });
   }
 
@@ -479,6 +491,12 @@ function AdminPaymentsPage() {
                                 </TableCell>
                                 <TableCell className="font-mono text-xs">
                                   {(d.purchase_order || d.purchase_orders)?.po_number || "N/A"}
+                                  {d.invoice_number && (
+                                    <>
+                                      <br />
+                                      <span className="text-muted-foreground">Inv: {d.invoice_number}</span>
+                                    </>
+                                  )}
                                 </TableCell>
                                 <TableCell>{d.quantity} MT</TableCell>
                                 <TableCell>
@@ -595,6 +613,12 @@ function AdminPaymentsPage() {
                             </TableCell>
                             <TableCell className="font-mono text-xs">
                               {po?.po_number || "N/A"}
+                              {dispatch.invoice_number && (
+                                <>
+                                  <br />
+                                  <span className="text-muted-foreground">Inv: {dispatch.invoice_number}</span>
+                                </>
+                              )}
                             </TableCell>
                             <TableCell>{dispatch.quantity} MT</TableCell>
                             <TableCell className="font-medium">
@@ -807,6 +831,7 @@ function AdminPaymentsPage() {
                                             <div>
                                               <div className="font-medium">
                                                 {(d.purchase_order || d.purchase_orders)?.po_number || "N/A"}
+                                                {d.invoice_number && <span className="text-muted-foreground font-normal ml-1">(Inv: {d.invoice_number})</span>}
                                               </div>
                                               <div className="text-muted-foreground text-xs">
                                                 {(d.purchase_order || d.purchase_orders)?.organizations?.legal_name}
@@ -819,7 +844,15 @@ function AdminPaymentsPage() {
                                     </DialogContent>
                                   </Dialog>
                                 ) : (
-                                  poNumber
+                                  <>
+                                    {poNumber}
+                                    {dispatches.length === 1 && dispatches[0].invoice_number && (
+                                      <>
+                                        <br />
+                                        <span className="text-muted-foreground">Inv: {dispatches[0].invoice_number}</span>
+                                      </>
+                                    )}
+                                  </>
                                 )}
                               </TableCell>
                               <TableCell>{dispatchQtyText}</TableCell>

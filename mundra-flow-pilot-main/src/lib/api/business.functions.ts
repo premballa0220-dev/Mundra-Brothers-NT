@@ -3994,6 +3994,7 @@ export const getAdminUTCLPayments = createServerFn({ method: "GET" })
           id,
           quantity,
           site_address,
+          invoice_number,
           purchase_orders (
             po_number,
             organizations (
