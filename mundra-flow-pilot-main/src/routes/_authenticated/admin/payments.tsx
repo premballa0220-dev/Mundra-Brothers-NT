@@ -66,6 +66,7 @@ function AdminPaymentsPage() {
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split("T")[0]);
   const [paymentMode, setPaymentMode] = useState("RTGS");
   const [referenceNumber, setReferenceNumber] = useState("");
+  const [paymentOption, setPaymentOption] = useState<"full" | "partial" | "advance">("full");
 
   // Edit Payment State
   const [editPaymentOpen, setEditPaymentOpen] = useState<string | null>(null);
@@ -157,6 +158,7 @@ function AdminPaymentsPage() {
     setPaymentDate(new Date().toISOString().split("T")[0]);
     setPaymentMode("RTGS");
     setReferenceNumber("");
+    setPaymentOption("full");
     setClientSelectedOrgId("");
     setClientAmount(0);
     setClientPaymentType("against_reference");
@@ -179,6 +181,7 @@ function AdminPaymentsPage() {
       referenceNumber,
       isUtclPayment: true,
       isAdvance: false,
+      isClientToUtcl: paymentOption === "advance",
     });
   }
 
@@ -546,7 +549,20 @@ function AdminPaymentsPage() {
                   <div className="p-4 border-t border-primary/10 bg-muted/10">
                     <form onSubmit={handleRecordLumpsumPayment}>
                       <h4 className="font-semibold mb-4 text-primary">Record UTCL Payment for Selected Dispatches</h4>
-                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-4">
+                      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5 mb-4">
+                        <div className="space-y-1">
+                          <Label>Payment Type *</Label>
+                          <Select value={paymentOption} onValueChange={(val: any) => setPaymentOption(val)} required>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="full">Full Payment</SelectItem>
+                              <SelectItem value="partial">Partial Payment</SelectItem>
+                              <SelectItem value="advance">Advance (Client to UTCL)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                         <div className="space-y-1">
                           <Label>Amount Paid to UTCL (₹) *</Label>
                           <Input
