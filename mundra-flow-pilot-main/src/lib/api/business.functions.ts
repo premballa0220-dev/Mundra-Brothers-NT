@@ -4028,6 +4028,7 @@ export const recordPaymentAdmin = createServerFn({ method: "POST" })
       isUtclPayment: z.boolean().optional(),
       isAdvance: z.boolean().optional(),
       isClientToUtcl: z.boolean().optional(),
+      allocations: z.array(z.any()).optional(),
     }).refine((data) => {
       if (data.isUtclPayment) {
         return !!data.purchaseOrderId || (data.dispatchRequestIds && data.dispatchRequestIds.length > 0);
@@ -4051,7 +4052,7 @@ export const recordPaymentAdmin = createServerFn({ method: "POST" })
       p_is_client_to_utcl: data.isClientToUtcl ?? false,
       p_is_advance: data.isAdvance ?? false,
       p_user_id: context.userId,
-      p_manual_allocations: [],
+      p_manual_allocations: data.allocations || [],
       p_status: "approved",
       p_verified_by: context.userId,
     });

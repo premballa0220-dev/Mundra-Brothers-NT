@@ -67,8 +67,7 @@ function AdminPaymentsPage() {
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split("T")[0]);
   const [paymentMode, setPaymentMode] = useState("RTGS");
   const [referenceNumber, setReferenceNumber] = useState("");
-  const [isAdvance, setIsAdvance] = useState(false);
-  const [isPartial, setIsPartial] = useState(false);
+  const [dispatchPaymentOpts, setDispatchPaymentOpts] = useState<Record<string, { type: "full" | "partial" | "advance", amount: number }>>({});
 
   // Edit Payment State
   const [editPaymentOpen, setEditPaymentOpen] = useState<string | null>(null);
@@ -161,8 +160,7 @@ function AdminPaymentsPage() {
     setPaymentDate(new Date().toISOString().split("T")[0]);
     setPaymentMode("RTGS");
     setReferenceNumber("");
-    setIsAdvance(false);
-    setIsPartial(false);
+    setDispatchPaymentOpts({});
     setClientSelectedOrgId("");
     setClientAmount(0);
     setClientPaymentType("against_reference");
@@ -172,21 +170,37 @@ function AdminPaymentsPage() {
     setClientSelectedReferences([]);
   }
 
-  function handleRecordLumpsumPayment(e: React.FormEvent) {
+  async function handleRecordLumpsumPayment(e: React.FormEvent) {
     e.preventDefault();
     if (selectedDispatches.length === 0) return;
 
-    recordMutation.mutate({
-      organizationId: selectedDispatches[0].organization_id, // Primary org for reference
-      dispatchRequestIds: selectedDispatches.map((d) => d.id),
-      amount,
-      paymentDate,
-      paymentMode,
-      referenceNumber,
-      isUtclPayment: true,
-      isAdvance: false, // This is the backend isAdvance flag which may mean something else, we use isClientToUtcl
-      isClientToUtcl: isAdvance,
-    });
+    try {
+      const validDispatches = selectedDispatches.filter(d => (dispatchPaymentOpts[d.id]?.amount || 0) > 0);
+      if (validDispatches.length === 0) return;
+
+      const promises = validDispatches.map((d) => {
+        const opt = dispatchPaymentOpts[d.id];
+        const isAdvance = opt?.type === "advance";
+        const amt = opt?.amount || 0;
+
+        return recordMutation.mutateAsync({
+          organizationId: d.organization_id,
+          purchaseOrderId: d.purchase_order_id,
+          dispatchRequestIds: [d.id],
+          amount: amt,
+          paymentDate,
+          paymentMode,
+          referenceNumber,
+          isUtclPayment: true,
+          isAdvance: false,
+          isClientToUtcl: isAdvance,
+        });
+      });
+
+      await Promise.all(promises);
+    } catch (err: any) {
+      console.error(err);
+    }
   }
 
   function handleRecordClientUtclPayment(e: React.FormEvent) {
@@ -300,27 +314,60 @@ function AdminPaymentsPage() {
 
   const toggleDispatchSelection = (dispatch: any) => {
     const exists = selectedDispatches.find((d) => d.id === dispatch.id);
+    const rate = (dispatch.purchase_order || dispatch.purchase_orders)?.locked_rate || dispatch.purchase_order_item?.locked_rate || 0;
+    const val = dispatch.quantity * rate;
+    const remainingBalance = dispatchCoverage.get(dispatch.id)?.remaining ?? val;
+
     let newSelection = [];
     if (exists) {
       newSelection = selectedDispatches.filter((d) => d.id !== dispatch.id);
       setSelectedDispatches(newSelection);
+      setDispatchPaymentOpts(prev => {
+        const next = { ...prev };
+        delete next[dispatch.id];
+        return next;
+      });
     } else {
       newSelection = [...selectedDispatches, dispatch];
       setSelectedDispatches(newSelection);
+      setDispatchPaymentOpts(prev => ({
+        ...prev,
+        [dispatch.id]: { type: "full", amount: remainingBalance }
+      }));
     }
     
     // Auto-calculate amount for the payment box
     const totalAmountCalc = newSelection.reduce((acc, d) => {
-      const rate = (d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0;
-      const val = d.quantity * rate;
-      const remaining = dispatchCoverage.get(d.id)?.remaining ?? val;
-      return acc + remaining;
+      const drRate = (d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0;
+      const drVal = d.quantity * drRate;
+      const drRem = dispatchCoverage.get(d.id)?.remaining ?? drVal;
+      return acc + drRem;
     }, 0);
     setAmount(totalAmountCalc);
     setTotalAmount(totalAmountCalc);
-    if (isPartial && totalAmountCalc > 0) setIsPartial(false);
 
     toast.success(`Dispatch ${exists ? "removed from" : "added to"} staging`);
+  };
+
+  const updateDispatchPaymentOpt = (dispatchId: string, key: "type" | "amount", value: any) => {
+    setDispatchPaymentOpts(prev => {
+      const next = { ...prev };
+      if (next[dispatchId]) {
+        next[dispatchId] = { ...next[dispatchId], [key]: value };
+      }
+      return next;
+    });
+  };
+
+  const updateDispatchOptWrapper = (id: string, type: "advance" | "partial") => {
+    setDispatchPaymentOpts(prev => {
+      const current = prev[id]?.type;
+      const newType = current === type ? "full" : type;
+      return {
+        ...prev,
+        [id]: { ...prev[id], type: newType }
+      };
+    });
   };
 
   const mundraUtclPayments = pastPayments?.filter((p: any) => !p.is_client_to_utcl) || [];
@@ -420,19 +467,41 @@ function AdminPaymentsPage() {
                                   </Badge>
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  <Button
-                                    variant={isSelected ? "secondary" : "outline"}
-                                    size="sm"
-                                    onClick={() => toggleDispatchSelection(d)}
-                                  >
-                                    {isSelected ? (
-                                      <>
-                                        <CheckCircle2 className="h-3 w-3 mr-1" /> Selected
-                                      </>
-                                    ) : (
-                                      "Select"
+                                  <div className="flex flex-col sm:flex-row items-end sm:items-center justify-end gap-3">
+                                    {isSelected && (
+                                      <div className="flex flex-col items-start gap-1 text-xs text-muted-foreground mr-2">
+                                        <label className="flex items-center gap-1 cursor-pointer">
+                                          <input 
+                                            type="radio" 
+                                            name={`opt_${d.id}`}
+                                            checked={dispatchPaymentOpts[d.id]?.type === "advance"}
+                                            onChange={() => updateDispatchOptWrapper(d.id, "advance")}
+                                          /> Advance
+                                        </label>
+                                        <label className="flex items-center gap-1 cursor-pointer">
+                                          <input 
+                                            type="radio" 
+                                            name={`opt_${d.id}`}
+                                            checked={dispatchPaymentOpts[d.id]?.type === "partial"}
+                                            onChange={() => updateDispatchOptWrapper(d.id, "partial")}
+                                          /> Partial
+                                        </label>
+                                      </div>
                                     )}
-                                  </Button>
+                                    <Button
+                                      variant={isSelected ? "secondary" : "outline"}
+                                      size="sm"
+                                      onClick={() => toggleDispatchSelection(d)}
+                                    >
+                                      {isSelected ? (
+                                        <>
+                                          <CheckCircle2 className="h-3 w-3 mr-1" /> Selected
+                                        </>
+                                      ) : (
+                                        "Select"
+                                      )}
+                                    </Button>
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             );
@@ -476,6 +545,7 @@ function AdminPaymentsPage() {
                         <TableHead>Paid to UTCL</TableHead>
                         <TableHead>Remaining</TableHead>
                         <TableHead>Requested Delivery Date</TableHead>
+                        <TableHead>Amount to Pay</TableHead>
                         <TableHead className="text-right">Action</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -516,6 +586,18 @@ function AdminPaymentsPage() {
                             <TableCell>
                               {new Date(dispatch.requested_date).toLocaleDateString()}
                             </TableCell>
+                            <TableCell>
+                              {["partial", "advance"].includes(dispatchPaymentOpts[dispatch.id]?.type || "") ? (
+                                <Input 
+                                  type="number" 
+                                  value={dispatchPaymentOpts[dispatch.id]?.amount || ""}
+                                  onChange={(e) => updateDispatchPaymentOpt(dispatch.id, "amount", Number(e.target.value))}
+                                  className="w-24 h-8"
+                                />
+                              ) : (
+                                formatCurrency(dispatchPaymentOpts[dispatch.id]?.amount || 0)
+                              )}
+                            </TableCell>
                             <TableCell className="text-right">
                               <Button
                                 variant="outline"
@@ -536,18 +618,10 @@ function AdminPaymentsPage() {
                         </TableCell>
                         <TableCell>
                           {formatCurrency(
-                            selectedDispatches.reduce(
-                              (acc, d) => {
-                                const rate = (d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0;
-                                const val = d.quantity * rate;
-                                const remaining = dispatchCoverage.get(d.id)?.remaining ?? val;
-                                return acc + remaining;
-                              },
-                              0,
-                            ),
+                            selectedDispatches.reduce((acc, d) => acc + (dispatchPaymentOpts[d.id]?.amount || 0), 0)
                           )}
                         </TableCell>
-                        <TableCell colSpan={4}></TableCell>
+                        <TableCell colSpan={5}></TableCell>
                       </TableRow>
                     </TableBody>
                   </Table>
@@ -555,47 +629,17 @@ function AdminPaymentsPage() {
                   <div className="p-4 border-t border-primary/10 bg-muted/10">
                     <form onSubmit={handleRecordLumpsumPayment}>
                       <h4 className="font-semibold mb-4 text-primary">Record UTCL Payment for Selected Dispatches</h4>
-                      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5 mb-4">
-                        <div className="space-y-3">
-                          <Label>Payment Options</Label>
-                          <div className="flex flex-col space-y-2 mt-2">
-                            <div className="flex items-center space-x-2">
-                              <Checkbox 
-                                id="isAdvance" 
-                                checked={isAdvance} 
-                                onCheckedChange={(c: boolean) => setIsAdvance(c)} 
-                              />
-                              <Label htmlFor="isAdvance" className="font-normal cursor-pointer text-sm">Advance (Client to UTCL)</Label>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <Checkbox 
-                                id="isPartial" 
-                                checked={isPartial} 
-                                onCheckedChange={(c: boolean) => setIsPartial(c)} 
-                              />
-                              <Label htmlFor="isPartial" className="font-normal cursor-pointer text-sm">Partial Payment</Label>
-                            </div>
-                          </div>
-                        </div>
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-4">
                         <div className="space-y-1">
                           <Label>Amount Paid to UTCL (₹) *</Label>
                           <Input
                             type="number"
-                            value={amount || ""}
-                            onChange={(e) => {
-                              const newAmt = Number(e.target.value);
-                              setAmount(newAmt);
-                              if (newAmt < totalAmount && newAmt > 0) {
-                                setIsPartial(true);
-                              } else {
-                                setIsPartial(false);
-                              }
-                            }}
-                            placeholder="0"
-                            required
+                            value={selectedDispatches.reduce((acc, d) => acc + (dispatchPaymentOpts[d.id]?.amount || 0), 0)}
+                            readOnly
+                            className="bg-muted"
                           />
                           <p className="text-xs text-muted-foreground mt-1">
-                            Total: {formatCurrency(totalAmount)}
+                            Sum of above staging rows
                           </p>
                         </div>
                         <div className="space-y-1">
@@ -1048,7 +1092,7 @@ function AdminPaymentsPage() {
                                         />
                                         <Label htmlFor={`ref_${d.id}`} className={`font-normal cursor-pointer text-sm leading-snug ${hasPoSelected ? 'opacity-50' : ''}`}>
                                           Dispatch: Qty {d.quantity} MT {d.invoice_number ? `(Inv: ${d.invoice_number})` : ""} {(d.purchase_order || d.purchase_orders)?.po_number ? `(PO: ${(d.purchase_order || d.purchase_orders).po_number})` : ""}
-                                          {dispatchCoverage.get(d.id)?.paidAmount ? ` - Bal: ${formatCurrency(dispatchCoverage.get(d.id)?.remaining || 0)}` : ""}
+                                          {` - Bal: ${formatCurrency(dispatchCoverage.get(d.id)?.remaining ?? (d.quantity * ((d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0)))}`}
                                         </Label>
                                       </div>
                                     )})}
