@@ -63,10 +63,12 @@ function AdminPaymentsPage() {
   // Payment Form State
   const [openDispatchId, setOpenDispatchId] = useState<string | null>(null);
   const [amount, setAmount] = useState<number>(0);
+  const [totalAmount, setTotalAmount] = useState<number>(0);
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split("T")[0]);
   const [paymentMode, setPaymentMode] = useState("RTGS");
   const [referenceNumber, setReferenceNumber] = useState("");
-  const [paymentOption, setPaymentOption] = useState<"full" | "partial" | "advance">("full");
+  const [isAdvance, setIsAdvance] = useState(false);
+  const [isPartial, setIsPartial] = useState(false);
 
   // Edit Payment State
   const [editPaymentOpen, setEditPaymentOpen] = useState<string | null>(null);
@@ -155,10 +157,12 @@ function AdminPaymentsPage() {
 
   function resetForm() {
     setAmount(0);
+    setTotalAmount(0);
     setPaymentDate(new Date().toISOString().split("T")[0]);
     setPaymentMode("RTGS");
     setReferenceNumber("");
-    setPaymentOption("full");
+    setIsAdvance(false);
+    setIsPartial(false);
     setClientSelectedOrgId("");
     setClientAmount(0);
     setClientPaymentType("against_reference");
@@ -180,8 +184,8 @@ function AdminPaymentsPage() {
       paymentMode,
       referenceNumber,
       isUtclPayment: true,
-      isAdvance: false,
-      isClientToUtcl: paymentOption === "advance",
+      isAdvance: false, // This is the backend isAdvance flag which may mean something else, we use isClientToUtcl
+      isClientToUtcl: isAdvance,
     });
   }
 
@@ -306,13 +310,15 @@ function AdminPaymentsPage() {
     }
     
     // Auto-calculate amount for the payment box
-    const totalAmount = newSelection.reduce((acc, d) => {
+    const totalAmountCalc = newSelection.reduce((acc, d) => {
       const rate = (d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0;
       const val = d.quantity * rate;
       const remaining = dispatchCoverage.get(d.id)?.remaining ?? val;
       return acc + remaining;
     }, 0);
-    setAmount(totalAmount);
+    setAmount(totalAmountCalc);
+    setTotalAmount(totalAmountCalc);
+    if (isPartial && totalAmountCalc > 0) setIsPartial(false);
 
     toast.success(`Dispatch ${exists ? "removed from" : "added to"} staging`);
   };
@@ -550,28 +556,47 @@ function AdminPaymentsPage() {
                     <form onSubmit={handleRecordLumpsumPayment}>
                       <h4 className="font-semibold mb-4 text-primary">Record UTCL Payment for Selected Dispatches</h4>
                       <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5 mb-4">
-                        <div className="space-y-1">
-                          <Label>Payment Type *</Label>
-                          <Select value={paymentOption} onValueChange={(val: any) => setPaymentOption(val)} required>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="full">Full Payment</SelectItem>
-                              <SelectItem value="partial">Partial Payment</SelectItem>
-                              <SelectItem value="advance">Advance (Client to UTCL)</SelectItem>
-                            </SelectContent>
-                          </Select>
+                        <div className="space-y-3">
+                          <Label>Payment Options</Label>
+                          <div className="flex flex-col space-y-2 mt-2">
+                            <div className="flex items-center space-x-2">
+                              <Checkbox 
+                                id="isAdvance" 
+                                checked={isAdvance} 
+                                onCheckedChange={(c: boolean) => setIsAdvance(c)} 
+                              />
+                              <Label htmlFor="isAdvance" className="font-normal cursor-pointer text-sm">Advance (Client to UTCL)</Label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <Checkbox 
+                                id="isPartial" 
+                                checked={isPartial} 
+                                onCheckedChange={(c: boolean) => setIsPartial(c)} 
+                              />
+                              <Label htmlFor="isPartial" className="font-normal cursor-pointer text-sm">Partial Payment</Label>
+                            </div>
+                          </div>
                         </div>
                         <div className="space-y-1">
                           <Label>Amount Paid to UTCL (₹) *</Label>
                           <Input
                             type="number"
                             value={amount || ""}
-                            onChange={(e) => setAmount(Number(e.target.value))}
+                            onChange={(e) => {
+                              const newAmt = Number(e.target.value);
+                              setAmount(newAmt);
+                              if (newAmt < totalAmount && newAmt > 0) {
+                                setIsPartial(true);
+                              } else {
+                                setIsPartial(false);
+                              }
+                            }}
                             placeholder="0"
                             required
                           />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Total: {formatCurrency(totalAmount)}
+                          </p>
                         </div>
                         <div className="space-y-1">
                           <Label>Payment Date *</Label>
