@@ -4001,6 +4001,12 @@ export const getAdminUTCLPayments = createServerFn({ method: "GET" })
               legal_name
             )
           )
+        ),
+        invoice_allocations (
+          invoice_id,
+          invoices (
+            invoice_number
+          )
         )
       `,
       )
@@ -4549,4 +4555,109 @@ export const getClientOrganization = createServerFn({ method: "GET" })
       
     if (error) throw new Error(error.message);
     return org;
+  });
+
+export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .handler(async ({ context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+
+    // Fetch all invoice allocations for approved client-to-utcl payments
+    // And join invoice + dispatch_request to ensure Mundra paid UTCL earlier
+    const { data: allocations, error } = await supabase
+      .from("invoice_allocations")
+      .select(`
+        id,
+        allocated_amount,
+        payment_id,
+        invoice_id,
+        payments!inner (
+          id,
+          amount,
+          payment_date,
+          payment_mode,
+          is_client_to_utcl,
+          status,
+          organization_id
+        ),
+        invoices!inner (
+          id,
+          invoice_number,
+          invoice_date,
+          amount,
+          dispatch_requests (
+            utcl_payment_id
+          ),
+          organizations (
+            trade_name,
+            legal_name,
+            party_code,
+            tp_code
+          )
+        )
+      `)
+      .eq("payments.is_client_to_utcl", true)
+      .eq("payments.status", "approved");
+
+    if (error) {
+      console.error("Failed to fetch refund eligible allocations:", error);
+      throw new Error(error.message);
+    }
+
+    // Fetch refund letters to filter out
+    const { data: refundLetters, error: rlError } = await supabase
+      .from("refund_letters")
+      .select("payment_id");
+      
+    if (rlError) throw new Error(rlError.message);
+    
+    const refundedPaymentIds = new Set(refundLetters?.map(rl => rl.payment_id));
+
+    const eligible = (allocations || []).filter((alloc: any) => {
+      // Must not be already refunded
+      if (refundedPaymentIds.has(alloc.payment_id)) return false;
+      
+      // Relaxed check: We no longer require dispatch.utcl_payment_id to be strictly present
+      // to handle cases where there's a delay or payments were made on-account.
+      return true;
+    });
+
+    return eligible;
+  });
+
+export const markPaymentsAsRefunded = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator(
+    z.object({
+      paymentIds: z.array(z.string()),
+    })
+  )
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+    
+    // We need organization_id for refund_letters. Let's fetch the payments first.
+    const { data: payments, error: pError } = await supabase
+      .from("payments")
+      .select("id, organization_id")
+      .in("id", data.paymentIds);
+      
+    if (pError) throw new Error(pError.message);
+    
+    const refundRows = (payments || []).map((p: any) => ({
+      payment_id: p.id,
+      organization_id: p.organization_id,
+      status: 'generated'
+    }));
+    
+    if (refundRows.length > 0) {
+      const { error } = await supabase
+        .from("refund_letters")
+        .insert(refundRows);
+        
+      if (error) throw new Error(error.message);
+    }
+    
+    return { success: true };
   });

@@ -5,9 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Printer, Plus, Trash2 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { getClients, getDispatchRequests, getAdminUTCLPayments } from "@/lib/api/business.functions";
+import { Printer, Plus, Trash2, Save, Loader2 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { getRefundEligibleAllocations, markPaymentsAsRefunded } from "@/lib/api/business.functions";
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,
@@ -23,9 +24,8 @@ export const Route = createFileRoute("/_authenticated/admin/balance-confirmation
 });
 
 function RefundLetterPage() {
-  const { data: clients } = useQuery({ queryKey: ["admin-clients"], queryFn: () => getClients() });
-  const { data: dispatches } = useQuery({ queryKey: ["admin-dispatch-requests"], queryFn: () => getDispatchRequests() });
-  const { data: utclPayments } = useQuery({ queryKey: ["admin-utcl-payments"], queryFn: () => getAdminUTCLPayments() });
+  const queryClient = useQueryClient();
+  const { data: eligibleAllocations } = useQuery({ queryKey: ["admin-refund-eligible-allocations"], queryFn: () => getRefundEligibleAllocations() });
 
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [refNo, setRefNo] = useState("Refund\\25-26\\0059");
@@ -35,27 +35,46 @@ function RefundLetterPage() {
   const [partyCode, setPartyCode] = useState("630101S9");
   const [partyName, setPartyName] = useState("DHARIWAL THIRANI CONSTRUCTIONS LLP");
 
-  const [invoices, setInvoices] = useState([
+  const [invoices, setInvoices] = useState<any[]>([
     {
       id: crypto.randomUUID(),
-      date: new Date("2026-01-02").toISOString().split("T")[0],
-      invoiceNumber: "2537",
-      amount: "92000",
-      paymentDetails: "RTGS",
-      dateOfPayment: new Date("2026-02-18").toISOString().split("T")[0],
-      amountPaid: "23800",
+      date: "",
+      invoiceNumber: "",
+      amount: "",
+      paymentDetails: "none",
+      dateOfPayment: "",
+      amountPaid: "",
+      paymentId: "",
+      allocationId: "",
     },
   ]);
 
-  const [payments, setPayments] = useState([
+  const [payments, setPayments] = useState<any[]>([
     { id: crypto.randomUUID(), type1: "RTGS", date: "", amount: "", type2: "none" },
     { id: crypto.randomUUID(), type1: "TDS", date: "", amount: "", type2: "none" },
     { id: crypto.randomUUID(), type1: "ADVANCE", date: "", amount: "", type2: "none" },
     { id: crypto.randomUUID(), type1: "Credit Note", date: "", amount: "", type2: "none" },
   ]);
 
-  const handlePrint = () => {
-    window.print();
+  const markRefundedMutation = useMutation({
+    mutationFn: (paymentIds: string[]) => markPaymentsAsRefunded({ data: { paymentIds } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-refund-eligible-allocations"] });
+      toast.success("Refund letter generated and recorded successfully");
+      window.print();
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || "Failed to record refund letter");
+    }
+  });
+
+  const handleSaveAndPrint = () => {
+    const paymentIds = invoices.map(inv => inv.paymentId).filter(Boolean);
+    if (paymentIds.length === 0) {
+      window.print();
+      return;
+    }
+    markRefundedMutation.mutate(paymentIds);
   };
 
   const addInvoice = () => {
@@ -69,6 +88,8 @@ function RefundLetterPage() {
         paymentDetails: "none",
         dateOfPayment: "",
         amountPaid: "",
+        paymentId: "",
+        allocationId: "",
       },
     ]);
   };
@@ -132,18 +153,46 @@ function RefundLetterPage() {
   }, [invoices]);
 
   useEffect(() => {
-    setPayments((prev) => 
-      prev.map(p => {
+    setPayments((prev) => {
+      let next = [...prev];
+      let hasChanges = false;
+      const currentTotal = totalAmountPaid;
+
+      // Auto-calculate TDS (0.8% of total)
+      next = next.map(p => {
         if (p.type1 === "TDS") {
-          const newAmount = totalAmountPaid > 0 ? (totalAmountPaid * 0.008).toFixed(2) : "";
+          const newAmount = currentTotal > 0 ? (currentTotal * 0.008).toFixed(2) : "";
           if (p.amount !== newAmount) {
+            hasChanges = true;
             return { ...p, amount: newAmount };
           }
         }
         return p;
-      })
-    );
-  }, [totalAmountPaid]);
+      });
+
+      // Auto-calculate remaining for main transfer mode (RTGS/NEFT/Cheque/Other)
+      // Usually it's RTGS. Let's find the first one that is a standard transfer mode or just the first entry.
+      const mainModes = ["RTGS", "NEFT", "Cheque", "Other"];
+      const mainPayment = next.find(p => mainModes.includes(p.type1));
+      
+      if (mainPayment) {
+        // Sum all other deduction amounts
+        const otherTotal = next
+          .filter(p => p.id !== mainPayment.id && p.type1 !== "none")
+          .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+        
+        const remaining = currentTotal > 0 ? Math.max(0, currentTotal - otherTotal) : 0;
+        const remainingStr = remaining > 0 ? remaining.toFixed(2) : "";
+        
+        if (mainPayment.amount !== remainingStr) {
+          hasChanges = true;
+          next = next.map(p => p.id === mainPayment.id ? { ...p, amount: remainingStr } : p);
+        }
+      }
+
+      return hasChanges ? next : prev;
+    });
+  }, [totalAmountPaid, payments.map(p => `${p.id}-${p.type1}-${p.amount}`).join('|')]);
 
   const totalPaymentAmount = useMemo(() => {
     return payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
@@ -162,10 +211,20 @@ function RefundLetterPage() {
                 Generate a Finance Scheme Refund Claim
               </p>
             </div>
-            <Button variant="outline" onClick={handlePrint} className="gap-2">
-              <Printer className="h-4 w-4" />
-              Print Letter
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button variant="outline" onClick={() => window.print()} className="gap-2">
+                <Printer className="h-4 w-4" />
+                Print Only
+              </Button>
+              <Button 
+                onClick={handleSaveAndPrint} 
+                disabled={markRefundedMutation.isPending}
+                className="gap-2"
+              >
+                {markRefundedMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save & Print
+              </Button>
+            </div>
           </div>
         </header>
 
@@ -217,36 +276,37 @@ function RefundLetterPage() {
                             <Input type="date" className="h-8 text-sm" value={inv.date} onChange={(e) => updateInvoice(inv.id, "date", e.target.value)} />
                           </div>
                           <div className="space-y-1">
-                            <Label className="text-xs">Invoice No.</Label>
+                            <Label className="text-xs">Invoice No. / Client Payment</Label>
                             {(() => {
-                              const invoicedDispatches = dispatches?.filter(
-                                (d: any) => d.invoice_number
-                              ) || [];
+                              const allocations = eligibleAllocations || [];
                               return (
                                 <>
-                                  {invoicedDispatches.length > 0 && (
+                                  {allocations.length > 0 && (
                                     <Select
-                                      value={inv.invoiceNumber}
+                                      value={inv.allocationId || inv.invoiceNumber}
                                       onValueChange={(val) => {
-                                        const dispatch = invoicedDispatches.find((d: any) => d.invoice_number === val);
-                                        if (dispatch) {
-                                          const payment = utclPayments?.find((p: any) => p.id === dispatch.utcl_payment_id);
+                                        const alloc = allocations.find((a: any) => a.id === val);
+                                        if (alloc) {
+                                          const invoice = alloc.invoices;
+                                          const payment = alloc.payments;
+                                          const org = invoice.organizations;
                                           
-                                          // Automatically update party details when an invoice is selected
-                                          if (dispatch.organization) {
-                                            setPartyName(dispatch.organization.trade_name || dispatch.organization.legal_name || "");
-                                            setPartyCode(dispatch.organization.party_code || "");
-                                            setTpcCode(dispatch.organization.tp_code || "");
+                                          if (org) {
+                                            setPartyName(org.trade_name || org.legal_name || "");
+                                            setPartyCode(org.party_code || "");
+                                            setTpcCode(org.tp_code || "");
                                           }
 
                                           setInvoices(invoices.map((i) => i.id === inv.id ? {
                                             ...i,
-                                            invoiceNumber: val,
-                                            date: new Date(dispatch.requested_date).toISOString().split("T")[0],
-                                            amount: ((Number(dispatch.quantity) || 0) * (Number(dispatch.purchase_order?.locked_rate) || 0)).toFixed(2),
-                                            paymentDetails: payment?.payment_mode || "none",
-                                            dateOfPayment: payment ? new Date(payment.payment_date).toISOString().split("T")[0] : "",
-                                            amountPaid: payment?.amount ? String(payment.amount) : "",
+                                            allocationId: alloc.id,
+                                            invoiceNumber: invoice.invoice_number,
+                                            date: invoice.invoice_date ? new Date(invoice.invoice_date).toISOString().split("T")[0] : "",
+                                            amount: invoice.amount ? String(invoice.amount) : "",
+                                            paymentDetails: payment.payment_mode || "none",
+                                            dateOfPayment: payment.payment_date ? new Date(payment.payment_date).toISOString().split("T")[0] : "",
+                                            amountPaid: alloc.allocated_amount ? String(alloc.allocated_amount) : "",
+                                            paymentId: payment.id,
                                           } : i));
                                         } else {
                                           updateInvoice(inv.id, "invoiceNumber", val);
@@ -257,15 +317,15 @@ function RefundLetterPage() {
                                         <SelectValue placeholder="Select Invoice" />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        {invoicedDispatches.map((d: any) => (
-                                          <SelectItem key={d.id} value={d.invoice_number}>
-                                            {d.invoice_number} - {(d.organization?.trade_name || d.organization?.legal_name)} ({d.quantity} MT)
+                                        {allocations.map((a: any) => (
+                                          <SelectItem key={a.id} value={a.id}>
+                                            {a.invoices.invoice_number} - {(a.invoices.organizations?.trade_name || a.invoices.organizations?.legal_name)} (Paid ₹{a.allocated_amount})
                                           </SelectItem>
                                         ))}
                                       </SelectContent>
                                     </Select>
                                   )}
-                                  <Input className={`h-8 text-sm ${invoicedDispatches.length > 0 ? 'mt-2' : ''}`} value={inv.invoiceNumber} onChange={(e) => updateInvoice(inv.id, "invoiceNumber", e.target.value)} placeholder="Or type invoice no" />
+                                  <Input className={`h-8 text-sm ${allocations.length > 0 ? 'mt-2' : ''}`} value={inv.invoiceNumber} onChange={(e) => updateInvoice(inv.id, "invoiceNumber", e.target.value)} placeholder="Or type invoice no" />
                                 </>
                               );
                             })()}
