@@ -4574,7 +4574,7 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
         is_client_to_utcl,
         status,
         organization_id,
-        dispatch_requests (
+        dispatch_requests!payments_dispatch_request_id_fkey (
           id,
           invoice_number,
           quantity,
