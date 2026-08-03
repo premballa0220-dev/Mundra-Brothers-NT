@@ -4594,11 +4594,10 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
             legal_name,
             party_code,
             tp_code
-          )
         )
       `)
       .eq("payments.is_client_to_utcl", true)
-      .eq("payments.status", "approved");
+      .in("payments.status", ["submitted", "approved"]);
 
     if (error) {
       console.error("Failed to fetch refund eligible allocations:", error);

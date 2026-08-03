@@ -1374,40 +1374,17 @@ function AdminPaymentsPage() {
                     <TableBody>
                       {clientUtclPayments.length > 0 ? (
                         clientUtclPayments.map((p: any) => {
-                          const dispatches = p.dispatch_requests || [];
-
                           let clientName = p.organizations?.legal_name || "Unknown Client";
                           let poNumber = p.purchase_orders?.po_number || (p.is_advance ? "Advance" : "On Account");
-                          let dispatchQtyText = p.is_advance ? "Advance" : (dispatches.length > 0 ? "—" : "—");
-
-                          if (dispatches.length === 1) {
-                            const d = dispatches[0];
-                            clientName =
-                              clientName !== "Unknown Client" ? clientName : (d.purchase_orders?.organizations?.legal_name || "Unknown Client");
-                            poNumber = d.purchase_orders?.po_number || poNumber;
-                            dispatchQtyText = d.quantity ? `${d.quantity} MT` : dispatchQtyText;
-                          } else if (dispatches.length > 1) {
-                            clientName = "Multiple Clients";
-
-                            // Check if all dispatches belong to the same client
-                            const clientNames = Array.from(
-                              new Set(
-                                dispatches
-                                  .map((d: any) => d.purchase_orders?.organizations?.legal_name)
-                                  .filter(Boolean),
-                              ),
-                            );
-                            if (clientNames.length === 1) {
-                              clientName = clientNames[0] as string;
-                            }
-
-                            poNumber = "Multiple";
-                            const totalQty = dispatches.reduce(
-                              (acc: number, curr: any) => acc + (curr.quantity || 0),
-                              0,
-                            );
-                            dispatchQtyText = `${totalQty} MT (Total)`;
-                          }
+                          
+                          // Extract unique invoice numbers from allocations
+                          const invNumbers = Array.from(
+                            new Set(
+                              (p.invoice_allocations || [])
+                                .map((ia: any) => ia.invoices?.invoice_number)
+                                .filter(Boolean)
+                            )
+                          ) as string[];
 
                           return (
                             <TableRow key={p.id}>
@@ -1416,58 +1393,17 @@ function AdminPaymentsPage() {
                               </TableCell>
                               <TableCell className="font-semibold">{clientName}</TableCell>
                               <TableCell className="font-mono text-xs">
-                                {poNumber === "Multiple" ? (
-                                  <Dialog>
-                                    <DialogTrigger asChild>
-                                      <Button
-                                        variant="link"
-                                        className="h-auto p-0 font-mono text-xs"
-                                      >
-                                        Multiple (View Details)
-                                      </Button>
-                                    </DialogTrigger>
-                                    <DialogContent className="max-w-md">
-                                      <DialogHeader>
-                                        <DialogTitle>Dispatches in this Payment</DialogTitle>
-                                        <DialogDescription>
-                                          Details of all {dispatches.length} dispatch(es) covered by
-                                          this payment.
-                                        </DialogDescription>
-                                      </DialogHeader>
-                                      <div className="py-4 space-y-3">
-                                        {dispatches.map((d: any) => (
-                                          <div
-                                            key={d.id}
-                                            className="flex justify-between items-center text-sm border-b pb-2 last:border-0"
-                                          >
-                                            <div>
-                                              <div className="font-medium">
-                                                {(d.purchase_order || d.purchase_orders)?.po_number || "N/A"}
-                                                {d.invoice_number && <span className="text-muted-foreground font-normal ml-1">(Inv: {d.invoice_number})</span>}
-                                              </div>
-                                              <div className="text-muted-foreground text-xs">
-                                                {(d.purchase_order || d.purchase_orders)?.organizations?.legal_name}
-                                              </div>
-                                            </div>
-                                            <div className="font-mono">{d.quantity} MT</div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </DialogContent>
-                                  </Dialog>
-                                ) : (
-                                  <>
-                                    {poNumber}
-                                    {dispatches.length === 1 && dispatches[0].invoice_number && (
-                                      <>
-                                        <br />
-                                        <span className="text-muted-foreground">Inv: {dispatches[0].invoice_number}</span>
-                                      </>
-                                    )}
-                                  </>
-                                )}
+                                <>
+                                  {poNumber}
+                                  {invNumbers.length > 0 && (
+                                    <>
+                                      <br />
+                                      <span className="text-muted-foreground">Inv: {invNumbers.join(", ")}</span>
+                                    </>
+                                  )}
+                                </>
                               </TableCell>
-                              <TableCell>{dispatchQtyText}</TableCell>
+                              <TableCell>—</TableCell>
                               <TableCell className="text-success font-bold">
                                 {formatCurrency(p.amount)}
                               </TableCell>
