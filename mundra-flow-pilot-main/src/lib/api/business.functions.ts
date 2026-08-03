@@ -4563,44 +4563,40 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
     ensureMundraOrg(context.orgType);
     const supabase = createSupabaseAdminClient();
 
-    // Fetch all invoice allocations for approved client-to-utcl payments
-    // And join invoice + dispatch_request to ensure Mundra paid UTCL earlier
-    const { data: allocations, error } = await supabase
-      .from("invoice_allocations")
+    // Fetch all client-to-utcl payments
+    const { data: payments, error } = await supabase
+      .from("payments")
       .select(`
         id,
-        allocated_amount,
-        payment_id,
-        invoice_id,
-        payments!inner (
-          id,
-          amount,
-          payment_date,
-          payment_mode,
-          is_client_to_utcl,
-          status,
-          organization_id
+        amount,
+        payment_date,
+        payment_mode,
+        is_client_to_utcl,
+        status,
+        organization_id,
+        organizations (
+          trade_name,
+          legal_name,
+          party_code,
+          tp_code
         ),
-        invoices!inner (
+        invoice_allocations (
           id,
-          invoice_number,
-          invoice_date,
-          amount,
-          dispatch_requests (
-            utcl_payment_id
-          ),
-          organizations (
-            trade_name,
-            legal_name,
-            party_code,
-            tp_code
+          allocated_amount,
+          invoice_id,
+          invoices (
+            id,
+            invoice_number,
+            invoice_date,
+            amount
+          )
         )
       `)
-      .eq("payments.is_client_to_utcl", true)
-      .in("payments.status", ["submitted", "approved"]);
+      .eq("is_client_to_utcl", true)
+      .in("status", ["submitted", "approved"]);
 
     if (error) {
-      console.error("Failed to fetch refund eligible allocations:", error);
+      console.error("Failed to fetch refund eligible payments:", error);
       throw new Error(error.message);
     }
 
@@ -4613,16 +4609,62 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
     
     const refundedPaymentIds = new Set(refundLetters?.map(rl => rl.payment_id));
 
-    const eligible = (allocations || []).filter((alloc: any) => {
-      // Must not be already refunded
-      if (refundedPaymentIds.has(alloc.payment_id)) return false;
-      
-      // Relaxed check: We no longer require dispatch.utcl_payment_id to be strictly present
-      // to handle cases where there's a delay or payments were made on-account.
-      return true;
-    });
+    const eligibleItems: any[] = [];
 
-    return eligible;
+    for (const p of payments || []) {
+      if (refundedPaymentIds.has(p.id)) continue;
+
+      if (p.invoice_allocations && p.invoice_allocations.length > 0) {
+        // Payment has allocations, push each allocation
+        for (const alloc of p.invoice_allocations) {
+          eligibleItems.push({
+            id: alloc.id,
+            allocated_amount: alloc.allocated_amount,
+            payment_id: p.id,
+            invoice_id: alloc.invoice_id,
+            payments: {
+              id: p.id,
+              amount: p.amount,
+              payment_date: p.payment_date,
+              payment_mode: p.payment_mode,
+              is_client_to_utcl: p.is_client_to_utcl,
+              status: p.status,
+              organization_id: p.organization_id
+            },
+            invoices: {
+              ...alloc.invoices,
+              organizations: p.organizations // Attach org from payment
+            }
+          });
+        }
+      } else {
+        // Payment is unallocated (e.g. delay in linking or on-account)
+        eligibleItems.push({
+          id: p.id, // use payment ID as the unique key
+          allocated_amount: p.amount, // assume full amount is available
+          payment_id: p.id,
+          invoice_id: null,
+          payments: {
+            id: p.id,
+            amount: p.amount,
+            payment_date: p.payment_date,
+            payment_mode: p.payment_mode,
+            is_client_to_utcl: p.is_client_to_utcl,
+            status: p.status,
+            organization_id: p.organization_id
+          },
+          invoices: {
+            id: null,
+            invoice_number: "Unlinked Payment",
+            invoice_date: null,
+            amount: p.amount, // Put payment amount as invoice amount so UI doesn't break
+            organizations: p.organizations
+          }
+        });
+      }
+    }
+
+    return eligibleItems;
   });
 
 export const markPaymentsAsRefunded = createServerFn({ method: "POST" })
