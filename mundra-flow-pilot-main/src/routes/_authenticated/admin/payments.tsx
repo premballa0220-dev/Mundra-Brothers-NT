@@ -219,10 +219,10 @@ function AdminPaymentsPage() {
       const promises = clientSelectedReferences.map((ref) => {
         const opt = clientPaymentOpts[ref];
         if (!opt || opt.amount <= 0) return Promise.resolve();
-        
+
         let dispatchRequestIds: string[] | undefined = undefined;
         let purchaseOrderId: string | undefined = undefined;
-        
+
         if (ref.startsWith("dr_")) {
           const drId = ref.replace("dr_", "");
           dispatchRequestIds = [drId];
@@ -233,7 +233,7 @@ function AdminPaymentsPage() {
         } else if (ref.startsWith("po_")) {
           purchaseOrderId = ref.replace("po_", "");
         }
-        
+
         return recordMutation.mutateAsync({
           organizationId: clientSelectedOrgId,
           purchaseOrderId,
@@ -265,7 +265,7 @@ function AdminPaymentsPage() {
     setClientUtclModalOpen(false);
   }
 
-  const derivedClientAmount = clientPaymentType === "against_reference" 
+  const derivedClientAmount = clientPaymentType === "against_reference"
     ? clientSelectedReferences.reduce((acc, ref) => acc + (clientPaymentOpts[ref]?.amount || 0), 0)
     : clientAmount;
 
@@ -279,11 +279,11 @@ function AdminPaymentsPage() {
   // Pre-calculate Total UTCL coverage for dispatches
   const mundraDispatchCoverage = new Map<string, { fullyCovered: boolean; paidAmount: number; remaining: number }>();
   const clientDispatchCoverage = new Map<string, { fullyCovered: boolean; paidAmount: number; remaining: number }>();
-  
+
   if (dispatches) {
     const explicitMundraPaid = new Map<string, number>();
     const explicitClientPaid = new Map<string, number>();
-    
+
     const generalMundraPaid = new Map<string, number>();
     const generalClientPaid = new Map<string, number>();
 
@@ -293,7 +293,7 @@ function AdminPaymentsPage() {
           const isClient = !!p.is_client_to_utcl;
           const linkedDrs = p.dispatch_requests || [];
           const amt = p.amount || 0;
-          
+
           if (linkedDrs.length > 0) {
             const amtPerDr = amt / linkedDrs.length;
             linkedDrs.forEach((dr: any) => {
@@ -314,51 +314,51 @@ function AdminPaymentsPage() {
       });
     }
 
-    const sortedDispatches = [...dispatches].sort((a: any, b: any) => 
-       new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    const sortedDispatches = [...dispatches].sort((a: any, b: any) =>
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
-    
+
     sortedDispatches.forEach((d: any) => {
-       const po = d.purchase_order || d.purchase_orders;
-       const rate = po?.locked_rate || d.purchase_order_item?.locked_rate || 0;
-       const dispatchValue = d.quantity * rate;
-       
-       let clientPaidForThis = explicitClientPaid.get(d.id) || 0;
-       let mundraPaidForThis = explicitMundraPaid.get(d.id) || 0;
-       
-       if (po && po.id) {
-          // Process Client General PO Payments
-          const clientGenBalance = generalClientPaid.get(po.id) || 0;
-          const clientStillNeeded = Math.max(0, dispatchValue - clientPaidForThis);
-          if (clientStillNeeded > 0 && clientGenBalance > 0) {
-            const applyGen = Math.min(clientStillNeeded, clientGenBalance);
-            clientPaidForThis += applyGen;
-            generalClientPaid.set(po.id, clientGenBalance - applyGen);
-          }
-          
-          // Process Mundra General PO Payments
-          const mundraGenBalance = generalMundraPaid.get(po.id) || 0;
-          const mundraStillNeeded = Math.max(0, dispatchValue - (clientPaidForThis + mundraPaidForThis));
-          if (mundraStillNeeded > 0 && mundraGenBalance > 0) {
-            const applyGen = Math.min(mundraStillNeeded, mundraGenBalance);
-            mundraPaidForThis += applyGen;
-            generalMundraPaid.set(po.id, mundraGenBalance - applyGen);
-          }
-       }
-       
-       const clientRemaining = Math.max(0, dispatchValue - clientPaidForThis);
-       clientDispatchCoverage.set(d.id, {
-         fullyCovered: clientRemaining <= 0,
-         paidAmount: clientPaidForThis,
-         remaining: clientRemaining
-       });
-       
-       const mundraRemaining = Math.max(0, dispatchValue - (clientPaidForThis + mundraPaidForThis));
-       mundraDispatchCoverage.set(d.id, {
-         fullyCovered: mundraRemaining <= 0,
-         paidAmount: clientPaidForThis + mundraPaidForThis,
-         remaining: mundraRemaining
-       });
+      const po = d.purchase_order || d.purchase_orders;
+      const rate = po?.locked_rate || d.purchase_order_item?.locked_rate || 0;
+      const dispatchValue = d.quantity * rate;
+
+      let clientPaidForThis = explicitClientPaid.get(d.id) || 0;
+      let mundraPaidForThis = explicitMundraPaid.get(d.id) || 0;
+
+      if (po && po.id) {
+        // Process Client General PO Payments
+        const clientGenBalance = generalClientPaid.get(po.id) || 0;
+        const clientStillNeeded = Math.max(0, dispatchValue - clientPaidForThis);
+        if (clientStillNeeded > 0 && clientGenBalance > 0) {
+          const applyGen = Math.min(clientStillNeeded, clientGenBalance);
+          clientPaidForThis += applyGen;
+          generalClientPaid.set(po.id, clientGenBalance - applyGen);
+        }
+
+        // Process Mundra General PO Payments
+        const mundraGenBalance = generalMundraPaid.get(po.id) || 0;
+        const mundraStillNeeded = Math.max(0, dispatchValue - (clientPaidForThis + mundraPaidForThis));
+        if (mundraStillNeeded > 0 && mundraGenBalance > 0) {
+          const applyGen = Math.min(mundraStillNeeded, mundraGenBalance);
+          mundraPaidForThis += applyGen;
+          generalMundraPaid.set(po.id, mundraGenBalance - applyGen);
+        }
+      }
+
+      const clientRemaining = Math.max(0, dispatchValue - clientPaidForThis);
+      clientDispatchCoverage.set(d.id, {
+        fullyCovered: clientRemaining <= 0,
+        paidAmount: clientPaidForThis,
+        remaining: clientRemaining
+      });
+
+      const mundraRemaining = Math.max(0, dispatchValue - (clientPaidForThis + mundraPaidForThis));
+      mundraDispatchCoverage.set(d.id, {
+        fullyCovered: mundraRemaining <= 0,
+        paidAmount: clientPaidForThis + mundraPaidForThis,
+        remaining: mundraRemaining
+      });
     });
   }
 
@@ -403,7 +403,7 @@ function AdminPaymentsPage() {
         [dispatch.id]: { type: "full", amount: remainingBalance }
       }));
     }
-    
+
     // Auto-calculate amount for the payment box
     const totalAmountCalc = newSelection.reduce((acc, d) => {
       const drRate = (d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0;
@@ -536,7 +536,7 @@ function AdminPaymentsPage() {
                                   <Badge variant="outline">
                                     {d.status
                                       ? d.status.charAt(0).toUpperCase() +
-                                        d.status.slice(1).replace("_", " ")
+                                      d.status.slice(1).replace("_", " ")
                                       : ""}
                                   </Badge>
                                 </TableCell>
@@ -545,16 +545,16 @@ function AdminPaymentsPage() {
                                     {isSelected && (
                                       <div className="flex flex-col items-start gap-1 text-xs text-muted-foreground mr-2">
                                         <label className="flex items-center gap-1 cursor-pointer">
-                                          <input 
-                                            type="radio" 
+                                          <input
+                                            type="radio"
                                             name={`opt_${d.id}`}
                                             checked={dispatchPaymentOpts[d.id]?.type === "advance"}
                                             onChange={() => updateDispatchOptWrapper(d.id, "advance")}
                                           /> Advance
                                         </label>
                                         <label className="flex items-center gap-1 cursor-pointer">
-                                          <input 
-                                            type="radio" 
+                                          <input
+                                            type="radio"
                                             name={`opt_${d.id}`}
                                             checked={dispatchPaymentOpts[d.id]?.type === "partial"}
                                             onChange={() => updateDispatchOptWrapper(d.id, "partial")}
@@ -659,8 +659,8 @@ function AdminPaymentsPage() {
                             </TableCell>
                             <TableCell>
                               {["partial", "advance"].includes(dispatchPaymentOpts[dispatch.id]?.type || "") ? (
-                                <Input 
-                                  type="number" 
+                                <Input
+                                  type="number"
                                   value={dispatchPaymentOpts[dispatch.id]?.amount || ""}
                                   onChange={(e) => updateDispatchPaymentOpt(dispatch.id, "amount", Number(e.target.value))}
                                   className="w-24 h-8"
@@ -1144,134 +1144,136 @@ function AdminPaymentsPage() {
                                               disabled={hasPoSelected}
                                               checked={clientSelectedReferences.includes(`dr_${d.id}`)}
                                               onCheckedChange={(checked) => {
-                                            let newRefs = [...clientSelectedReferences];
-                                            if (checked) {
-                                              newRefs = [...newRefs.filter(r => !r.startsWith('po_')), `dr_${d.id}`];
-                                              const rate = (d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0;
-                                              const val = (d.quantity || 0) * rate;
-                                              const remaining = clientDispatchCoverage.get(d.id)?.remaining ?? val;
-                                              setClientPaymentOpts(prev => ({
-                                                ...prev,
-                                                [`dr_${d.id}`]: { isAdvance: false, amount: remaining }
-                                              }));
-                                            } else {
-                                              newRefs = newRefs.filter(r => r !== `dr_${d.id}`);
-                                              setClientPaymentOpts(prev => {
-                                                const next = { ...prev };
-                                                delete next[`dr_${d.id}`];
-                                                return next;
-                                              });
-                                            }
-                                            setClientSelectedReferences(newRefs);
-                                          }}
-                                        />
-                                        <Label htmlFor={`ref_${d.id}`} className={`font-normal cursor-pointer text-sm leading-snug ${hasPoSelected ? 'opacity-50' : ''}`}>
-                                          Dispatch: Qty {d.quantity} MT {d.invoice_number ? `(Inv: ${d.invoice_number})` : ""} {(d.purchase_order || d.purchase_orders)?.po_number ? `(PO: ${(d.purchase_order || d.purchase_orders).po_number})` : ""}
-                                          {` - Bal: ${formatCurrency(clientDispatchCoverage.get(d.id)?.remaining ?? (d.quantity * ((d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0)))}`}
-                                        </Label>
-                                      </div>
-                                      
-                                      {clientSelectedReferences.includes(`dr_${d.id}`) && (
-                                        <div className="flex items-center space-x-4 ml-6 mt-2 mb-4 p-2 bg-muted/30 rounded-md">
-                                          <div className="flex items-center space-x-2">
-                                            <Checkbox 
-                                              id={`adv_dr_${d.id}`} 
-                                              checked={clientPaymentOpts[`dr_${d.id}`]?.isAdvance || false} 
-                                              onCheckedChange={(c) => {
-                                                setClientPaymentOpts(prev => ({
-                                                  ...prev,
-                                                  [`dr_${d.id}`]: { ...prev[`dr_${d.id}`], isAdvance: !!c }
-                                                }))
+                                                let newRefs = [...clientSelectedReferences];
+                                                if (checked) {
+                                                  newRefs = [...newRefs.filter(r => !r.startsWith('po_')), `dr_${d.id}`];
+                                                  const rate = (d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0;
+                                                  const val = (d.quantity || 0) * rate;
+                                                  const remaining = clientDispatchCoverage.get(d.id)?.remaining ?? val;
+                                                  setClientPaymentOpts(prev => ({
+                                                    ...prev,
+                                                    [`dr_${d.id}`]: { isAdvance: false, amount: remaining }
+                                                  }));
+                                                } else {
+                                                  newRefs = newRefs.filter(r => r !== `dr_${d.id}`);
+                                                  setClientPaymentOpts(prev => {
+                                                    const next = { ...prev };
+                                                    delete next[`dr_${d.id}`];
+                                                    return next;
+                                                  });
+                                                }
+                                                setClientSelectedReferences(newRefs);
                                               }}
                                             />
-                                            <Label htmlFor={`adv_dr_${d.id}`} className="text-sm font-medium">Advance</Label>
+                                            <Label htmlFor={`ref_${d.id}`} className={`font-normal cursor-pointer text-sm leading-snug ${hasPoSelected ? 'opacity-50' : ''}`}>
+                                              Dispatch: Qty {d.quantity} MT {d.invoice_number ? `(Inv: ${d.invoice_number})` : ""} {(d.purchase_order || d.purchase_orders)?.po_number ? `(PO: ${(d.purchase_order || d.purchase_orders).po_number})` : ""}
+                                              {` - Bal: ${formatCurrency(clientDispatchCoverage.get(d.id)?.remaining ?? (d.quantity * ((d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0)))}`}
+                                            </Label>
                                           </div>
-                                          <div className="flex items-center space-x-2">
-                                            <Label htmlFor={`amt_dr_${d.id}`} className="text-sm text-muted-foreground">Amount (₹):</Label>
-                                            <Input
-                                              id={`amt_dr_${d.id}`}
-                                              type="number"
-                                              className="w-32 h-8"
-                                              value={clientPaymentOpts[`dr_${d.id}`]?.amount ?? ""}
-                                              onChange={(e) => {
-                                                setClientPaymentOpts(prev => ({
-                                                  ...prev,
-                                                  [`dr_${d.id}`]: { ...prev[`dr_${d.id}`], amount: Number(e.target.value) }
-                                                }))
-                                              }}
-                                            />
-                                          </div>
+
+                                          {clientSelectedReferences.includes(`dr_${d.id}`) && (
+                                            <div className="flex items-center space-x-4 ml-6 mt-2 mb-4 p-2 bg-muted/30 rounded-md">
+                                              <div className="flex items-center space-x-2">
+                                                <Checkbox
+                                                  id={`adv_dr_${d.id}`}
+                                                  checked={clientPaymentOpts[`dr_${d.id}`]?.isAdvance || false}
+                                                  onCheckedChange={(c) => {
+                                                    setClientPaymentOpts(prev => ({
+                                                      ...prev,
+                                                      [`dr_${d.id}`]: { ...prev[`dr_${d.id}`], isAdvance: !!c }
+                                                    }))
+                                                  }}
+                                                />
+                                                <Label htmlFor={`adv_dr_${d.id}`} className="text-sm font-medium">Advance</Label>
+                                              </div>
+                                              <div className="flex items-center space-x-2">
+                                                <Label htmlFor={`amt_dr_${d.id}`} className="text-sm text-muted-foreground">Amount (₹):</Label>
+                                                <Input
+                                                  id={`amt_dr_${d.id}`}
+                                                  type="number"
+                                                  className="w-32 h-8"
+                                                  value={clientPaymentOpts[`dr_${d.id}`]?.amount ?? ""}
+                                                  onChange={(e) => {
+                                                    setClientPaymentOpts(prev => ({
+                                                      ...prev,
+                                                      [`dr_${d.id}`]: { ...prev[`dr_${d.id}`], amount: Number(e.target.value) }
+                                                    }))
+                                                  }}
+                                                />
+                                              </div>
+                                            </div>
+                                          )}
                                         </div>
-                                      )}
-                                      </div>
-                                    )})}
+                                      )
+                                    })}
                                   </div>
                                 )}
-                                
+
                                 {openClientPos.length > 0 && (
                                   <div className="space-y-3">
                                     <h4 className="font-medium text-sm text-muted-foreground">Purchase Orders</h4>
                                     {openClientPos.map((po: any) => {
                                       const hasDrSelected = clientSelectedReferences.some(r => r.startsWith('dr_'));
                                       return (
-                                      <div key={po.id} className="flex flex-col">
-                                      <div className="flex items-center space-x-3">
-                                        <Checkbox
-                                          id={`ref_${po.id}`}
-                                          disabled={hasDrSelected}
-                                          checked={clientSelectedReferences.includes(`po_${po.id}`)}
-                                          onCheckedChange={(checked) => {
-                                            if (checked) {
-                                              setClientSelectedReferences([`po_${po.id}`]);
-                                              const poAmount = (po.original_quantity || 0) * (po.locked_rate || 0);
-                                              setClientPaymentOpts({
-                                                [`po_${po.id}`]: { isAdvance: false, amount: poAmount }
-                                              });
-                                            } else {
-                                              setClientSelectedReferences((prev) => prev.filter(r => r !== `po_${po.id}`));
-                                              setClientPaymentOpts({});
-                                            }
-                                          }}
-                                        />
-                                        <Label htmlFor={`ref_${po.id}`} className={`font-normal cursor-pointer text-sm leading-snug ${hasDrSelected ? 'opacity-50' : ''}`}>
-                                          PO: {po.po_number || "Unnamed PO"} (Pay against PO)
-                                        </Label>
-                                      </div>
+                                        <div key={po.id} className="flex flex-col">
+                                          <div className="flex items-center space-x-3">
+                                            <Checkbox
+                                              id={`ref_${po.id}`}
+                                              disabled={hasDrSelected}
+                                              checked={clientSelectedReferences.includes(`po_${po.id}`)}
+                                              onCheckedChange={(checked) => {
+                                                if (checked) {
+                                                  setClientSelectedReferences([`po_${po.id}`]);
+                                                  const poAmount = (po.original_quantity || 0) * (po.locked_rate || 0);
+                                                  setClientPaymentOpts({
+                                                    [`po_${po.id}`]: { isAdvance: false, amount: poAmount }
+                                                  });
+                                                } else {
+                                                  setClientSelectedReferences((prev) => prev.filter(r => r !== `po_${po.id}`));
+                                                  setClientPaymentOpts({});
+                                                }
+                                              }}
+                                            />
+                                            <Label htmlFor={`ref_${po.id}`} className={`font-normal cursor-pointer text-sm leading-snug ${hasDrSelected ? 'opacity-50' : ''}`}>
+                                              PO: {po.po_number || "Unnamed PO"} (Pay against PO)
+                                            </Label>
+                                          </div>
 
-                                      {clientSelectedReferences.includes(`po_${po.id}`) && (
-                                        <div className="flex items-center space-x-4 ml-6 mt-2 mb-4 p-2 bg-muted/30 rounded-md">
-                                          <div className="flex items-center space-x-2">
-                                            <Checkbox 
-                                              id={`adv_po_${po.id}`} 
-                                              checked={clientPaymentOpts[`po_${po.id}`]?.isAdvance || false} 
-                                              onCheckedChange={(c) => {
-                                                setClientPaymentOpts(prev => ({
-                                                  ...prev,
-                                                  [`po_${po.id}`]: { ...prev[`po_${po.id}`], isAdvance: !!c }
-                                                }))
-                                              }}
-                                            />
-                                            <Label htmlFor={`adv_po_${po.id}`} className="text-sm font-medium">Advance</Label>
-                                          </div>
-                                          <div className="flex items-center space-x-2">
-                                            <Label htmlFor={`amt_po_${po.id}`} className="text-sm text-muted-foreground">Amount (₹):</Label>
-                                            <Input
-                                              id={`amt_po_${po.id}`}
-                                              type="number"
-                                              className="w-32 h-8"
-                                              value={clientPaymentOpts[`po_${po.id}`]?.amount ?? ""}
-                                              onChange={(e) => {
-                                                setClientPaymentOpts(prev => ({
-                                                  ...prev,
-                                                  [`po_${po.id}`]: { ...prev[`po_${po.id}`], amount: Number(e.target.value) }
-                                                }))
-                                              }}
-                                            />
-                                          </div>
+                                          {clientSelectedReferences.includes(`po_${po.id}`) && (
+                                            <div className="flex items-center space-x-4 ml-6 mt-2 mb-4 p-2 bg-muted/30 rounded-md">
+                                              <div className="flex items-center space-x-2">
+                                                <Checkbox
+                                                  id={`adv_po_${po.id}`}
+                                                  checked={clientPaymentOpts[`po_${po.id}`]?.isAdvance || false}
+                                                  onCheckedChange={(c) => {
+                                                    setClientPaymentOpts(prev => ({
+                                                      ...prev,
+                                                      [`po_${po.id}`]: { ...prev[`po_${po.id}`], isAdvance: !!c }
+                                                    }))
+                                                  }}
+                                                />
+                                                <Label htmlFor={`adv_po_${po.id}`} className="text-sm font-medium">Advance</Label>
+                                              </div>
+                                              <div className="flex items-center space-x-2">
+                                                <Label htmlFor={`amt_po_${po.id}`} className="text-sm text-muted-foreground">Amount (₹):</Label>
+                                                <Input
+                                                  id={`amt_po_${po.id}`}
+                                                  type="number"
+                                                  className="w-32 h-8"
+                                                  value={clientPaymentOpts[`po_${po.id}`]?.amount ?? ""}
+                                                  onChange={(e) => {
+                                                    setClientPaymentOpts(prev => ({
+                                                      ...prev,
+                                                      [`po_${po.id}`]: { ...prev[`po_${po.id}`], amount: Number(e.target.value) }
+                                                    }))
+                                                  }}
+                                                />
+                                              </div>
+                                            </div>
+                                          )}
                                         </div>
-                                      )}
-                                      </div>
-                                    )})}
+                                      )
+                                    })}
                                   </div>
                                 )}
                               </div>
@@ -1376,7 +1378,7 @@ function AdminPaymentsPage() {
                         clientUtclPayments.map((p: any) => {
                           let clientName = p.organizations?.legal_name || "Unknown Client";
                           let poNumber = p.purchase_orders?.po_number || (p.is_advance ? "Advance" : "On Account");
-                          
+
                           // Extract unique invoice numbers from allocations
                           const invNumbers = Array.from(
                             new Set(
