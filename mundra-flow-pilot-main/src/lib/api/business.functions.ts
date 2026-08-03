@@ -4574,6 +4574,14 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
         is_client_to_utcl,
         status,
         organization_id,
+        dispatch_requests (
+          id,
+          invoice_number,
+          quantity,
+          purchase_orders (
+            locked_rate
+          )
+        ),
         organizations (
           trade_name,
           legal_name,
@@ -4639,6 +4647,18 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
         }
       } else {
         // Payment is unallocated (e.g. delay in linking or on-account)
+        const dr = p.dispatch_requests;
+        let invoiceNumber = "Unlinked Payment";
+        let invoiceAmount = p.amount;
+
+        if (dr) {
+          invoiceNumber = dr.invoice_number || `Dispatch (Qty: ${dr.quantity} MT)`;
+          const rate = dr.purchase_orders?.locked_rate || 0;
+          if (rate > 0 && dr.quantity > 0) {
+            invoiceAmount = dr.quantity * rate;
+          }
+        }
+
         eligibleItems.push({
           id: p.id, // use payment ID as the unique key
           allocated_amount: p.amount, // assume full amount is available
@@ -4655,9 +4675,9 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
           },
           invoices: {
             id: null,
-            invoice_number: "Unlinked Payment",
+            invoice_number: invoiceNumber,
             invoice_date: null,
-            amount: p.amount, // Put payment amount as invoice amount so UI doesn't break
+            amount: invoiceAmount, 
             organizations: p.organizations
           }
         });
