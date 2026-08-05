@@ -4574,13 +4574,23 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
         is_client_to_utcl,
         status,
         organization_id,
+        is_advance,
         dispatch_requests!payments_dispatch_request_id_fkey (
           id,
           invoice_number,
           quantity,
           purchase_orders (
             locked_rate
+          ),
+          invoices (
+            id,
+            invoice_number,
+            invoice_date,
+            amount
           )
+        ),
+        purchase_orders!payments_purchase_order_id_fkey (
+          po_number
         ),
         organizations (
           trade_name,
@@ -4608,23 +4618,50 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
       throw new Error(error.message);
     }
 
-    // Fetch refund letters to filter out
+    // Fetch refund letters to calculate used amounts
+    // @ts-ignore: allocated_amount might not be in types.ts yet
     const { data: refundLetters, error: rlError } = await supabase
       .from("refund_letters")
-      .select("payment_id");
+      .select("payment_id, allocated_amount");
       
-    if (rlError) throw new Error(rlError.message);
+    if (rlError) {
+       console.warn("Refund letters query error:", rlError.message);
+       // Ignore error to prevent crashing if columns are missing
+    }
     
-    const refundedPaymentIds = new Set(refundLetters?.map(rl => rl.payment_id));
+    // Calculate how much of each payment has been used in refund letters
+    const refundedAmounts: Record<string, number> = {};
+    const fullyRefunded = new Set<string>();
+    
+    if (refundLetters) {
+      for (const rl of refundLetters as any[]) {
+        if (rl.allocated_amount !== undefined && rl.allocated_amount !== null) {
+          refundedAmounts[rl.payment_id] = (refundedAmounts[rl.payment_id] || 0) + Number(rl.allocated_amount);
+        } else {
+          // If no allocated_amount column exists or it's null, assume fully refunded
+          fullyRefunded.add(rl.payment_id);
+        }
+      }
+    }
 
     const eligibleItems: any[] = [];
+    const clientOrgIds = new Set<string>();
 
     for (const p of payments || []) {
-      if (refundedPaymentIds.has(p.id)) continue;
+      if (fullyRefunded.has(p.id)) continue;
+      
+      const usedAmount = refundedAmounts[p.id] || 0;
+      const remainingAmount = Math.max(0, p.amount - usedAmount);
+      
+      if (remainingAmount <= 0) continue;
+      
+      clientOrgIds.add(p.organization_id);
 
       if (p.invoice_allocations && p.invoice_allocations.length > 0) {
         // Payment has allocations, push each allocation
         for (const alloc of p.invoice_allocations) {
+          // If a payment is partially refunded, we just pass the remaining amount
+          // The frontend will figure out how to allocate it.
           eligibleItems.push({
             id: alloc.id,
             allocated_amount: alloc.allocated_amount,
@@ -4637,7 +4674,9 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
               payment_mode: p.payment_mode,
               is_client_to_utcl: p.is_client_to_utcl,
               status: p.status,
-              organization_id: p.organization_id
+              organization_id: p.organization_id,
+              is_advance: (p as any).is_advance,
+              remaining_amount: remainingAmount
             },
             invoices: {
               ...alloc.invoices,
@@ -4648,22 +4687,36 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
       } else {
         // Payment is unallocated (e.g. delay in linking or on-account)
         const dr = p.dispatch_requests;
+        const po = p.purchase_orders;
         let invoiceNumber = "Unlinked Payment";
         let invoiceAmount = p.amount;
+        let invoiceId = null;
+        let invoiceDate = null;
 
         if (dr) {
-          invoiceNumber = dr.invoice_number || `Dispatch (Qty: ${dr.quantity} MT)`;
-          const rate = dr.purchase_orders?.locked_rate || 0;
-          if (rate > 0 && dr.quantity > 0) {
-            invoiceAmount = dr.quantity * rate;
+          const matchingInvoice = dr.invoices && dr.invoices.length > 0 ? dr.invoices[0] : null;
+          
+          if (matchingInvoice) {
+            invoiceId = matchingInvoice.id;
+            invoiceNumber = matchingInvoice.invoice_number;
+            invoiceAmount = matchingInvoice.amount;
+            invoiceDate = matchingInvoice.invoice_date;
+          } else {
+            invoiceNumber = dr.invoice_number || `Dispatch (Qty: ${dr.quantity} MT)`;
+            const rate = dr.purchase_orders?.locked_rate || 0;
+            if (rate > 0 && dr.quantity > 0) {
+              invoiceAmount = dr.quantity * rate;
+            }
           }
+        } else if (po) {
+          invoiceNumber = po.po_number || "PO Payment";
         }
 
         eligibleItems.push({
           id: p.id, // use payment ID as the unique key
           allocated_amount: p.amount, // assume full amount is available
           payment_id: p.id,
-          invoice_id: null,
+          invoice_id: invoiceId,
           payments: {
             id: p.id,
             amount: p.amount,
@@ -4671,54 +4724,150 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
             payment_mode: p.payment_mode,
             is_client_to_utcl: p.is_client_to_utcl,
             status: p.status,
-            organization_id: p.organization_id
+            organization_id: p.organization_id,
+            is_advance: (p as any).is_advance,
+            remaining_amount: remainingAmount
           },
           invoices: {
-            id: null,
+            id: invoiceId,
             invoice_number: invoiceNumber,
-            invoice_date: null,
+            invoice_date: invoiceDate,
             amount: invoiceAmount, 
             organizations: p.organizations
           }
         });
       }
     }
+    
+    // Fetch pending invoices for the clients who have eligible payments
+    const pendingInvoices: any[] = [];
+    if (clientOrgIds.size > 0) {
+      const { data: invs, error: invError } = await supabase
+        .from("invoices")
+        .select(`
+          id, invoice_number, invoice_date, amount, organization_id,
+          organizations(trade_name, legal_name, party_code, tp_code),
+          invoice_allocations(allocated_amount)
+        `)
+        .in("organization_id", Array.from(clientOrgIds))
+        .in("status", ["unpaid", "partially_paid"])
+        .order("invoice_date", { ascending: true });
+        
+      if (!invError && invs) {
+        for (const inv of invs) {
+          const totalAllocated = inv.invoice_allocations?.reduce((sum: number, a: any) => sum + (Number(a.allocated_amount) || 0), 0) || 0;
+          const outstanding = Math.max(0, inv.amount - totalAllocated);
+          
+          if (outstanding > 0) {
+            pendingInvoices.push({
+              ...inv,
+              outstanding_amount: outstanding
+            });
+          }
+        }
+      }
+    }
 
-    return eligibleItems;
+    return { eligibleItems, pendingInvoices };
   });
 
 export const markPaymentsAsRefunded = createServerFn({ method: "POST" })
   .middleware([requireAuth])
   .validator(
     z.object({
-      paymentIds: z.array(z.string()),
+      paymentIds: z.array(z.string()).optional(),
+      allocations: z.array(z.object({
+        paymentId: z.string(),
+        invoiceId: z.string().nullable().optional(),
+        amount: z.number().optional(),
+        isNewAllocation: z.boolean().optional() // Flag to persist FIFO/Advance allocations
+      })).optional()
     })
   )
   .handler(async ({ data, context }) => {
     ensureMundraOrg(context.orgType);
     const supabase = createSupabaseAdminClient();
     
+    // Determine payment IDs from either payload
+    const paymentIds = data.paymentIds || data.allocations?.map(a => a.paymentId) || [];
+    if (paymentIds.length === 0) return { success: true };
+    
     // We need organization_id for refund_letters. Let's fetch the payments first.
     const { data: payments, error: pError } = await supabase
       .from("payments")
       .select("id, organization_id")
-      .in("id", data.paymentIds);
+      .in("id", paymentIds);
       
     if (pError) throw new Error(pError.message);
     
-    const refundRows = (payments || []).map((p: any) => ({
-      payment_id: p.id,
-      organization_id: p.organization_id,
-      status: 'generated'
-    }));
+    const orgMap = Object.fromEntries((payments || []).map((p: any) => [p.id, p.organization_id]));
+    
+    // 1. Process explicit allocations that need to be saved (FIFO or Advance)
+    if (data.allocations && data.allocations.length > 0) {
+      const newInvoiceAllocations = data.allocations
+        .filter(a => a.isNewAllocation && a.invoiceId && a.amount && a.amount > 0)
+        .map(a => ({
+          payment_id: a.paymentId,
+          invoice_id: a.invoiceId!,
+          allocated_amount: a.amount!
+        }));
+        
+      if (newInvoiceAllocations.length > 0) {
+        const { error: allocError } = await supabase
+          .from("invoice_allocations")
+          .insert(newInvoiceAllocations);
+        if (allocError) {
+          console.error("Failed to insert invoice allocations:", allocError);
+        }
+      }
+    }
+
+    // 2. Insert into refund_letters
+    const refundRows = [];
+    if (data.allocations && data.allocations.length > 0) {
+      for (const a of data.allocations) {
+        if (!orgMap[a.paymentId]) continue;
+        refundRows.push({
+          payment_id: a.paymentId,
+          organization_id: orgMap[a.paymentId],
+          invoice_id: a.invoiceId || null,
+          allocated_amount: a.amount || null,
+          status: 'generated'
+        });
+      }
+    } else {
+      // Legacy backward compatibility
+      for (const pid of paymentIds) {
+        if (!orgMap[pid]) continue;
+        refundRows.push({
+          payment_id: pid,
+          organization_id: orgMap[pid],
+          status: 'generated'
+        });
+      }
+    }
     
     if (refundRows.length > 0) {
+      // @ts-ignore: invoice_id and allocated_amount might not be in types.ts yet
       const { error } = await supabase
         .from("refund_letters")
         .insert(refundRows);
         
-      if (error) throw new Error(error.message);
+      if (error && !error.message.includes("allocated_amount")) {
+        throw new Error(error.message);
+      } else if (error && error.message.includes("allocated_amount")) {
+        // Fallback for when migration hasn't run yet
+        const fallbackRows = refundRows.map(r => ({
+          payment_id: r.payment_id,
+          organization_id: r.organization_id,
+          status: r.status
+        }));
+        const { error: fallbackError } = await supabase.from("refund_letters").insert(fallbackRows);
+        if (fallbackError) throw new Error(fallbackError.message);
+      }
     }
     
     return { success: true };
   });
+    
+

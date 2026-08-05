@@ -25,7 +25,9 @@ export const Route = createFileRoute("/_authenticated/admin/balance-confirmation
 
 function RefundLetterPage() {
   const queryClient = useQueryClient();
-  const { data: eligibleAllocations } = useQuery({ queryKey: ["admin-refund-eligible-allocations"], queryFn: () => getRefundEligibleAllocations() });
+  const { data: queryData } = useQuery({ queryKey: ["admin-refund-eligible-allocations"], queryFn: () => getRefundEligibleAllocations() });
+  const eligibleAllocations = queryData?.eligibleItems || [];
+  const pendingInvoices = queryData?.pendingInvoices || [];
 
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [refNo, setRefNo] = useState("Refund\\25-26\\0059");
@@ -50,14 +52,14 @@ function RefundLetterPage() {
   ]);
 
   const [payments, setPayments] = useState<any[]>([
-    { id: crypto.randomUUID(), type1: "RTGS", date: "", amount: "", type2: "none" },
-    { id: crypto.randomUUID(), type1: "TDS", date: "", amount: "", type2: "none" },
-    { id: crypto.randomUUID(), type1: "ADVANCE", date: "", amount: "", type2: "none" },
-    { id: crypto.randomUUID(), type1: "Credit Note", date: "", amount: "", type2: "none" },
+    { id: crypto.randomUUID(), type1: "RTGS", date: "", amount: "", type2: "none", dbPaymentId: "", invoiceId: "" },
+    { id: crypto.randomUUID(), type1: "TDS", date: "", amount: "", type2: "none", dbPaymentId: "", invoiceId: "" },
+    { id: crypto.randomUUID(), type1: "ADVANCE", date: "", amount: "", type2: "none", dbPaymentId: "", invoiceId: "" },
+    { id: crypto.randomUUID(), type1: "Credit Note", date: "", amount: "", type2: "none", dbPaymentId: "", invoiceId: "" },
   ]);
 
   const markRefundedMutation = useMutation({
-    mutationFn: (paymentIds: string[]) => markPaymentsAsRefunded({ data: { paymentIds } }),
+    mutationFn: (payload: any) => markPaymentsAsRefunded({ data: payload }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-refund-eligible-allocations"] });
       toast.success("Refund letter generated and recorded successfully");
@@ -68,13 +70,22 @@ function RefundLetterPage() {
     }
   });
 
+  const [pendingAllocations, setPendingAllocations] = useState<any[]>([]);
+
   const handleSaveAndPrint = () => {
-    const paymentIds = invoices.map(inv => inv.paymentId).filter(Boolean);
-    if (paymentIds.length === 0) {
+    // pendingAllocations is computed by the FIFO effect
+    const allocations = pendingAllocations.map(pa => ({
+      paymentId: pa.paymentId,
+      invoiceId: pa.invoiceId,
+      amount: pa.amount,
+      isNewAllocation: pa.isNewAllocation
+    }));
+      
+    if (allocations.length === 0) {
       window.print();
       return;
     }
-    markRefundedMutation.mutate(paymentIds);
+    markRefundedMutation.mutate({ allocations });
   };
 
   const addInvoice = () => {
@@ -103,7 +114,7 @@ function RefundLetterPage() {
   };
 
   const addPayment = () => {
-    setPayments([...payments, { id: crypto.randomUUID(), type1: "none", date: "", amount: "", type2: "none" }]);
+    setPayments([...payments, { id: crypto.randomUUID(), type1: "none", date: "", amount: "", type2: "none", dbPaymentId: "", invoiceId: "" }]);
   };
 
   const removePayment = (id: string) => {
@@ -170,29 +181,160 @@ function RefundLetterPage() {
         return p;
       });
 
-      // Auto-calculate remaining for main transfer mode (RTGS/NEFT/Cheque/Other)
-      // Usually it's RTGS. Let's find the first one that is a standard transfer mode or just the first entry.
-      const mainModes = ["RTGS", "NEFT", "Cheque", "Other"];
-      const mainPayment = next.find(p => mainModes.includes(p.type1));
-      
-      if (mainPayment) {
-        // Sum all other deduction amounts
-        const otherTotal = next
-          .filter(p => p.id !== mainPayment.id && p.type1 !== "none")
-          .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-        
-        const remaining = currentTotal > 0 ? Math.max(0, currentTotal - otherTotal) : 0;
-        const remainingStr = remaining > 0 ? remaining.toFixed(2) : "";
-        
-        if (mainPayment.amount !== remainingStr) {
-          hasChanges = true;
-          next = next.map(p => p.id === mainPayment.id ? { ...p, amount: remainingStr } : p);
-        }
-      }
+      // Auto-calculate remaining for main transfer mode is disabled 
+      // because in the new flow, payments dictate invoices, not the other way around.
 
       return hasChanges ? next : prev;
     });
   }, [totalAmountPaid, payments.map(p => `${p.id}-${p.type1}-${p.amount}`).join('|')]);
+
+  // FIFO Auto-allocation Effect
+  useEffect(() => {
+    if (!eligibleAllocations.length) return;
+
+    // We only process payments that have a dbPaymentId (meaning the user selected them from the dropdown)
+    const activePayments = payments.filter(p => p.dbPaymentId && Number(p.amount) > 0);
+    if (activePayments.length === 0) {
+      setInvoices([]);
+      setPartyName("");
+      setPartyCode("");
+      setTpcCode("");
+      return;
+    }
+
+    const newInvoicesMap = new Map<string, any>();
+    const newPendingAllocations: any[] = [];
+    let unallocatedPayments: { id: string, remaining: number }[] = [];
+    const paymentModesUsed = new Set<string>();
+
+    for (const ap of activePayments) {
+      const dbPayment = eligibleAllocations.find((ea: any) => ea.payment_id === ap.dbPaymentId);
+      if (!dbPayment) continue;
+      
+      const org = dbPayment.invoices?.organizations || dbPayment.payments?.organizations;
+      if (org) {
+        setPartyName(org.trade_name || org.legal_name || "");
+        setPartyCode(org.party_code || "");
+        setTpcCode(org.tp_code || "");
+      }
+
+      if (ap.type1 !== "ADVANCE" && ap.type1 !== "TDS" && ap.type1 !== "none") {
+        paymentModesUsed.add(ap.type1);
+      }
+
+      const allocationsForThisPayment = eligibleAllocations.filter((ea: any) => ea.payment_id === ap.dbPaymentId && ea.invoice_id);
+      
+      if (allocationsForThisPayment.length > 0) {
+        let remainingToAllocate = Number(ap.amount);
+        for (const alloc of allocationsForThisPayment) {
+          if (remainingToAllocate <= 0) break;
+          const allocAmount = Math.min(Number(alloc.allocated_amount), remainingToAllocate);
+          remainingToAllocate -= allocAmount;
+          
+          const invId = alloc.invoice_id;
+          if (!newInvoicesMap.has(invId)) {
+            newInvoicesMap.set(invId, {
+              id: crypto.randomUUID(),
+              date: alloc.invoices.invoice_date ? new Date(alloc.invoices.invoice_date).toISOString().split("T")[0] : "",
+              invoiceNumber: alloc.invoices.invoice_number,
+              amount: Number(alloc.invoices.amount),
+              paymentDetails: ap.type1,
+              dateOfPayment: alloc.payments.payment_date ? new Date(alloc.payments.payment_date).toISOString().split("T")[0] : "",
+              amountPaid: 0,
+              paymentId: ap.dbPaymentId,
+              invoiceId: invId
+            });
+          }
+          newInvoicesMap.get(invId).amountPaid += allocAmount;
+          
+          newPendingAllocations.push({
+            paymentId: ap.dbPaymentId,
+            invoiceId: invId,
+            amount: allocAmount,
+            isNewAllocation: false // Already in DB
+          });
+        }
+      } else {
+        unallocatedPayments.push({ id: ap.dbPaymentId, remaining: Number(ap.amount) });
+      }
+    }
+
+    if (unallocatedPayments.length > 0 && pendingInvoices.length > 0) {
+      const modeStr = Array.from(paymentModesUsed).join(", ") || "RTGS";
+      const mainPayment = activePayments.find(p => p.type1 !== "ADVANCE" && p.type1 !== "TDS");
+      const payDate = mainPayment?.date || new Date().toISOString().split("T")[0];
+
+      for (const pending of pendingInvoices) {
+        if (unallocatedPayments.length === 0) break;
+        let outstanding = Number(pending.outstanding_amount);
+        if (outstanding <= 0) continue;
+
+        while (outstanding > 0 && unallocatedPayments.length > 0) {
+          const currentPay = unallocatedPayments[0];
+          const allocateAmt = Math.min(currentPay.remaining, outstanding);
+          
+          currentPay.remaining -= allocateAmt;
+          outstanding -= allocateAmt;
+
+          if (!newInvoicesMap.has(pending.id)) {
+            newInvoicesMap.set(pending.id, {
+              id: crypto.randomUUID(),
+              date: pending.invoice_date ? new Date(pending.invoice_date).toISOString().split("T")[0] : "",
+              invoiceNumber: pending.invoice_number,
+              amount: Number(pending.amount),
+              paymentDetails: modeStr,
+              dateOfPayment: payDate,
+              amountPaid: 0,
+              paymentId: "",
+              invoiceId: pending.id
+            });
+          }
+          newInvoicesMap.get(pending.id).amountPaid += allocateAmt;
+          
+          newPendingAllocations.push({
+            paymentId: currentPay.id,
+            invoiceId: pending.id,
+            amount: allocateAmt,
+            isNewAllocation: true
+          });
+
+          if (currentPay.remaining <= 0) {
+            unallocatedPayments.shift(); // Remove depleted payment
+          }
+        }
+      }
+      
+      // If there's still unallocated amounts but no invoices left, just save them as unallocated
+      for (const unalloc of unallocatedPayments) {
+        if (unalloc.remaining > 0) {
+          newPendingAllocations.push({
+            paymentId: unalloc.id,
+            invoiceId: null,
+            amount: unalloc.remaining,
+            isNewAllocation: false
+          });
+        }
+      }
+    } else if (unallocatedPayments.length > 0) {
+      for (const unalloc of unallocatedPayments) {
+        newPendingAllocations.push({
+          paymentId: unalloc.id,
+          invoiceId: null,
+          amount: unalloc.remaining,
+          isNewAllocation: false
+        });
+      }
+    }
+
+    setPendingAllocations(newPendingAllocations);
+    
+    setInvoices(Array.from(newInvoicesMap.values()).map(inv => ({
+      ...inv,
+      amount: String(inv.amount),
+      amountPaid: String(inv.amountPaid)
+    })));
+
+  }, [payments.map(p => `${p.dbPaymentId}-${p.amount}`).join('|'), eligibleAllocations, pendingInvoices]);
 
   const totalPaymentAmount = useMemo(() => {
     return payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
@@ -276,59 +418,8 @@ function RefundLetterPage() {
                             <Input type="date" className="h-8 text-sm" value={inv.date} onChange={(e) => updateInvoice(inv.id, "date", e.target.value)} />
                           </div>
                           <div className="space-y-1">
-                            <Label className="text-xs">Invoice No. / Client Payment</Label>
-                            {(() => {
-                              const allocations = eligibleAllocations || [];
-                              return (
-                                <>
-                                  {allocations.length > 0 && (
-                                    <Select
-                                      value={inv.allocationId || inv.invoiceNumber}
-                                      onValueChange={(val) => {
-                                        const alloc = allocations.find((a: any) => a.id === val);
-                                        if (alloc) {
-                                          const invoice = alloc.invoices;
-                                          const payment = alloc.payments;
-                                          const org = invoice.organizations;
-                                          
-                                          if (org) {
-                                            setPartyName(org.trade_name || org.legal_name || "");
-                                            setPartyCode(org.party_code || "");
-                                            setTpcCode(org.tp_code || "");
-                                          }
-
-                                          setInvoices(invoices.map((i) => i.id === inv.id ? {
-                                            ...i,
-                                            allocationId: alloc.id,
-                                            invoiceNumber: invoice.invoice_number,
-                                            date: invoice.invoice_date ? new Date(invoice.invoice_date).toISOString().split("T")[0] : "",
-                                            amount: invoice.amount ? String(invoice.amount) : "",
-                                            paymentDetails: payment.payment_mode || "none",
-                                            dateOfPayment: payment.payment_date ? new Date(payment.payment_date).toISOString().split("T")[0] : "",
-                                            amountPaid: alloc.allocated_amount ? String(alloc.allocated_amount) : "",
-                                            paymentId: payment.id,
-                                          } : i));
-                                        } else {
-                                          updateInvoice(inv.id, "invoiceNumber", val);
-                                        }
-                                      }}
-                                    >
-                                      <SelectTrigger className="h-8 text-sm">
-                                        <SelectValue placeholder="Select Invoice" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {allocations.map((a: any) => (
-                                          <SelectItem key={a.id} value={a.id}>
-                                            {a.invoices.invoice_number} - {(a.invoices.organizations?.trade_name || a.invoices.organizations?.legal_name)} (Paid ₹{a.allocated_amount})
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  )}
-                                  <Input className={`h-8 text-sm ${allocations.length > 0 ? 'mt-2' : ''}`} value={inv.invoiceNumber} onChange={(e) => updateInvoice(inv.id, "invoiceNumber", e.target.value)} placeholder="Or type invoice no" />
-                                </>
-                              );
-                            })()}
+                            <Label className="text-xs">Invoice No.</Label>
+                            <Input className="h-8 text-sm" value={inv.invoiceNumber} onChange={(e) => updateInvoice(inv.id, "invoiceNumber", e.target.value)} placeholder="Type invoice no" />
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
@@ -404,7 +495,53 @@ function RefundLetterPage() {
                             <Input type="number" className="h-8 text-sm" value={p.amount} onChange={(e) => updatePayment(p.id, "amount", e.target.value)} />
                           </div>
                           <div className="space-y-1">
-                            <Label className="text-xs">Type 2</Label>
+                            <Label className="text-xs">Client Payment Reference</Label>
+                            {(() => {
+                              // Deduplicate by payment_id
+                              const uniquePayments = Array.from(new Map(eligibleAllocations.map((ea: any) => [ea.payment_id, ea])).values());
+                              
+                              return (
+                                <Select 
+                                  value={p.dbPaymentId || "none"} 
+                                  onValueChange={(val) => {
+                                    if (val === "none") {
+                                      updatePayment(p.id, "dbPaymentId", "");
+                                      return;
+                                    }
+                                    const selected = uniquePayments.find((ea: any) => ea.payment_id === val);
+                                    if (selected) {
+                                      setPayments(payments.map(px => {
+                                        if (px.id === p.id) {
+                                          return {
+                                            ...px,
+                                            dbPaymentId: selected.payment_id,
+                                            date: selected.payments.payment_date ? new Date(selected.payments.payment_date).toISOString().split("T")[0] : "",
+                                            amount: String(selected.payments.remaining_amount || selected.payments.amount),
+                                          };
+                                        }
+                                        return px;
+                                      }));
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select Payment" /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="none">Manual Entry</SelectItem>
+                                    {uniquePayments.filter((ea: any) => {
+                                      if (p.type1 === "ADVANCE") return ea.payments.is_advance;
+                                      return !ea.payments.is_advance; // RTGS/NEFT/etc. should filter out advances
+                                    }).map((ea: any) => (
+                                      <SelectItem key={ea.payment_id} value={ea.payment_id}>
+                                        {ea.payments.payment_mode} - ₹{ea.payments.remaining_amount || ea.payments.amount} ({ea.invoices?.organizations?.trade_name || "Unlinked"})
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              );
+                            })()}
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">With SRK (Type 2)</Label>
                             <Select value={p.type2} onValueChange={(val) => updatePayment(p.id, "type2", val)}>
                               <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select" /></SelectTrigger>
                               <SelectContent>
