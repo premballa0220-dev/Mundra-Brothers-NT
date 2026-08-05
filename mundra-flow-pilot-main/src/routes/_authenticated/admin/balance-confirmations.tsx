@@ -205,7 +205,18 @@ function RefundLetterPage() {
     const newInvoicesMap = new Map<string, any>();
     const newPendingAllocations: any[] = [];
     let unallocatedPayments: { id: string, remaining: number }[] = [];
-    const paymentModesUsed = new Set<string>();
+
+    // The "Payment Details" column must always show the real Mundra-to-UTCL
+    // mode (RTGS/NEFT/...), never ADVANCE or TDS, and "Date of Payment" is the
+    // current payment's date — not the advance's. An advance is only ever
+    // folded into the invoice's Amount Paid.
+    const primaryPayments = activePayments.filter(
+      (p) => p.type1 !== "ADVANCE" && p.type1 !== "TDS" && p.type1 !== "none",
+    );
+    const displayMode =
+      Array.from(new Set(primaryPayments.map((p) => p.type1))).join(", ") || "RTGS";
+    const displayPayDate =
+      primaryPayments.find((p) => p.date)?.date || new Date().toISOString().split("T")[0];
 
     for (const ap of activePayments) {
       const dbPayment = eligibleAllocations.find((ea: any) => ea.payment_id === ap.dbPaymentId);
@@ -218,35 +229,39 @@ function RefundLetterPage() {
         setTpcCode(org.tp_code || "");
       }
 
-      if (ap.type1 !== "ADVANCE" && ap.type1 !== "TDS" && ap.type1 !== "none") {
-        paymentModesUsed.add(ap.type1);
-      }
-
       const allocationsForThisPayment = eligibleAllocations.filter((ea: any) => ea.payment_id === ap.dbPaymentId && ea.invoice_id);
-      
+
       if (allocationsForThisPayment.length > 0) {
         let remainingToAllocate = Number(ap.amount);
         for (const alloc of allocationsForThisPayment) {
           if (remainingToAllocate <= 0) break;
-          const allocAmount = Math.min(Number(alloc.allocated_amount), remainingToAllocate);
-          remainingToAllocate -= allocAmount;
-          
+
           const invId = alloc.invoice_id;
+          const invoiceTotal = Number(alloc.invoices.amount) || 0;
+
           if (!newInvoicesMap.has(invId)) {
             newInvoicesMap.set(invId, {
               id: crypto.randomUUID(),
               date: alloc.invoices.invoice_date ? new Date(alloc.invoices.invoice_date).toISOString().split("T")[0] : "",
               invoiceNumber: alloc.invoices.invoice_number,
-              amount: Number(alloc.invoices.amount),
-              paymentDetails: ap.type1,
-              dateOfPayment: alloc.payments.payment_date ? new Date(alloc.payments.payment_date).toISOString().split("T")[0] : "",
+              amount: invoiceTotal,
+              paymentDetails: displayMode,
+              dateOfPayment: displayPayDate,
               amountPaid: 0,
               paymentId: ap.dbPaymentId,
               invoiceId: invId
             });
           }
+
+          // Amount Paid can never exceed the invoice value, even when a current
+          // payment and an advance both land on the same invoice.
+          const room = Math.max(0, invoiceTotal - newInvoicesMap.get(invId).amountPaid);
+          const allocAmount = Math.min(Number(alloc.allocated_amount), remainingToAllocate, room);
+          if (allocAmount <= 0) continue;
+
+          remainingToAllocate -= allocAmount;
           newInvoicesMap.get(invId).amountPaid += allocAmount;
-          
+
           newPendingAllocations.push({
             paymentId: ap.dbPaymentId,
             invoiceId: invId,
@@ -260,37 +275,39 @@ function RefundLetterPage() {
     }
 
     if (unallocatedPayments.length > 0 && pendingInvoices.length > 0) {
-      const modeStr = Array.from(paymentModesUsed).join(", ") || "RTGS";
-      const mainPayment = activePayments.find(p => p.type1 !== "ADVANCE" && p.type1 !== "TDS");
-      const payDate = mainPayment?.date || new Date().toISOString().split("T")[0];
-
       for (const pending of pendingInvoices) {
         if (unallocatedPayments.length === 0) break;
         let outstanding = Number(pending.outstanding_amount);
         if (outstanding <= 0) continue;
 
+        const invoiceTotal = Number(pending.amount) || 0;
+
         while (outstanding > 0 && unallocatedPayments.length > 0) {
           const currentPay = unallocatedPayments[0];
-          const allocateAmt = Math.min(currentPay.remaining, outstanding);
-          
-          currentPay.remaining -= allocateAmt;
-          outstanding -= allocateAmt;
 
           if (!newInvoicesMap.has(pending.id)) {
             newInvoicesMap.set(pending.id, {
               id: crypto.randomUUID(),
               date: pending.invoice_date ? new Date(pending.invoice_date).toISOString().split("T")[0] : "",
               invoiceNumber: pending.invoice_number,
-              amount: Number(pending.amount),
-              paymentDetails: modeStr,
-              dateOfPayment: payDate,
+              amount: invoiceTotal,
+              paymentDetails: displayMode,
+              dateOfPayment: displayPayDate,
               amountPaid: 0,
               paymentId: "",
               invoiceId: pending.id
             });
           }
+
+          // Never let Amount Paid exceed the invoice value.
+          const room = Math.max(0, invoiceTotal - newInvoicesMap.get(pending.id).amountPaid);
+          const allocateAmt = Math.min(currentPay.remaining, outstanding, room);
+          if (allocateAmt <= 0) break;
+
+          currentPay.remaining -= allocateAmt;
+          outstanding -= allocateAmt;
           newInvoicesMap.get(pending.id).amountPaid += allocateAmt;
-          
+
           newPendingAllocations.push({
             paymentId: currentPay.id,
             invoiceId: pending.id,
@@ -463,6 +480,17 @@ function RefundLetterPage() {
                     </Button>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    {/* The printed letter shows one figure for the main table
+                        subtotal, the party total and the refund box. Warn here
+                        (on screen only) if the rows below don't add up to it. */}
+                    {Math.abs(totalPaymentAmount - totalAmountPaid) > 0.01 && (
+                      <div className="rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900">
+                        <span className="font-semibold">Totals don't match.</span> These payment rows
+                        add up to {formatAmount(String(totalPaymentAmount))}, but the invoice table
+                        shows {formatAmount(String(totalAmountPaid))}. The letter will print{" "}
+                        {formatAmount(String(totalAmountPaid))} — adjust the rows so they agree.
+                      </div>
+                    )}
                     {payments.map((p, index) => (
                       <div key={p.id} className="relative border rounded-md p-3 space-y-3 bg-slate-50/50">
                         <Button
