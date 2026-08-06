@@ -258,8 +258,15 @@ function RefundLetterPage() {
           const allocAmount = Math.min(Number(alloc.allocated_amount), remainingToAllocate, room);
           if (allocAmount <= 0) continue;
 
+          // TDS withheld against this invoice settles it too — the client kept
+          // that slice back rather than paying it in cash — so it counts toward
+          // Amount Paid, but it never consumes the cash payment's balance.
+          const tdsForAlloc = Number((alloc as any).tds_amount) || 0;
+          const tdsRoom = Math.max(0, room - allocAmount);
+          const tdsApplied = Math.min(tdsForAlloc, tdsRoom);
+
           remainingToAllocate -= allocAmount;
-          newInvoicesMap.get(invId).amountPaid += allocAmount;
+          newInvoicesMap.get(invId).amountPaid += allocAmount + tdsApplied;
 
           newPendingAllocations.push({
             paymentId: ap.dbPaymentId,

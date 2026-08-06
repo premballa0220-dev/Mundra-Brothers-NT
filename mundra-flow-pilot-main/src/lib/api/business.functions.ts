@@ -4002,6 +4002,10 @@ export const getAdminUTCLPayments = createServerFn({ method: "GET" })
             )
           )
         ),
+        direct_dispatch:dispatch_requests!payments_dispatch_request_id_fkey (
+          id,
+          invoice_number
+        ),
         invoice_allocations (
           invoice_id,
           invoices (
@@ -4589,6 +4593,20 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
             amount
           )
         ),
+        linked_dispatches:dispatch_requests!utcl_payment_id (
+          id,
+          invoice_number,
+          quantity,
+          purchase_orders (
+            locked_rate
+          ),
+          invoices (
+            id,
+            invoice_number,
+            invoice_date,
+            amount
+          )
+        ),
         purchase_orders!payments_purchase_order_id_fkey (
           po_number
         ),
@@ -4601,6 +4619,7 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
         invoice_allocations (
           id,
           allocated_amount,
+          tds_amount,
           invoice_id,
           invoices (
             id,
@@ -4665,6 +4684,7 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
           eligibleItems.push({
             id: alloc.id,
             allocated_amount: alloc.allocated_amount,
+            tds_amount: (alloc as any).tds_amount ?? 0,
             payment_id: p.id,
             invoice_id: alloc.invoice_id,
             payments: {
@@ -4685,8 +4705,16 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
           });
         }
       } else {
-        // Payment is unallocated (e.g. delay in linking or on-account)
-        const dr = p.dispatch_requests;
+        // Payment is unallocated (e.g. delay in linking or on-account).
+        // A dispatch reaches the payment either through payments.dispatch_request_id
+        // (set from fifo_payment_rpc_fix_4 onward) or through
+        // dispatch_requests.utcl_payment_id (older RPCs). Try both, so the real
+        // invoice number is used instead of falling back to the PO number.
+        const linked = (p as any).linked_dispatches;
+        const dr =
+          p.dispatch_requests ||
+          (Array.isArray(linked) ? linked[0] : linked) ||
+          null;
         const po = p.purchase_orders;
         let invoiceNumber = "Unlinked Payment";
         let invoiceAmount = p.amount;
@@ -4751,6 +4779,10 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
         `)
         .in("organization_id", Array.from(clientOrgIds))
         .in("status", ["unpaid", "partially_paid"])
+        // An opening balance is a carried-forward figure, not a UTCL dispatch,
+        // so it can never be claimed on a refund letter. Without this it is
+        // always the oldest row and FIFO swallowed every payment into it.
+        .eq("is_opening_balance", false)
         .order("invoice_date", { ascending: true });
         
       if (!invError && invs) {

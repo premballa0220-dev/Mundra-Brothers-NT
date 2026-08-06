@@ -1400,12 +1400,28 @@ function AdminPaymentsPage() {
                           let clientName = p.organizations?.legal_name || "Unknown Client";
                           let poNumber = p.purchase_orders?.po_number || (p.is_advance ? "Advance" : "On Account");
 
-                          // Extract unique invoice numbers from allocations
+                          // Invoice numbers can come from explicit allocations,
+                          // from the dispatch linked via utcl_payment_id, or from
+                          // the one on payments.dispatch_request_id — which of
+                          // these is populated depends on the RPC version, so
+                          // gather all of them.
+                          const linkedDrs = Array.isArray(p.dispatch_requests)
+                            ? p.dispatch_requests
+                            : p.dispatch_requests
+                              ? [p.dispatch_requests]
+                              : [];
+                          const directDr = Array.isArray(p.direct_dispatch)
+                            ? p.direct_dispatch[0]
+                            : p.direct_dispatch;
                           const invNumbers = Array.from(
                             new Set(
-                              (p.invoice_allocations || [])
-                                .map((ia: any) => ia.invoices?.invoice_number)
-                                .filter(Boolean)
+                              [
+                                ...(p.invoice_allocations || []).map(
+                                  (ia: any) => ia.invoices?.invoice_number,
+                                ),
+                                ...linkedDrs.map((d: any) => d?.invoice_number),
+                                directDr?.invoice_number,
+                              ].filter(Boolean),
                             )
                           ) as string[];
 
