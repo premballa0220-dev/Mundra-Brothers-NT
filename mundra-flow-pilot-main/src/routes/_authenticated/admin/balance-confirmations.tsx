@@ -527,6 +527,18 @@ function RefundLetterPage() {
                             {(() => {
                               // Deduplicate by payment_id
                               const uniquePayments = Array.from(new Map(eligibleAllocations.map((ea: any) => [ea.payment_id, ea])).values());
+
+                              // A payment can cover several invoices, so gather
+                              // every invoice number behind each payment for the
+                              // dropdown label.
+                              const invoiceNumbersByPayment = new Map<string, string[]>();
+                              for (const ea of eligibleAllocations as any[]) {
+                                const num = ea.invoices?.invoice_number;
+                                if (!num) continue;
+                                const list = invoiceNumbersByPayment.get(ea.payment_id) || [];
+                                if (!list.includes(num)) list.push(num);
+                                invoiceNumbersByPayment.set(ea.payment_id, list);
+                              }
                               
                               return (
                                 <Select 
@@ -558,11 +570,19 @@ function RefundLetterPage() {
                                     {uniquePayments.filter((ea: any) => {
                                       if (p.type1 === "ADVANCE") return ea.payments.is_advance;
                                       return !ea.payments.is_advance; // RTGS/NEFT/etc. should filter out advances
-                                    }).map((ea: any) => (
-                                      <SelectItem key={ea.payment_id} value={ea.payment_id}>
-                                        {ea.payments.payment_mode} - ₹{ea.payments.remaining_amount || ea.payments.amount} ({ea.invoices?.organizations?.trade_name || "Unlinked"})
-                                      </SelectItem>
-                                    ))}
+                                    }).map((ea: any) => {
+                                      const invNums = invoiceNumbersByPayment.get(ea.payment_id) || [];
+                                      const invLabel =
+                                        invNums.length > 0 ? invNums.join(", ") : "Unlinked";
+                                      return (
+                                        <SelectItem key={ea.payment_id} value={ea.payment_id}>
+                                          {ea.payments.payment_mode} — ₹
+                                          {ea.payments.remaining_amount || ea.payments.amount} ·{" "}
+                                          {ea.invoices?.organizations?.trade_name || "Unknown client"} ·
+                                          Inv: {invLabel}
+                                        </SelectItem>
+                                      );
+                                    })}
                                   </SelectContent>
                                 </Select>
                               );

@@ -276,6 +276,18 @@ function AdminPaymentsPage() {
       maximumFractionDigits: 0,
     }).format(val);
 
+  // A dispatch draws from one PO line item, so that item's rate is the accurate
+  // one. purchase_orders.locked_rate is only a legacy copy of the FIRST line
+  // item, so it is wrong for any other product on a multi-product PO — use it
+  // only as a fallback for older dispatches that predate line items.
+  const rateForDispatch = (d: any): number =>
+    Number(
+      d?.purchase_order_item?.locked_rate ??
+        (d?.purchase_order || d?.purchase_orders)?.locked_rate ??
+        0,
+    ) || 0;
+  const valueOfDispatch = (d: any): number => (Number(d?.quantity) || 0) * rateForDispatch(d);
+
   // Pre-calculate Total UTCL coverage for dispatches
   const mundraDispatchCoverage = new Map<string, { fullyCovered: boolean; paidAmount: number; remaining: number }>();
   const clientDispatchCoverage = new Map<string, { fullyCovered: boolean; paidAmount: number; remaining: number }>();
@@ -320,8 +332,7 @@ function AdminPaymentsPage() {
 
     sortedDispatches.forEach((d: any) => {
       const po = d.purchase_order || d.purchase_orders;
-      const rate = po?.locked_rate || d.purchase_order_item?.locked_rate || 0;
-      const dispatchValue = d.quantity * rate;
+      const dispatchValue = valueOfDispatch(d);
 
       let clientPaidForThis = explicitClientPaid.get(d.id) || 0;
       let mundraPaidForThis = explicitMundraPaid.get(d.id) || 0;
@@ -348,14 +359,16 @@ function AdminPaymentsPage() {
 
       const clientRemaining = Math.max(0, dispatchValue - clientPaidForThis);
       clientDispatchCoverage.set(d.id, {
-        fullyCovered: clientRemaining <= 0,
+        // A dispatch with no resolvable value (rate missing) is NOT "fully
+        // paid" — treating it as such silently hides it from the operator.
+        fullyCovered: dispatchValue > 0 && clientRemaining <= 0,
         paidAmount: clientPaidForThis,
         remaining: clientRemaining
       });
 
       const mundraRemaining = Math.max(0, dispatchValue - (clientPaidForThis + mundraPaidForThis));
       mundraDispatchCoverage.set(d.id, {
-        fullyCovered: mundraRemaining <= 0,
+        fullyCovered: dispatchValue > 0 && mundraRemaining <= 0,
         paidAmount: clientPaidForThis + mundraPaidForThis,
         remaining: mundraRemaining
       });
@@ -382,9 +395,8 @@ function AdminPaymentsPage() {
 
   const toggleDispatchSelection = (dispatch: any) => {
     const exists = selectedDispatches.find((d) => d.id === dispatch.id);
-    const rate = (dispatch.purchase_order || dispatch.purchase_orders)?.locked_rate || dispatch.purchase_order_item?.locked_rate || 0;
-    const val = dispatch.quantity * rate;
-    const remainingBalance = mundraDispatchCoverage.get(dispatch.id)?.remaining ?? val;
+    const remainingBalance =
+      mundraDispatchCoverage.get(dispatch.id)?.remaining ?? valueOfDispatch(dispatch);
 
     let newSelection = [];
     if (exists) {
@@ -406,9 +418,7 @@ function AdminPaymentsPage() {
 
     // Auto-calculate amount for the payment box
     const totalAmountCalc = newSelection.reduce((acc, d) => {
-      const drRate = (d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0;
-      const drVal = d.quantity * drRate;
-      const drRem = mundraDispatchCoverage.get(d.id)?.remaining ?? drVal;
+      const drRem = mundraDispatchCoverage.get(d.id)?.remaining ?? valueOfDispatch(d);
       return acc + drRem;
     }, 0);
     setAmount(totalAmountCalc);
@@ -626,7 +636,7 @@ function AdminPaymentsPage() {
                     <TableBody>
                       {selectedDispatches.map((dispatch) => {
                         const po = dispatch.purchase_order;
-                        const dispatchValue = dispatch.quantity * (po?.locked_rate || 0);
+                        const dispatchValue = valueOfDispatch(dispatch);
                         const paidToUtcl = mundraDispatchCoverage.get(dispatch.id)?.paidAmount || 0;
                         const remaining = mundraDispatchCoverage.get(dispatch.id)?.remaining ?? Math.max(0, dispatchValue - paidToUtcl);
 
@@ -1114,11 +1124,13 @@ function AdminPaymentsPage() {
                                 po.status !== "cancelled",
                             ) || [];
 
+                          // Show every open dispatch for the client. Ones the
+                          // client has already fully paid stay visible (so the
+                          // invoice number is always available) but are locked.
                           let openClientDispatches =
                             dispatches?.filter(
                               (d: any) =>
                                 d.organization_id === clientSelectedOrgId &&
-                                !clientDispatchCoverage.get(d.id)?.fullyCovered &&
                                 [
                                   "approved",
                                   "auto_approved",
@@ -1136,19 +1148,19 @@ function AdminPaymentsPage() {
                                     <h4 className="font-medium text-sm text-muted-foreground">Dispatches (Preferred)</h4>
                                     {openClientDispatches.map((d: any) => {
                                       const hasPoSelected = clientSelectedReferences.some(r => r.startsWith('po_'));
+                                      const isFullyPaid = !!clientDispatchCoverage.get(d.id)?.fullyCovered;
                                       return (
                                         <div key={d.id} className="flex flex-col">
                                           <div className="flex items-center space-x-3">
                                             <Checkbox
                                               id={`ref_${d.id}`}
-                                              disabled={hasPoSelected}
+                                              disabled={hasPoSelected || isFullyPaid}
                                               checked={clientSelectedReferences.includes(`dr_${d.id}`)}
                                               onCheckedChange={(checked) => {
                                                 let newRefs = [...clientSelectedReferences];
                                                 if (checked) {
                                                   newRefs = [...newRefs.filter(r => !r.startsWith('po_')), `dr_${d.id}`];
-                                                  const rate = (d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0;
-                                                  const val = (d.quantity || 0) * rate;
+                                                  const val = valueOfDispatch(d);
                                                   const remaining = clientDispatchCoverage.get(d.id)?.remaining ?? val;
                                                   setClientPaymentOpts(prev => ({
                                                     ...prev,
@@ -1165,9 +1177,12 @@ function AdminPaymentsPage() {
                                                 setClientSelectedReferences(newRefs);
                                               }}
                                             />
-                                            <Label htmlFor={`ref_${d.id}`} className={`font-normal cursor-pointer text-sm leading-snug ${hasPoSelected ? 'opacity-50' : ''}`}>
+                                            <Label htmlFor={`ref_${d.id}`} className={`font-normal cursor-pointer text-sm leading-snug ${hasPoSelected || isFullyPaid ? 'opacity-50' : ''}`}>
                                               Dispatch: Qty {d.quantity} MT {d.invoice_number ? `(Inv: ${d.invoice_number})` : ""} {(d.purchase_order || d.purchase_orders)?.po_number ? `(PO: ${(d.purchase_order || d.purchase_orders).po_number})` : ""}
-                                              {` - Bal: ${formatCurrency(clientDispatchCoverage.get(d.id)?.remaining ?? (d.quantity * ((d.purchase_order || d.purchase_orders)?.locked_rate || d.purchase_order_item?.locked_rate || 0)))}`}
+                                              {` - Bal: ${formatCurrency(clientDispatchCoverage.get(d.id)?.remaining ?? valueOfDispatch(d))}`}
+                                              {isFullyPaid && (
+                                                <span className="ml-1 text-xs font-medium text-success">— fully paid</span>
+                                              )}
                                             </Label>
                                           </div>
 
@@ -1224,7 +1239,13 @@ function AdminPaymentsPage() {
                                               onCheckedChange={(checked) => {
                                                 if (checked) {
                                                   setClientSelectedReferences([`po_${po.id}`]);
-                                                  const poAmount = (po.original_quantity || 0) * (po.locked_rate || 0);
+                                                  // total_value covers every line item on a
+                                                  // multi-product PO; the quantity x rate fallback
+                                                  // is only the first item, for older POs.
+                                                  const poAmount =
+                                                    Number(po.total_value) ||
+                                                    (Number(po.original_quantity) || 0) *
+                                                      (Number(po.locked_rate) || 0);
                                                   setClientPaymentOpts({
                                                     [`po_${po.id}`]: { isAdvance: false, amount: poAmount }
                                                   });
