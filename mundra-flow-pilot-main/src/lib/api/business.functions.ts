@@ -2266,12 +2266,42 @@ export const getDispatchRequests = createServerFn({ method: "GET" })
       }
     }
 
+    // Attach the invoice raised for each dispatch, with how much of it is still
+    // outstanding. Recording a payment against a dispatch needs this so the money
+    // can be allocated to that dispatch's own invoice instead of being auto-FIFO'd
+    // onto the client's oldest invoice.
+    const invoiceByDispatch = new Map<string, any>();
+    const drIds = (dispatchRequests || []).map((dr: any) => dr.id);
+    if (drIds.length > 0) {
+      const { data: invRows } = await supabase
+        .from("invoices")
+        .select("id, invoice_number, invoice_date, amount, dispatch_request_id, status, invoice_allocations(allocated_amount)")
+        .in("dispatch_request_id", drIds)
+        .neq("status", "cancelled");
+
+      for (const inv of invRows || []) {
+        if (!inv.dispatch_request_id) continue;
+        const allocated = (inv.invoice_allocations || []).reduce(
+          (s: number, a: any) => s + (Number(a.allocated_amount) || 0),
+          0,
+        );
+        invoiceByDispatch.set(inv.dispatch_request_id, {
+          id: inv.id,
+          invoice_number: inv.invoice_number,
+          invoice_date: inv.invoice_date,
+          amount: Number(inv.amount) || 0,
+          outstanding: Math.max(0, (Number(inv.amount) || 0) - allocated),
+        });
+      }
+    }
+
     return (dispatchRequests || []).map((dr: any) => ({
       ...dr,
       purchase_order: purchaseOrderMap.get(dr.purchase_order_id) ?? null,
       purchase_order_item: dr.purchase_order_item_id
         ? (itemMap.get(dr.purchase_order_item_id) ?? null)
         : null,
+      invoice: invoiceByDispatch.get(dr.id) ?? null,
       organization: organizationsMap.get(dr.organization_id) ?? null,
     }));
   });

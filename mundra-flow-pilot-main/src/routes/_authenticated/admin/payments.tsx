@@ -222,6 +222,11 @@ function AdminPaymentsPage() {
 
         let dispatchRequestIds: string[] | undefined = undefined;
         let purchaseOrderId: string | undefined = undefined;
+        // Without an explicit allocation the RPC falls back to auto-FIFO, which
+        // walks the client's oldest invoices and dumps the money on the opening
+        // balance — losing the link to the dispatch actually being paid for.
+        // Allocate to the selected dispatch's own invoice instead.
+        let allocations: Array<{ invoice_id: string; allocated_amount: number; tds_amount: number }> | undefined;
 
         if (ref.startsWith("dr_")) {
           const drId = ref.replace("dr_", "");
@@ -229,6 +234,16 @@ function AdminPaymentsPage() {
           const dr = dispatches?.find((d: any) => d.id === drId);
           if (dr && dr.purchase_order_id) {
             purchaseOrderId = dr.purchase_order_id;
+          }
+          // An advance is deliberately not tied to an invoice yet.
+          if (!opt.isAdvance && dr?.invoice?.id) {
+            // The RPC rejects an allocation larger than what the invoice still owes.
+            const allocatable = Math.min(opt.amount, Number(dr.invoice.outstanding) || 0);
+            if (allocatable > 0) {
+              allocations = [
+                { invoice_id: dr.invoice.id, allocated_amount: allocatable, tds_amount: 0 },
+              ];
+            }
           }
         } else if (ref.startsWith("po_")) {
           purchaseOrderId = ref.replace("po_", "");
@@ -245,6 +260,7 @@ function AdminPaymentsPage() {
           isUtclPayment: true,
           isClientToUtcl: true,
           isAdvance: opt.isAdvance,
+          allocations,
         });
       });
       await Promise.all(promises);
@@ -1178,7 +1194,7 @@ function AdminPaymentsPage() {
                                               }}
                                             />
                                             <Label htmlFor={`ref_${d.id}`} className={`font-normal cursor-pointer text-sm leading-snug ${hasPoSelected || isFullyPaid ? 'opacity-50' : ''}`}>
-                                              Dispatch: Qty {d.quantity} MT {d.invoice_number ? `(Inv: ${d.invoice_number})` : ""} {(d.purchase_order || d.purchase_orders)?.po_number ? `(PO: ${(d.purchase_order || d.purchase_orders).po_number})` : ""}
+                                              Dispatch: Qty {d.quantity} MT {(d.invoice?.invoice_number || d.invoice_number) ? `(Inv: ${d.invoice?.invoice_number || d.invoice_number})` : ""} {(d.purchase_order || d.purchase_orders)?.po_number ? `(PO: ${(d.purchase_order || d.purchase_orders).po_number})` : ""}
                                               {` - Bal: ${formatCurrency(clientDispatchCoverage.get(d.id)?.remaining ?? valueOfDispatch(d))}`}
                                               {isFullyPaid && (
                                                 <span className="ml-1 text-xs font-medium text-success">— fully paid</span>
