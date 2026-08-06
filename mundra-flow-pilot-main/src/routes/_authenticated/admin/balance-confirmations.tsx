@@ -28,6 +28,9 @@ function RefundLetterPage() {
   const { data: queryData } = useQuery({ queryKey: ["admin-refund-eligible-allocations"], queryFn: () => getRefundEligibleAllocations() });
   const eligibleAllocations = queryData?.eligibleItems || [];
   const pendingInvoices = queryData?.pendingInvoices || [];
+  // invoice_id -> the Mundra-to-UTCL payment that covers it (date + mode).
+  const mundraPaymentByInvoice: Record<string, { payment_date: string; payment_mode: string }> =
+    (queryData as any)?.mundraPaymentByInvoice || {};
 
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [refNo, setRefNo] = useState("Refund\\25-26\\0059");
@@ -206,17 +209,9 @@ function RefundLetterPage() {
     const newPendingAllocations: any[] = [];
     let unallocatedPayments: { id: string, remaining: number }[] = [];
 
-    // The "Payment Details" column must always show the real Mundra-to-UTCL
-    // mode (RTGS/NEFT/...), never ADVANCE or TDS, and "Date of Payment" is the
-    // current payment's date — not the advance's. An advance is only ever
-    // folded into the invoice's Amount Paid.
-    const primaryPayments = activePayments.filter(
-      (p) => p.type1 !== "ADVANCE" && p.type1 !== "TDS" && p.type1 !== "none",
-    );
-    const displayMode =
-      Array.from(new Set(primaryPayments.map((p) => p.type1))).join(", ") || "RTGS";
-    const displayPayDate =
-      primaryPayments.find((p) => p.date)?.date || new Date().toISOString().split("T")[0];
+    // "Payment Details" and "Date of Payment" come from the Mundra-to-UTCL
+    // payment covering each invoice (mundraPaymentByInvoice), never from the
+    // client payment or an advance — an advance only folds into Amount Paid.
 
     for (const ap of activePayments) {
       const dbPayment = eligibleAllocations.find((ea: any) => ea.payment_id === ap.dbPaymentId);
@@ -240,13 +235,17 @@ function RefundLetterPage() {
           const invoiceTotal = Number(alloc.invoices.amount) || 0;
 
           if (!newInvoicesMap.has(invId)) {
+            // Columns show the Mundra-to-UTCL payment covering this invoice.
+            const mundraPay = mundraPaymentByInvoice[invId];
             newInvoicesMap.set(invId, {
               id: crypto.randomUUID(),
               date: alloc.invoices.invoice_date ? new Date(alloc.invoices.invoice_date).toISOString().split("T")[0] : "",
               invoiceNumber: alloc.invoices.invoice_number,
               amount: invoiceTotal,
-              paymentDetails: displayMode,
-              dateOfPayment: displayPayDate,
+              paymentDetails: mundraPay?.payment_mode || "",
+              dateOfPayment: mundraPay?.payment_date
+                ? new Date(mundraPay.payment_date).toISOString().split("T")[0]
+                : "",
               amountPaid: 0,
               paymentId: ap.dbPaymentId,
               invoiceId: invId
@@ -286,13 +285,16 @@ function RefundLetterPage() {
           const currentPay = unallocatedPayments[0];
 
           if (!newInvoicesMap.has(pending.id)) {
+            const mundraPay = mundraPaymentByInvoice[pending.id];
             newInvoicesMap.set(pending.id, {
               id: crypto.randomUUID(),
               date: pending.invoice_date ? new Date(pending.invoice_date).toISOString().split("T")[0] : "",
               invoiceNumber: pending.invoice_number,
               amount: invoiceTotal,
-              paymentDetails: displayMode,
-              dateOfPayment: displayPayDate,
+              paymentDetails: mundraPay?.payment_mode || "",
+              dateOfPayment: mundraPay?.payment_date
+                ? new Date(mundraPay.payment_date).toISOString().split("T")[0]
+                : "",
               amountPaid: 0,
               paymentId: "",
               invoiceId: pending.id
@@ -356,6 +358,14 @@ function RefundLetterPage() {
   const totalPaymentAmount = useMemo(() => {
     return payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
   }, [payments]);
+
+  // Invoices with no Mundra-to-UTCL payment on record print blank Payment
+  // Details / Date of Payment cells — surface them rather than let a letter go
+  // out with holes in it.
+  const invoicesMissingMundraPayment = useMemo(
+    () => invoices.filter((inv) => inv.invoiceNumber && !inv.dateOfPayment).map((inv) => inv.invoiceNumber),
+    [invoices],
+  );
 
   const paymentTypes = ["RTGS", "TDS", "ADVANCE", "Credit Note", "Debit Note", "NEFT", "Cheque", "Other"];
 
@@ -483,6 +493,17 @@ function RefundLetterPage() {
                     {/* The printed letter shows one figure for the main table
                         subtotal, the party total and the refund box. Warn here
                         (on screen only) if the rows below don't add up to it. */}
+                    {invoicesMissingMundraPayment.length > 0 && (
+                      <div className="rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900">
+                        <span className="font-semibold">
+                          No Mundra-to-UTCL payment found for{" "}
+                          {invoicesMissingMundraPayment.join(", ")}.
+                        </span>{" "}
+                        Payment Details and Date of Payment will print blank for{" "}
+                        {invoicesMissingMundraPayment.length > 1 ? "these invoices" : "this invoice"}.
+                        Record the Mundra-to-UTCL payment first, or fill the cells manually.
+                      </div>
+                    )}
                     {Math.abs(totalPaymentAmount - totalAmountPaid) > 0.01 && (
                       <div className="rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900">
                         <span className="font-semibold">Totals don't match.</span> These payment rows
