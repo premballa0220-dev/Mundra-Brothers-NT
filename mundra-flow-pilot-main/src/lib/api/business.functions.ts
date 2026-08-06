@@ -4769,11 +4769,10 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
     }
 
     // The refund letter's "Payment Details" and "Date of Payment" columns must
-    // show the MUNDRA-to-UTCL payment, not the client's. Resolve it per invoice:
-    //   invoice.dispatch_request_id -> dispatch.utcl_payment_id -> payment
-    // We re-check is_utcl_payment/is_client_to_utcl on the payment itself rather
-    // than trusting utcl_payment_id, because RPC versions before
-    // fifo_payment_rpc_fix_3 also let client-to-UTCL payments overwrite it.
+    // show the MUNDRA-to-UTCL payment, not the client's. Starting from
+    // invoice.dispatch_request_id, a Mundra payment can be linked to that
+    // dispatch three different ways, so all three are tried (most specific
+    // first) before giving up and leaving the cells blank.
     const mundraPaymentByInvoice: Record<string, { payment_date: string; payment_mode: string }> = {};
     const allInvoiceIds = Array.from(
       new Set([
@@ -4795,43 +4794,60 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
       if (dispatchIds.length > 0) {
         const { data: drRows } = await supabase
           .from("dispatch_requests")
-          .select("id, utcl_payment_id")
+          .select("id, purchase_order_id, utcl_payment_id")
           .in("id", dispatchIds);
 
-        const utclPaymentIds = Array.from(
-          new Set((drRows || []).map((r: any) => r.utcl_payment_id).filter(Boolean)),
-        );
+        // Pull every Mundra-to-UTCL payment for these clients, then match it to
+        // a dispatch by any of the three ways one can be linked. Relying on
+        // dispatch.utcl_payment_id alone loses the payment whenever a later
+        // client-to-UTCL payment overwrote that column (RPC versions before
+        // fifo_payment_rpc_fix_3 did exactly that).
+        const { data: mundraPays } = await supabase
+          .from("payments")
+          .select(
+            "id, payment_date, payment_mode, dispatch_request_id, purchase_order_id, is_utcl_payment, is_client_to_utcl",
+          )
+          .in("organization_id", Array.from(clientOrgIds))
+          .eq("is_utcl_payment", true);
 
-        if (utclPaymentIds.length > 0) {
-          const { data: mundraPays } = await supabase
-            .from("payments")
-            .select("id, payment_date, payment_mode, is_utcl_payment, is_client_to_utcl")
-            .in("id", utclPaymentIds)
-            .eq("is_utcl_payment", true);
+        const mundraOnly = (mundraPays || []).filter((mp: any) => !mp.is_client_to_utcl);
 
-          const mundraById = new Map<string, any>();
-          for (const mp of mundraPays || []) {
-            // Mundra -> UTCL only; skip anything flagged client-to-UTCL.
-            if (mp.is_client_to_utcl) continue;
-            mundraById.set(mp.id, mp);
+        const byId = new Map<string, any>();
+        const byDispatch = new Map<string, any>();
+        const byPo = new Map<string, any>();
+        // Newest payment wins when several cover the same reference.
+        const newer = (a: any, b: any) =>
+          !a || new Date(b.payment_date).getTime() >= new Date(a.payment_date).getTime() ? b : a;
+
+        for (const mp of mundraOnly) {
+          byId.set(mp.id, mp);
+          if (mp.dispatch_request_id) {
+            byDispatch.set(mp.dispatch_request_id, newer(byDispatch.get(mp.dispatch_request_id), mp));
           }
-
-          const drToPayment = new Map<string, string>();
-          for (const dr of drRows || []) {
-            if (dr.utcl_payment_id) drToPayment.set(dr.id, dr.utcl_payment_id);
+          if (mp.purchase_order_id) {
+            byPo.set(mp.purchase_order_id, newer(byPo.get(mp.purchase_order_id), mp));
           }
+        }
 
-          for (const r of invRows || []) {
-            if (!r.dispatch_request_id) continue;
-            const payId = drToPayment.get(r.dispatch_request_id);
-            if (!payId) continue;
-            const mp = mundraById.get(payId);
-            if (!mp) continue;
-            mundraPaymentByInvoice[r.id] = {
-              payment_date: mp.payment_date,
-              payment_mode: mp.payment_mode,
-            };
-          }
+        const drById = new Map<string, any>();
+        for (const dr of drRows || []) drById.set(dr.id, dr);
+
+        for (const r of invRows || []) {
+          if (!r.dispatch_request_id) continue;
+          const dr = drById.get(r.dispatch_request_id);
+          if (!dr) continue;
+
+          // Most specific link first, then broaden.
+          const mp =
+            (dr.utcl_payment_id ? byId.get(dr.utcl_payment_id) : undefined) ||
+            byDispatch.get(dr.id) ||
+            (dr.purchase_order_id ? byPo.get(dr.purchase_order_id) : undefined);
+
+          if (!mp) continue;
+          mundraPaymentByInvoice[r.id] = {
+            payment_date: mp.payment_date,
+            payment_mode: mp.payment_mode,
+          };
         }
       }
     }
