@@ -678,6 +678,15 @@ export const createClient = createServerFn({ method: "POST" })
           }),
         )
         .optional(),
+      // Debit notes that make up part of the opening balance, alongside invoices.
+      openingDebitNotes: z
+        .array(
+          z.object({
+            amount: z.number().positive(),
+            date: z.string().min(1),
+          }),
+        )
+        .optional(),
     }),
   )
   .handler(async ({ data, context }) => {
@@ -724,7 +733,12 @@ export const createClient = createServerFn({ method: "POST" })
       include_unpaid_invoices: data.includeUnpaidInvoices,
       restrictions: data.restrictions || null,
       commission_percentage: null,
-      historical_invoices: data.openingInvoices || [],
+      // historical_invoices is JSONB, so debit notes are stored in the same list
+      // with a type marker rather than needing their own column.
+      historical_invoices: [
+        ...(data.openingInvoices || []).map((inv) => ({ ...inv, type: "invoice" })),
+        ...(data.openingDebitNotes || []).map((dn) => ({ ...dn, type: "debit_note" })),
+      ],
     };
     const { error: profileError } = await supabase
       .from("client_commercial_profiles")

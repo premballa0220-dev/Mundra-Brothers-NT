@@ -323,18 +323,30 @@ function AdminClientsPage() {
   const [initialOpeningBalance, setInitialOpeningBalance] = useState<number | "">("");
   const [initialOpeningBalanceDate, setInitialOpeningBalanceDate] = useState("");
   const [openingInvoices, setOpeningInvoices] = useState<{ invoiceNumber: string; amount: number | ""; date: string }[]>([]);
-  useEffect(() => {
-    if (openingInvoices.length > 0) {
-      const sum = openingInvoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
-      setInitialOpeningBalance(sum || "");
+  // Debit notes that form part of the opening balance, alongside the invoices.
+  const [openingDebitNotes, setOpeningDebitNotes] = useState<{ date: string; amount: number | "" }[]>([]);
+  // Draft rows shown inside the "Add Debit Note" dialog; only committed on OK.
+  const [debitNoteDialogOpen, setDebitNoteDialogOpen] = useState(false);
+  const [debitNoteDraft, setDebitNoteDraft] = useState<{ date: string; amount: number | "" }[]>([
+    { date: "", amount: "" },
+  ]);
 
-      const validDates = openingInvoices.map(inv => inv.date).filter(Boolean);
+  useEffect(() => {
+    if (openingInvoices.length > 0 || openingDebitNotes.length > 0) {
+      const invoiceSum = openingInvoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
+      const debitSum = openingDebitNotes.reduce((acc, dn) => acc + (Number(dn.amount) || 0), 0);
+      setInitialOpeningBalance(invoiceSum + debitSum || "");
+
+      const validDates = [
+        ...openingInvoices.map((inv) => inv.date),
+        ...openingDebitNotes.map((dn) => dn.date),
+      ].filter(Boolean);
       if (validDates.length > 0) {
         const latestDate = validDates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
         setInitialOpeningBalanceDate(latestDate);
       }
     }
-  }, [openingInvoices]);
+  }, [openingInvoices, openingDebitNotes]);
 
   const [creditLimit, setCreditLimit] = useState<number | "">("");
   const [annualInterestRate, setAnnualInterestRate] = useState<number | "">("");
@@ -515,10 +527,14 @@ function AdminClientsPage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (openingInvoices.length > 0) {
-      const sum = openingInvoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
+    if (openingInvoices.length > 0 || openingDebitNotes.length > 0) {
+      const sum =
+        openingInvoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0) +
+        openingDebitNotes.reduce((acc, dn) => acc + (Number(dn.amount) || 0), 0);
       if (sum !== Number(initialOpeningBalance || 0)) {
-        toast.error("The sum of historical invoices does not match the Initial Opening Balance.");
+        toast.error(
+          "The sum of historical invoices and debit notes does not match the Initial Opening Balance.",
+        );
         return;
       }
     }
@@ -549,6 +565,9 @@ function AdminClientsPage() {
       initialOpeningBalance: initialOpeningBalance === "" ? undefined : Number(initialOpeningBalance),
       initialOpeningBalanceDate: initialOpeningBalanceDate === "" ? undefined : initialOpeningBalanceDate,
       openingInvoices: openingInvoices.filter(i => i.invoiceNumber && i.amount !== ""),
+      openingDebitNotes: openingDebitNotes
+        .filter((dn) => dn.date && dn.amount !== "")
+        .map((dn) => ({ date: dn.date, amount: Number(dn.amount) })),
     });
   }
 
@@ -720,15 +739,34 @@ function AdminClientsPage() {
                     <h4 className="text-sm font-medium">Opening / Historical Invoices</h4>
                     <div className="space-y-3">
                       <div className="flex justify-between items-center">
-                        <p className="text-xs text-muted-foreground">Optional: Add individual invoices that make up the opening balance.</p>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setOpeningInvoices([...openingInvoices, { invoiceNumber: "", amount: "", date: "" }])}
-                        >
-                          <Plus className="h-3 w-3 mr-1" /> Add Invoice
-                        </Button>
+                        <p className="text-xs text-muted-foreground">Optional: Add individual invoices and debit notes that make up the opening balance.</p>
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setOpeningInvoices([...openingInvoices, { invoiceNumber: "", amount: "", date: "" }])}
+                          >
+                            <Plus className="h-3 w-3 mr-1" /> Add Invoice
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              // Reopen with the notes already added, so the dialog edits
+                              // rather than replaces them.
+                              setDebitNoteDraft(
+                                openingDebitNotes.length > 0
+                                  ? openingDebitNotes.map((dn) => ({ ...dn }))
+                                  : [{ date: "", amount: "" }],
+                              );
+                              setDebitNoteDialogOpen(true);
+                            }}
+                          >
+                            <Plus className="h-3 w-3 mr-1" /> Add Debit Note
+                          </Button>
+                        </div>
                       </div>
                       {openingInvoices.map((inv, idx) => (
                         <div key={idx} className="flex gap-3 items-end p-3 border rounded-md bg-muted/20">
@@ -781,12 +819,62 @@ function AdminClientsPage() {
                           </Button>
                         </div>
                       ))}
-                      {openingInvoices.length > 0 && (
-                        <div className="flex justify-between items-center text-sm px-1 pt-1">
-                          <span className="text-muted-foreground">Sum of Invoices:</span>
-                          <span className="font-medium text-primary">
-                            ₹{openingInvoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0).toLocaleString('en-IN')}
-                          </span>
+                      {openingDebitNotes.length > 0 && (
+                        <div className="space-y-2">
+                          <Label className="text-xs text-muted-foreground">Debit Notes</Label>
+                          {openingDebitNotes.map((dn, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center justify-between gap-3 px-3 py-2 border rounded-md bg-muted/20 text-sm"
+                            >
+                              <span className="text-muted-foreground">
+                                {dn.date ? new Date(dn.date).toLocaleDateString("en-IN") : "No date"}
+                              </span>
+                              <span className="font-medium">
+                                ₹{(Number(dn.amount) || 0).toLocaleString("en-IN")}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive h-7 w-7"
+                                onClick={() =>
+                                  setOpeningDebitNotes(openingDebitNotes.filter((_, i) => i !== idx))
+                                }
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {(openingInvoices.length > 0 || openingDebitNotes.length > 0) && (
+                        <div className="space-y-1 text-sm px-1 pt-1">
+                          {openingInvoices.length > 0 && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground">Sum of Invoices:</span>
+                              <span className="font-medium">
+                                ₹{openingInvoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0).toLocaleString('en-IN')}
+                              </span>
+                            </div>
+                          )}
+                          {openingDebitNotes.length > 0 && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-muted-foreground">Sum of Debit Notes:</span>
+                              <span className="font-medium">
+                                ₹{openingDebitNotes.reduce((acc, dn) => acc + (Number(dn.amount) || 0), 0).toLocaleString('en-IN')}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex justify-between items-center border-t pt-1">
+                            <span className="text-muted-foreground">Total Opening Balance:</span>
+                            <span className="font-semibold text-primary">
+                              ₹{(
+                                openingInvoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0) +
+                                openingDebitNotes.reduce((acc, dn) => acc + (Number(dn.amount) || 0), 0)
+                              ).toLocaleString('en-IN')}
+                            </span>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -801,7 +889,7 @@ function AdminClientsPage() {
                           type="number"
                           placeholder="e.g. 50000"
                           value={initialOpeningBalance}
-                          disabled={openingInvoices.length > 0}
+                          disabled={openingInvoices.length > 0 || openingDebitNotes.length > 0}
                           onChange={(e) =>
                             setInitialOpeningBalance(e.target.value === "" ? "" : Number(e.target.value))
                           }
@@ -915,6 +1003,117 @@ function AdminClientsPage() {
                   </Button>
                 </DialogFooter>
               </form>
+            </DialogContent>
+          </Dialog>
+
+          {/* Add Debit Note — collects date/amount pairs that add into the
+              opening balance alongside the historical invoices. */}
+          <Dialog open={debitNoteDialogOpen} onOpenChange={setDebitNoteDialogOpen}>
+            <DialogContent className="sm:max-w-[520px]">
+              <DialogHeader>
+                <DialogTitle>Add Debit Notes</DialogTitle>
+                <DialogDescription>
+                  These are added to the sum of invoices to make up the opening balance.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-3 py-2 max-h-[50vh] overflow-y-auto">
+                {debitNoteDraft.map((dn, idx) => (
+                  <div key={idx} className="flex gap-3 items-end">
+                    <div className="flex-1 space-y-1">
+                      <Label className="text-xs">Date</Label>
+                      <Input
+                        type="date"
+                        value={dn.date}
+                        onChange={(e) => {
+                          const next = [...debitNoteDraft];
+                          next[idx] = { ...next[idx], date: e.target.value };
+                          setDebitNoteDraft(next);
+                        }}
+                      />
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <Label className="text-xs">Debit (₹)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0"
+                        value={dn.amount}
+                        onChange={(e) => {
+                          const next = [...debitNoteDraft];
+                          next[idx] = {
+                            ...next[idx],
+                            amount: e.target.value === "" ? "" : Number(e.target.value),
+                          };
+                          setDebitNoteDraft(next);
+                        }}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive h-9 w-9 mb-0.5"
+                      disabled={debitNoteDraft.length === 1}
+                      onClick={() => setDebitNoteDraft(debitNoteDraft.filter((_, i) => i !== idx))}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDebitNoteDraft([...debitNoteDraft, { date: "", amount: "" }])}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Add another
+                </Button>
+
+                <div className="flex justify-between items-center text-sm border-t pt-2">
+                  <span className="text-muted-foreground">Total of these debit notes:</span>
+                  <span className="font-semibold text-primary">
+                    ₹
+                    {debitNoteDraft
+                      .reduce((acc, dn) => acc + (Number(dn.amount) || 0), 0)
+                      .toLocaleString("en-IN")}
+                  </span>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setDebitNoteDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    // Keep only rows that actually carry a value.
+                    const valid = debitNoteDraft.filter(
+                      (dn) => dn.date && dn.amount !== "" && Number(dn.amount) > 0,
+                    );
+                    const incomplete = debitNoteDraft.filter(
+                      (dn) =>
+                        (dn.date || (dn.amount !== "" && Number(dn.amount) > 0)) &&
+                        !(dn.date && dn.amount !== "" && Number(dn.amount) > 0),
+                    );
+                    if (incomplete.length > 0) {
+                      toast.error("Each debit note needs both a date and an amount greater than 0.");
+                      return;
+                    }
+                    setOpeningDebitNotes(valid);
+                    setDebitNoteDialogOpen(false);
+                  }}
+                >
+                  OK
+                </Button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
         </header>

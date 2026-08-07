@@ -354,7 +354,7 @@ function ExpandableLedgerRow({ row, clientFilter }: { row: any; clientFilter: st
                 <TableBody>
                   {row.meta.historical_invoices.map((inv: any, idx: number) => (
                     <TableRow key={idx}>
-                      <TableCell className="text-xs py-2">{inv.invoiceNo}</TableCell>
+                      <TableCell className="text-xs py-2">{inv.invoiceNo || inv.invoiceNumber || (inv.type === "debit_note" ? "Debit Note" : "—")}</TableCell>
                       <TableCell className="text-xs py-2">{inv.date ? formatDate(inv.date) : "—"}</TableCell>
                       <TableCell className="text-xs text-right pr-4 py-2 font-medium">{formatCurrency(Number(inv.amount))}</TableCell>
                     </TableRow>
