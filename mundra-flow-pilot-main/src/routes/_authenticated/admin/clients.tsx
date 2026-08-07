@@ -322,13 +322,13 @@ function AdminClientsPage() {
 
   const [initialOpeningBalance, setInitialOpeningBalance] = useState<number | "">("");
   const [initialOpeningBalanceDate, setInitialOpeningBalanceDate] = useState("");
-  const [openingInvoices, setOpeningInvoices] = useState<{ invoiceNumber: string; amount: number | ""; date: string }[]>([]);
+  const [openingInvoices, setOpeningInvoices] = useState<{ invoiceNumber: string; amount: number | ""; date: string; mundraPaymentDate?: string }[]>([]);
   // Debit notes that form part of the opening balance, alongside the invoices.
-  const [openingDebitNotes, setOpeningDebitNotes] = useState<{ date: string; amount: number | "" }[]>([]);
+  const [openingDebitNotes, setOpeningDebitNotes] = useState<{ fromDate: string; toDate: string; amount: number | "" }[]>([]);
   // Draft rows shown inside the "Add Debit Note" dialog; only committed on OK.
   const [debitNoteDialogOpen, setDebitNoteDialogOpen] = useState(false);
-  const [debitNoteDraft, setDebitNoteDraft] = useState<{ date: string; amount: number | "" }[]>([
-    { date: "", amount: "" },
+  const [debitNoteDraft, setDebitNoteDraft] = useState<{ fromDate: string; toDate: string; amount: number | "" }[]>([
+    { fromDate: "", toDate: "", amount: "" },
   ]);
 
   useEffect(() => {
@@ -339,7 +339,7 @@ function AdminClientsPage() {
 
       const validDates = [
         ...openingInvoices.map((inv) => inv.date),
-        ...openingDebitNotes.map((dn) => dn.date),
+        ...openingDebitNotes.map((dn) => dn.toDate),
       ].filter(Boolean);
       if (validDates.length > 0) {
         const latestDate = validDates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
@@ -745,7 +745,7 @@ function AdminClientsPage() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => setOpeningInvoices([...openingInvoices, { invoiceNumber: "", amount: "", date: "" }])}
+                            onClick={() => setOpeningInvoices([...openingInvoices, { invoiceNumber: "", amount: "", date: "", mundraPaymentDate: "" }])}
                           >
                             <Plus className="h-3 w-3 mr-1" /> Add Invoice
                           </Button>
@@ -759,7 +759,7 @@ function AdminClientsPage() {
                               setDebitNoteDraft(
                                 openingDebitNotes.length > 0
                                   ? openingDebitNotes.map((dn) => ({ ...dn }))
-                                  : [{ date: "", amount: "" }],
+                                  : [{ fromDate: "", toDate: "", amount: "" }],
                               );
                               setDebitNoteDialogOpen(true);
                             }}
@@ -769,7 +769,7 @@ function AdminClientsPage() {
                         </div>
                       </div>
                       {openingInvoices.map((inv, idx) => (
-                        <div key={idx} className="flex gap-3 items-end p-3 border rounded-md bg-muted/20">
+                        <div key={idx} className="flex gap-2 items-end p-3 border rounded-md bg-muted/20">
                           <div className="flex-1 space-y-1">
                             <Label className="text-xs">Invoice Number *</Label>
                             <Input
@@ -782,7 +782,7 @@ function AdminClientsPage() {
                               required
                             />
                           </div>
-                          <div className="flex-1 space-y-1">
+                          <div className="flex-[0.8] space-y-1">
                             <Label className="text-xs">Amount (₹) *</Label>
                             <Input
                               type="number"
@@ -795,7 +795,7 @@ function AdminClientsPage() {
                               required
                             />
                           </div>
-                          <div className="flex-1 space-y-1">
+                          <div className="flex-[0.8] space-y-1">
                             <Label className="text-xs">Date *</Label>
                             <Input
                               type="date"
@@ -808,11 +808,23 @@ function AdminClientsPage() {
                               required
                             />
                           </div>
+                          <div className="flex-1 space-y-1">
+                            <Label className="text-[10px] sm:text-xs truncate">Mundra Payment Date</Label>
+                            <Input
+                              type="date"
+                              value={inv.mundraPaymentDate || ""}
+                              onChange={(e) => {
+                                const newInvs = [...openingInvoices];
+                                newInvs[idx].mundraPaymentDate = e.target.value;
+                                setOpeningInvoices(newInvs);
+                              }}
+                            />
+                          </div>
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="text-destructive h-9 w-9 mb-0.5"
+                            className="text-destructive h-9 w-9 mb-0.5 shrink-0"
                             onClick={() => setOpeningInvoices(openingInvoices.filter((_, i) => i !== idx))}
                           >
                             <X className="h-4 w-4" />
@@ -828,7 +840,7 @@ function AdminClientsPage() {
                               className="flex items-center justify-between gap-3 px-3 py-2 border rounded-md bg-muted/20 text-sm"
                             >
                               <span className="text-muted-foreground">
-                                {dn.date ? new Date(dn.date).toLocaleDateString("en-IN") : "No date"}
+                                {dn.fromDate ? `${new Date(dn.fromDate).toLocaleDateString("en-IN")} - ${dn.toDate ? new Date(dn.toDate).toLocaleDateString("en-IN") : "?"}` : "No date"}
                               </span>
                               <span className="font-medium">
                                 ₹{(Number(dn.amount) || 0).toLocaleString("en-IN")}
@@ -1019,20 +1031,32 @@ function AdminClientsPage() {
 
               <div className="space-y-3 py-2 max-h-[50vh] overflow-y-auto">
                 {debitNoteDraft.map((dn, idx) => (
-                  <div key={idx} className="flex gap-3 items-end">
+                  <div key={idx} className="flex gap-2 items-end">
                     <div className="flex-1 space-y-1">
-                      <Label className="text-xs">Date</Label>
+                      <Label className="text-xs">From</Label>
                       <Input
                         type="date"
-                        value={dn.date}
+                        value={dn.fromDate}
                         onChange={(e) => {
                           const next = [...debitNoteDraft];
-                          next[idx] = { ...next[idx], date: e.target.value };
+                          next[idx] = { ...next[idx], fromDate: e.target.value };
                           setDebitNoteDraft(next);
                         }}
                       />
                     </div>
                     <div className="flex-1 space-y-1">
+                      <Label className="text-xs">To</Label>
+                      <Input
+                        type="date"
+                        value={dn.toDate}
+                        onChange={(e) => {
+                          const next = [...debitNoteDraft];
+                          next[idx] = { ...next[idx], toDate: e.target.value };
+                          setDebitNoteDraft(next);
+                        }}
+                      />
+                    </div>
+                    <div className="flex-[0.8] space-y-1">
                       <Label className="text-xs">Debit (₹)</Label>
                       <Input
                         type="number"
@@ -1054,7 +1078,7 @@ function AdminClientsPage() {
                       type="button"
                       variant="ghost"
                       size="icon"
-                      className="text-destructive h-9 w-9 mb-0.5"
+                      className="text-destructive h-9 w-9 mb-0.5 shrink-0"
                       disabled={debitNoteDraft.length === 1}
                       onClick={() => setDebitNoteDraft(debitNoteDraft.filter((_, i) => i !== idx))}
                     >
@@ -1067,7 +1091,7 @@ function AdminClientsPage() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setDebitNoteDraft([...debitNoteDraft, { date: "", amount: "" }])}
+                  onClick={() => setDebitNoteDraft([...debitNoteDraft, { fromDate: "", toDate: "", amount: "" }])}
                 >
                   <Plus className="h-3 w-3 mr-1" /> Add another
                 </Button>
@@ -1096,15 +1120,15 @@ function AdminClientsPage() {
                   onClick={() => {
                     // Keep only rows that actually carry a value.
                     const valid = debitNoteDraft.filter(
-                      (dn) => dn.date && dn.amount !== "" && Number(dn.amount) > 0,
+                      (dn) => dn.fromDate && dn.toDate && dn.amount !== "" && Number(dn.amount) > 0,
                     );
                     const incomplete = debitNoteDraft.filter(
                       (dn) =>
-                        (dn.date || (dn.amount !== "" && Number(dn.amount) > 0)) &&
-                        !(dn.date && dn.amount !== "" && Number(dn.amount) > 0),
+                        (dn.fromDate || dn.toDate || (dn.amount !== "" && Number(dn.amount) > 0)) &&
+                        !(dn.fromDate && dn.toDate && dn.amount !== "" && Number(dn.amount) > 0),
                     );
                     if (incomplete.length > 0) {
-                      toast.error("Each debit note needs both a date and an amount greater than 0.");
+                      toast.error("Each debit note needs both From and To dates and an amount greater than 0.");
                       return;
                     }
                     setOpeningDebitNotes(valid);

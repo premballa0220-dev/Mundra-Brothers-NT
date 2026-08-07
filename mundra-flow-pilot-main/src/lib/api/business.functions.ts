@@ -675,6 +675,7 @@ export const createClient = createServerFn({ method: "POST" })
             invoiceNumber: z.string().min(1),
             amount: z.number().positive(),
             date: z.string().min(1),
+            mundraPaymentDate: z.string().optional(),
           }),
         )
         .optional(),
@@ -683,7 +684,8 @@ export const createClient = createServerFn({ method: "POST" })
         .array(
           z.object({
             amount: z.number().positive(),
-            date: z.string().min(1),
+            fromDate: z.string().min(1),
+            toDate: z.string().min(1),
           }),
         )
         .optional(),
