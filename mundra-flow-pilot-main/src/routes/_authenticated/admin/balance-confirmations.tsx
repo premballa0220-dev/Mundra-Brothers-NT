@@ -32,6 +32,62 @@ function RefundLetterPage() {
   const mundraPaymentByInvoice: Record<string, { payment_date: string; payment_mode: string }> =
     (queryData as any)?.mundraPaymentByInvoice || {};
 
+  // Recording a client payment against several dispatches writes one payment row
+  // PER dispatch, all sharing the same UTR. They are one real bank transfer, so
+  // group them — otherwise a 2,000 transfer covering two invoices shows up as
+  // two separate 1,000 entries and picking one only clears one invoice.
+  const paymentGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        key: string;
+        paymentIds: string[];
+        totalRemaining: number;
+        payment_mode: string;
+        payment_date: string;
+        reference_number: string | null;
+        is_advance: boolean;
+        clientName: string;
+        invoiceNumbers: string[];
+      }
+    >();
+
+    for (const ea of eligibleAllocations as any[]) {
+      const pay = ea.payments;
+      if (!pay) continue;
+      // Group by UTR within a client; fall back to the payment id when the
+      // reference is blank so distinct payments never merge by accident.
+      const key = pay.reference_number
+        ? `${pay.organization_id}|${pay.reference_number}|${pay.is_advance ? "adv" : "pay"}`
+        : `id:${pay.id}`;
+
+      let g = groups.get(key);
+      if (!g) {
+        g = {
+          key,
+          paymentIds: [],
+          totalRemaining: 0,
+          payment_mode: pay.payment_mode,
+          payment_date: pay.payment_date,
+          reference_number: pay.reference_number ?? null,
+          is_advance: !!pay.is_advance,
+          clientName: ea.invoices?.organizations?.trade_name || ea.invoices?.organizations?.legal_name || "",
+          invoiceNumbers: [],
+        };
+        groups.set(key, g);
+      }
+      // remaining_amount is per payment, so only count each payment once.
+      if (!g.paymentIds.includes(pay.id)) {
+        g.paymentIds.push(pay.id);
+        g.totalRemaining += Number(pay.remaining_amount ?? pay.amount) || 0;
+      }
+      const invNum = ea.invoices?.invoice_number;
+      if (invNum && !g.invoiceNumbers.includes(invNum)) g.invoiceNumbers.push(invNum);
+    }
+
+    return Array.from(groups.values());
+  }, [eligibleAllocations]);
+
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [refNo, setRefNo] = useState("Refund\\25-26\\0059");
   const [toName, setToName] = useState("M/s Ultratech Cement Ltd.");
@@ -214,9 +270,16 @@ function RefundLetterPage() {
     // client payment or an advance — an advance only folds into Amount Paid.
 
     for (const ap of activePayments) {
-      const dbPayment = eligibleAllocations.find((ea: any) => ea.payment_id === ap.dbPaymentId);
+      // dbPaymentId is a GROUP key (one bank transfer). Resolve it to every
+      // payment row in that transfer, so all invoices it covered are listed.
+      const group = paymentGroups.find((g) => g.key === ap.dbPaymentId);
+      const groupPaymentIds = group ? group.paymentIds : [ap.dbPaymentId];
+
+      const dbPayment = eligibleAllocations.find((ea: any) =>
+        groupPaymentIds.includes(ea.payment_id),
+      );
       if (!dbPayment) continue;
-      
+
       const org = dbPayment.invoices?.organizations || dbPayment.payments?.organizations;
       if (org) {
         setPartyName(org.trade_name || org.legal_name || "");
@@ -224,7 +287,9 @@ function RefundLetterPage() {
         setTpcCode(org.tp_code || "");
       }
 
-      const allocationsForThisPayment = eligibleAllocations.filter((ea: any) => ea.payment_id === ap.dbPaymentId && ea.invoice_id);
+      const allocationsForThisPayment = eligibleAllocations.filter(
+        (ea: any) => groupPaymentIds.includes(ea.payment_id) && ea.invoice_id,
+      );
 
       if (allocationsForThisPayment.length > 0) {
         let remainingToAllocate = Number(ap.amount);
@@ -247,7 +312,7 @@ function RefundLetterPage() {
                 ? new Date(mundraPay.payment_date).toISOString().split("T")[0]
                 : "",
               amountPaid: 0,
-              paymentId: ap.dbPaymentId,
+              paymentId: alloc.payment_id,
               invoiceId: invId
             });
           }
@@ -269,14 +334,24 @@ function RefundLetterPage() {
           newInvoicesMap.get(invId).amountPaid += allocAmount + tdsApplied;
 
           newPendingAllocations.push({
-            paymentId: ap.dbPaymentId,
+            // Must be the real payment id, not the transfer group key.
+            paymentId: alloc.payment_id,
             invoiceId: invId,
             amount: allocAmount,
             isNewAllocation: false // Already in DB
           });
         }
       } else {
-        unallocatedPayments.push({ id: ap.dbPaymentId, remaining: Number(ap.amount) });
+        // No stored allocations — carry each real payment in the transfer so
+        // FIFO below records against genuine payment ids.
+        if (group && group.paymentIds.length > 0) {
+          const share = Number(ap.amount) / group.paymentIds.length;
+          for (const pid of group.paymentIds) {
+            unallocatedPayments.push({ id: pid, remaining: share });
+          }
+        } else {
+          unallocatedPayments.push({ id: ap.dbPaymentId, remaining: Number(ap.amount) });
+        }
       }
     }
 
@@ -360,7 +435,7 @@ function RefundLetterPage() {
       amountPaid: String(inv.amountPaid)
     })));
 
-  }, [payments.map(p => `${p.dbPaymentId}-${p.amount}`).join('|'), eligibleAllocations, pendingInvoices]);
+  }, [payments.map(p => `${p.dbPaymentId}-${p.amount}`).join('|'), eligibleAllocations, pendingInvoices, paymentGroups]);
 
   const totalPaymentAmount = useMemo(() => {
     return payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
@@ -553,38 +628,25 @@ function RefundLetterPage() {
                           <div className="space-y-1">
                             <Label className="text-xs">Client Payment Reference</Label>
                             {(() => {
-                              // Deduplicate by payment_id
-                              const uniquePayments = Array.from(new Map(eligibleAllocations.map((ea: any) => [ea.payment_id, ea])).values());
-
-                              // A payment can cover several invoices, so gather
-                              // every invoice number behind each payment for the
-                              // dropdown label.
-                              const invoiceNumbersByPayment = new Map<string, string[]>();
-                              for (const ea of eligibleAllocations as any[]) {
-                                const num = ea.invoices?.invoice_number;
-                                if (!num) continue;
-                                const list = invoiceNumbersByPayment.get(ea.payment_id) || [];
-                                if (!list.includes(num)) list.push(num);
-                                invoiceNumbersByPayment.set(ea.payment_id, list);
-                              }
-                              
                               return (
-                                <Select 
-                                  value={p.dbPaymentId || "none"} 
+                                <Select
+                                  value={p.dbPaymentId || "none"}
                                   onValueChange={(val) => {
                                     if (val === "none") {
                                       updatePayment(p.id, "dbPaymentId", "");
                                       return;
                                     }
-                                    const selected = uniquePayments.find((ea: any) => ea.payment_id === val);
-                                    if (selected) {
+                                    // val is a group key: one bank transfer, which
+                                    // may span several payment rows.
+                                    const g = paymentGroups.find((grp) => grp.key === val);
+                                    if (g) {
                                       setPayments(payments.map(px => {
                                         if (px.id === p.id) {
                                           return {
                                             ...px,
-                                            dbPaymentId: selected.payment_id,
-                                            date: selected.payments.payment_date ? new Date(selected.payments.payment_date).toISOString().split("T")[0] : "",
-                                            amount: String(selected.payments.remaining_amount || selected.payments.amount),
+                                            dbPaymentId: g.key,
+                                            date: g.payment_date ? new Date(g.payment_date).toISOString().split("T")[0] : "",
+                                            amount: String(g.totalRemaining),
                                           };
                                         }
                                         return px;
@@ -595,19 +657,18 @@ function RefundLetterPage() {
                                   <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select Payment" /></SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="none">Manual Entry</SelectItem>
-                                    {uniquePayments.filter((ea: any) => {
-                                      if (p.type1 === "ADVANCE") return ea.payments.is_advance;
-                                      return !ea.payments.is_advance; // RTGS/NEFT/etc. should filter out advances
-                                    }).map((ea: any) => {
-                                      const invNums = invoiceNumbersByPayment.get(ea.payment_id) || [];
+                                    {paymentGroups.filter((g) => {
+                                      if (p.type1 === "ADVANCE") return g.is_advance;
+                                      return !g.is_advance; // RTGS/NEFT/etc. should filter out advances
+                                    }).map((g) => {
                                       const invLabel =
-                                        invNums.length > 0 ? invNums.join(", ") : "Unlinked";
+                                        g.invoiceNumbers.length > 0 ? g.invoiceNumbers.join(", ") : "Unlinked";
                                       return (
-                                        <SelectItem key={ea.payment_id} value={ea.payment_id}>
-                                          {ea.payments.payment_mode} — ₹
-                                          {ea.payments.remaining_amount || ea.payments.amount} ·{" "}
-                                          {ea.invoices?.organizations?.trade_name || "Unknown client"} ·
+                                        <SelectItem key={g.key} value={g.key}>
+                                          {g.payment_mode} — ₹{g.totalRemaining} ·{" "}
+                                          {g.clientName || "Unknown client"} ·
                                           Inv: {invLabel}
+                                          {g.reference_number ? ` · UTR: ${g.reference_number}` : ""}
                                         </SelectItem>
                                       );
                                     })}
