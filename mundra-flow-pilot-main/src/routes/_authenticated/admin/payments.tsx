@@ -9,6 +9,7 @@ import {
   updatePaymentAdmin,
   deletePaymentAdmin,
   getClients,
+  getRefundLetterReferences,
 } from "@/lib/api/business.functions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,7 +46,9 @@ import {
 } from "@/components/ui/select";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Plus, Search, CheckCircle2, Trash2, Pencil } from "lucide-react";
+import { Loader2, Plus, Search, CheckCircle2, Trash2, Pencil, ArrowDownLeft, FileText, IndianRupee, Clock } from "lucide-react";
+import { useSessionContext } from "@/lib/auth-hooks";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export const Route = createFileRoute("/_authenticated/admin/payments")({
   ssr: false,
@@ -54,6 +57,7 @@ export const Route = createFileRoute("/_authenticated/admin/payments")({
 
 function AdminPaymentsPage() {
   const queryClient = useQueryClient();
+  const { data: session } = useSessionContext();
 
   const [dispatchModalOpen, setDispatchModalOpen] = useState(false);
   const [selectedDispatches, setSelectedDispatches] = useState<any[]>([]);
@@ -87,6 +91,11 @@ function AdminPaymentsPage() {
   const [clientSelectedReferences, setClientSelectedReferences] = useState<string[]>([]);
   const [clientPaymentOpts, setClientPaymentOpts] = useState<Record<string, { isAdvance: boolean, amount: number }>>({});
 
+  // UTCL to Mundra Refund Letters State
+  const [utclMundraDialogOpen, setUtclMundraDialogOpen] = useState(false);
+  const [utclMundraRefNumber, setUtclMundraRefNumber] = useState("");
+  const [utclMundraAmount, setUtclMundraAmount] = useState("");
+
   const { data: pastPayments, isLoading: historyLoading } = useQuery({
     queryKey: ["admin-utcl-payments"],
     queryFn: () => getAdminUTCLPayments(),
@@ -105,6 +114,73 @@ function AdminPaymentsPage() {
   const { data: clients } = useQuery({
     queryKey: ["admin-clients"],
     queryFn: () => getClients(),
+  });
+
+  // UTCL to Mundra refund letters queries
+  const { data: utclRefundLetters, isLoading: utclRefundLoading } = useQuery({
+    queryKey: ["utcl-refund-letters"],
+    queryFn: async () => {
+      const { data, error } = await (await import("@/integrations/supabase/client")).supabase
+        .from("utcl_refund_letters")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: refundReferences, isLoading: refundReferencesLoading } = useQuery({
+    queryKey: ["refund-letter-references"],
+    queryFn: () => getRefundLetterReferences(),
+  });
+
+  const addUtclRefundMutation = useMutation({
+    mutationFn: async (payload: { reference_number: string; amount: number }) => {
+      const { data, error } = await (await import("@/integrations/supabase/client")).supabase
+        .from("utcl_refund_letters")
+        .insert({
+          reference_number: payload.reference_number,
+          amount: payload.amount,
+          created_by: session?.userId ?? null,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["utcl-refund-letters"] });
+      toast.success("Refund letter added successfully");
+      setUtclMundraDialogOpen(false);
+      setUtclMundraRefNumber("");
+      setUtclMundraAmount("");
+    },
+    onError: (err: any) => {
+      if (err?.code === "23505") {
+        toast.error("A refund letter with this reference number already exists");
+      } else {
+        toast.error("Failed to add refund letter");
+      }
+    },
+  });
+
+  const toggleUtclPaidMutation = useMutation({
+    mutationFn: async ({ id, is_paid }: { id: string; is_paid: boolean }) => {
+      const { error } = await (await import("@/integrations/supabase/client")).supabase
+        .from("utcl_refund_letters")
+        .update({
+          is_paid,
+          paid_at: is_paid ? new Date().toISOString() : null,
+        })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["utcl-refund-letters"] });
+    },
+    onError: () => {
+      toast.error("Failed to update payment status");
+    },
   });
 
   const recordMutation = useMutation({
@@ -480,9 +556,10 @@ function AdminPaymentsPage() {
         </header>
 
         <Tabs defaultValue="mundra-utcl" className="w-full space-y-6">
-          <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
+          <TabsList className="grid w-full grid-cols-3 max-w-[600px]">
             <TabsTrigger value="mundra-utcl">Mundra to UTCL</TabsTrigger>
             <TabsTrigger value="client-utcl">Client to UTCL</TabsTrigger>
+            <TabsTrigger value="utcl-to-mundra">UTCL to Mundra</TabsTrigger>
           </TabsList>
 
           <TabsContent value="mundra-utcl" className="space-y-6">
@@ -1614,6 +1691,232 @@ function AdminPaymentsPage() {
                       )}
                     </TableBody>
                   </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ═══ UTCL to Mundra Tab ═══ */}
+          <TabsContent value="utcl-to-mundra" className="space-y-6">
+            {/* Summary Cards */}
+            {(() => {
+              const totalLetters = utclRefundLetters?.length ?? 0;
+              const paidCount = utclRefundLetters?.filter((l) => l.is_paid).length ?? 0;
+              const unpaidCount = totalLetters - paidCount;
+              const totalAmt = utclRefundLetters?.reduce((s, l) => s + Number(l.amount), 0) ?? 0;
+              const paidAmt = utclRefundLetters?.filter((l) => l.is_paid).reduce((s, l) => s + Number(l.amount), 0) ?? 0;
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Letters</CardTitle>
+                      <FileText className="h-4 w-4 text-blue-500" />
+                    </CardHeader>
+                    <CardContent><div className="text-2xl font-bold">{totalLetters}</div></CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Amount</CardTitle>
+                      <IndianRupee className="h-4 w-4 text-amber-500" />
+                    </CardHeader>
+                    <CardContent><div className="text-2xl font-bold">{formatCurrency(totalAmt)}</div></CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Paid</CardTitle>
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{paidCount}</div>
+                      <p className="text-xs text-muted-foreground mt-0.5">{formatCurrency(paidAmt)}</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Pending</CardTitle>
+                      <Clock className="h-4 w-4 text-orange-500" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{unpaidCount}</div>
+                      <p className="text-xs text-muted-foreground mt-0.5">{formatCurrency(totalAmt - paidAmt)}</p>
+                    </CardContent>
+                  </Card>
+                </div>
+              );
+            })()}
+
+            {/* Header + Add Button */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Refund Letters</h2>
+                <p className="text-sm text-muted-foreground">
+                  Track refund letter payments from UTCL to Mundra Brothers
+                </p>
+              </div>
+              <Dialog open={utclMundraDialogOpen} onOpenChange={setUtclMundraDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" id="add-utcl-refund-letter-btn">
+                    <Plus className="h-4 w-4 mr-1.5" />
+                    Add Refund Letter
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Add Refund Letter</DialogTitle>
+                    <DialogDescription>
+                      Record a new UTCL refund letter reference and amount.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="utcl-ref-number">Reference Number</Label>
+                      <Select 
+                        value={utclMundraRefNumber} 
+                        onValueChange={setUtclMundraRefNumber}
+                      >
+                        <SelectTrigger id="utcl-ref-number">
+                          <SelectValue placeholder="Select a reference number" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {refundReferencesLoading ? (
+                            <SelectItem value="loading" disabled>Loading...</SelectItem>
+                          ) : refundReferences && refundReferences.length > 0 ? (
+                            refundReferences.map((ref: string) => (
+                              <SelectItem key={ref} value={ref}>{ref}</SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="none" disabled>No reference numbers available</SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="utcl-ref-amount">Amount (₹)</Label>
+                      <Input
+                        id="utcl-ref-amount"
+                        type="number"
+                        placeholder="0.00"
+                        min="0"
+                        step="0.01"
+                        value={utclMundraAmount}
+                        onChange={(e) => setUtclMundraAmount(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => setUtclMundraDialogOpen(false)}
+                      disabled={addUtclRefundMutation.isPending}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        const trimmedRef = utclMundraRefNumber.trim();
+                        const parsedAmount = parseFloat(utclMundraAmount);
+                        if (!trimmedRef) { toast.error("Reference number is required"); return; }
+                        if (isNaN(parsedAmount) || parsedAmount <= 0) { toast.error("Enter a valid amount greater than zero"); return; }
+                        addUtclRefundMutation.mutate({ reference_number: trimmedRef, amount: parsedAmount });
+                      }}
+                      disabled={addUtclRefundMutation.isPending}
+                      id="submit-utcl-refund-letter-btn"
+                    >
+                      {addUtclRefundMutation.isPending ? "Adding…" : "Add Letter"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            {/* Table */}
+            <Card>
+              <CardContent className="p-0">
+                {utclRefundLoading ? (
+                  <div className="p-6 space-y-3">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <Skeleton key={i} className="h-10 w-full" />
+                    ))}
+                  </div>
+                ) : utclRefundLetters && utclRefundLetters.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[280px]">Reference Number</TableHead>
+                        <TableHead className="text-right">Amount (₹)</TableHead>
+                        <TableHead className="text-center">Paid</TableHead>
+                        <TableHead>Paid At</TableHead>
+                        <TableHead>Created</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {utclRefundLetters.map((letter) => (
+                        <TableRow key={letter.id}>
+                          <TableCell>
+                            <span className="font-mono text-sm font-medium">
+                              {letter.reference_number}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right font-medium tabular-nums">
+                            {formatCurrency(Number(letter.amount))}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <Checkbox
+                                id={`utcl-paid-${letter.id}`}
+                                checked={letter.is_paid}
+                                disabled={toggleUtclPaidMutation.isPending}
+                                onCheckedChange={(checked) => {
+                                  toggleUtclPaidMutation.mutate({
+                                    id: letter.id,
+                                    is_paid: checked === true,
+                                  });
+                                }}
+                              />
+                              <Badge
+                                variant={letter.is_paid ? "default" : "secondary"}
+                                className={
+                                  letter.is_paid
+                                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/15"
+                                    : "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/25 hover:bg-orange-500/15"
+                                }
+                              >
+                                {letter.is_paid ? "Paid" : "Pending"}
+                              </Badge>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {letter.paid_at
+                              ? new Date(letter.paid_at).toLocaleDateString("en-IN", {
+                                  day: "2-digit",
+                                  month: "short",
+                                  year: "numeric",
+                                })
+                              : "—"}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {new Date(letter.created_at).toLocaleDateString("en-IN", {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                            })}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="py-16 flex flex-col items-center text-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-muted grid place-items-center">
+                      <FileText className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="font-medium">No refund letters yet</p>
+                      <p className="text-sm text-muted-foreground max-w-sm">
+                        Click "Add Refund Letter" to record the first UTCL refund letter reference.
+                      </p>
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>

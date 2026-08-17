@@ -4946,7 +4946,9 @@ export const markPaymentsAsRefunded = createServerFn({ method: "POST" })
         invoiceId: z.string().nullable().optional(),
         amount: z.number().optional(),
         isNewAllocation: z.boolean().optional() // Flag to persist FIFO/Advance allocations
-      })).optional()
+      })).optional(),
+      reference_number: z.string().optional(),
+      total_amount: z.number().optional()
     })
   )
   .handler(async ({ data, context }) => {
@@ -4988,7 +4990,7 @@ export const markPaymentsAsRefunded = createServerFn({ method: "POST" })
     }
 
     // 2. Insert into refund_letters
-    const refundRows = [];
+    const refundRows: any[] = [];
     if (data.allocations && data.allocations.length > 0) {
       for (const a of data.allocations) {
         if (!orgMap[a.paymentId]) continue;
@@ -4997,7 +4999,8 @@ export const markPaymentsAsRefunded = createServerFn({ method: "POST" })
           organization_id: orgMap[a.paymentId],
           invoice_id: a.invoiceId || null,
           allocated_amount: a.amount || null,
-          status: 'generated'
+          status: 'generated',
+          reference_number: data.reference_number || null
         });
       }
     } else {
@@ -5007,7 +5010,8 @@ export const markPaymentsAsRefunded = createServerFn({ method: "POST" })
         refundRows.push({
           payment_id: pid,
           organization_id: orgMap[pid],
-          status: 'generated'
+          status: 'generated',
+          reference_number: data.reference_number || null
         });
       }
     }
@@ -5025,14 +5029,56 @@ export const markPaymentsAsRefunded = createServerFn({ method: "POST" })
         const fallbackRows = refundRows.map(r => ({
           payment_id: r.payment_id,
           organization_id: r.organization_id,
-          status: r.status
+          status: r.status,
+          reference_number: r.reference_number
         }));
         const { error: fallbackError } = await supabase.from("refund_letters").insert(fallbackRows);
         if (fallbackError) throw new Error(fallbackError.message);
       }
     }
     
+    // 3. Auto-insert into utcl_refund_letters so it appears in the UTCL to Mundra tab
+    if (data.reference_number && data.total_amount !== undefined && data.total_amount > 0) {
+      const { data: existing } = await supabase
+        .from("utcl_refund_letters")
+        .select("id")
+        .eq("reference_number", data.reference_number)
+        .maybeSingle();
+        
+      if (!existing) {
+        const { error: utclErr } = await supabase
+          .from("utcl_refund_letters")
+          .insert({
+            reference_number: data.reference_number,
+            amount: data.total_amount
+          });
+        if (utclErr) {
+          console.error("Failed to insert into utcl_refund_letters:", utclErr);
+        }
+      }
+    }
+    
     return { success: true };
+  });
+
+export const getRefundLetterReferences = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .handler(async ({ context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+
+    const { data, error } = await supabase
+      .from("refund_letters")
+      .select("reference_number")
+      .not("reference_number", "is", null);
+
+    if (error) {
+      console.error("Error fetching refund letter references:", error);
+      return [];
+    }
+
+    const uniqueRefs = Array.from(new Set((data || []).map(r => r.reference_number).filter(Boolean)));
+    return uniqueRefs.sort((a, b) => (b as string).localeCompare(a as string));
   });
     
 

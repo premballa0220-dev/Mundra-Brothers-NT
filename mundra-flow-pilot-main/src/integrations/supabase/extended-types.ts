@@ -21,6 +21,7 @@ export type InvoiceRow = Tables["invoices"]["Row"];
 export type PaymentRow = Tables["payments"]["Row"];
 export type InvoiceAllocationRow = Tables["invoice_allocations"]["Row"];
 export type RefundLetterRow = Tables["refund_letters"]["Row"];
+export type UtclRefundLetterRow = Tables["utcl_refund_letters"]["Row"];
 export type BalanceConfirmationRow = Tables["balance_confirmations"]["Row"];
 export type SpecialApprovalRow = Tables["special_approvals"]["Row"];
 export type IssueRow = Tables["issues"]["Row"];

@@ -1318,6 +1318,7 @@ export type Database = {
           payment_id: string
           status: string
           updated_at: string
+          reference_number: string | null
         }
         Insert: {
           created_at?: string
@@ -1327,6 +1328,7 @@ export type Database = {
           payment_id: string
           status?: string
           updated_at?: string
+          reference_number?: string | null
         }
         Update: {
           created_at?: string
@@ -1336,6 +1338,7 @@ export type Database = {
           payment_id?: string
           status?: string
           updated_at?: string
+          reference_number?: string | null
         }
         Relationships: [
           {
@@ -1423,6 +1426,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      utcl_refund_letters: {
+        Row: {
+          id: string
+          reference_number: string
+          amount: number
+          is_paid: boolean
+          paid_at: string | null
+          notes: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          reference_number: string
+          amount: number
+          is_paid?: boolean
+          paid_at?: string | null
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          reference_number?: string
+          amount?: number
+          is_paid?: boolean
+          paid_at?: string | null
+          notes?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {

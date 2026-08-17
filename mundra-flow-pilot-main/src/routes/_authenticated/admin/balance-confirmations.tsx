@@ -121,6 +121,7 @@ function RefundLetterPage() {
     mutationFn: (payload: any) => markPaymentsAsRefunded({ data: payload }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-refund-eligible-allocations"] });
+      queryClient.invalidateQueries({ queryKey: ["utcl-refund-letters"] });
       toast.success("Refund letter generated and recorded successfully");
       window.print();
     },
@@ -144,7 +145,7 @@ function RefundLetterPage() {
       window.print();
       return;
     }
-    markRefundedMutation.mutate({ allocations });
+    markRefundedMutation.mutate({ allocations, reference_number: refNo, total_amount: totalAmountPaid });
   };
 
   const addInvoice = () => {
