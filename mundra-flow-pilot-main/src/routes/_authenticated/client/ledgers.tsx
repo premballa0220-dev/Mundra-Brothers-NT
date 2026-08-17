@@ -385,7 +385,7 @@ function ClientLedgersPage() {
                                             {entry.meta.historical_invoices.map((hInv: any, i: number) => (
                                               <TableRow key={i}>
                                                 <TableCell className="py-2 font-mono text-xs">{hInv.invoiceNumber || (hInv.type === "debit_note" ? "Debit Note" : "—")}</TableCell>
-                                                <TableCell className="py-2 text-xs">{hInv.date}</TableCell>
+                                                <TableCell className="py-2 text-xs">{hInv.date || (hInv.fromDate && hInv.toDate ? `${hInv.fromDate} - ${hInv.toDate}` : "—")}</TableCell>
                                                 <TableCell className="py-2 text-xs text-right font-semibold">{formatCurrency(Number(hInv.amount))}</TableCell>
                                               </TableRow>
                                             ))}
@@ -502,7 +502,7 @@ function ClientLedgersPage() {
                                           {inv.historical_invoices.map((hInv: any, i: number) => (
                                             <TableRow key={i}>
                                               <TableCell className="py-2 font-mono text-xs">{hInv.invoiceNumber || (hInv.type === "debit_note" ? "Debit Note" : "—")}</TableCell>
-                                              <TableCell className="py-2 text-xs">{hInv.date}</TableCell>
+                                              <TableCell className="py-2 text-xs">{hInv.date || (hInv.fromDate && hInv.toDate ? `${hInv.fromDate} - ${hInv.toDate}` : "—")}</TableCell>
                                               <TableCell className="py-2 text-xs text-right font-semibold">{formatCurrency(Number(hInv.amount))}</TableCell>
                                             </TableRow>
                                           ))}

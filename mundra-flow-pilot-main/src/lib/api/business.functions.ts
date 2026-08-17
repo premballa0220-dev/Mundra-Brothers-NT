@@ -5044,7 +5044,7 @@ export const markPaymentsAsRefunded = createServerFn({ method: "POST" })
         .select("id")
         .eq("reference_number", data.reference_number)
         .maybeSingle();
-        
+
       if (!existing) {
         const { error: utclErr } = await supabase
           .from("utcl_refund_letters")
@@ -5054,6 +5054,15 @@ export const markPaymentsAsRefunded = createServerFn({ method: "POST" })
           });
         if (utclErr) {
           console.error("Failed to insert into utcl_refund_letters:", utclErr);
+        }
+      } else {
+        // Update amount if it already exists but amount might be 0
+        const { error: utclUpdateErr } = await supabase
+          .from("utcl_refund_letters")
+          .update({ amount: data.total_amount })
+          .eq("id", existing.id);
+        if (utclUpdateErr) {
+          console.error("Failed to update utcl_refund_letters:", utclUpdateErr);
         }
       }
     }
@@ -5080,5 +5089,62 @@ export const getRefundLetterReferences = createServerFn({ method: "GET" })
     const uniqueRefs = Array.from(new Set((data || []).map(r => r.reference_number).filter(Boolean)));
     return uniqueRefs.sort((a, b) => (b as string).localeCompare(a as string));
   });
-    
 
+export const getUtclRefundLetters = createServerFn({ method: "GET" })
+  .middleware([requireAuth])
+  .handler(async ({ context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+
+    const { data, error } = await supabase
+      .from("utcl_refund_letters")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching utcl refund letters:", error);
+      throw error;
+    }
+
+    return data;
+  });
+
+export const createUtclRefundLetter = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator((d: { reference_number: string; amount: number }) => d)
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+
+    const { data: result, error } = await supabase
+      .from("utcl_refund_letters")
+      .insert({
+        reference_number: data.reference_number,
+        amount: data.amount,
+        created_by: context.userId ?? null,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return result;
+  });
+
+export const updateUtclRefundLetterStatus = createServerFn({ method: "POST" })
+  .middleware([requireAuth])
+  .validator((d: { id: string; is_paid: boolean }) => d)
+  .handler(async ({ data, context }) => {
+    ensureMundraOrg(context.orgType);
+    const supabase = createSupabaseAdminClient();
+
+    const { error } = await supabase
+      .from("utcl_refund_letters")
+      .update({
+        is_paid: data.is_paid,
+        paid_at: data.is_paid ? new Date().toISOString() : null,
+      })
+      .eq("id", data.id);
+
+    if (error) throw error;
+    return { success: true };
+  });

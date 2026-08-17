@@ -566,8 +566,8 @@ function AdminClientsPage() {
       initialOpeningBalanceDate: initialOpeningBalanceDate === "" ? undefined : initialOpeningBalanceDate,
       openingInvoices: openingInvoices.filter(i => i.invoiceNumber && i.amount !== ""),
       openingDebitNotes: openingDebitNotes
-        .filter((dn) => dn.date && dn.amount !== "")
-        .map((dn) => ({ date: dn.date, amount: Number(dn.amount) })),
+        .filter((dn) => dn.fromDate && dn.toDate && dn.amount !== "")
+        .map((dn) => ({ fromDate: dn.fromDate, toDate: dn.toDate, amount: Number(dn.amount) })),
     });
   }
 

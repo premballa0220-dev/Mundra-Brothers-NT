@@ -10,6 +10,9 @@ import {
   deletePaymentAdmin,
   getClients,
   getRefundLetterReferences,
+  getUtclRefundLetters,
+  createUtclRefundLetter,
+  updateUtclRefundLetterStatus,
 } from "@/lib/api/business.functions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -119,14 +122,7 @@ function AdminPaymentsPage() {
   // UTCL to Mundra refund letters queries
   const { data: utclRefundLetters, isLoading: utclRefundLoading } = useQuery({
     queryKey: ["utcl-refund-letters"],
-    queryFn: async () => {
-      const { data, error } = await (await import("@/integrations/supabase/client")).supabase
-        .from("utcl_refund_letters")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => getUtclRefundLetters(),
   });
 
   const { data: refundReferences, isLoading: refundReferencesLoading } = useQuery({
@@ -136,17 +132,7 @@ function AdminPaymentsPage() {
 
   const addUtclRefundMutation = useMutation({
     mutationFn: async (payload: { reference_number: string; amount: number }) => {
-      const { data, error } = await (await import("@/integrations/supabase/client")).supabase
-        .from("utcl_refund_letters")
-        .insert({
-          reference_number: payload.reference_number,
-          amount: payload.amount,
-          created_by: session?.userId ?? null,
-        })
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+      return createUtclRefundLetter({ data: payload });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["utcl-refund-letters"] });
@@ -165,15 +151,8 @@ function AdminPaymentsPage() {
   });
 
   const toggleUtclPaidMutation = useMutation({
-    mutationFn: async ({ id, is_paid }: { id: string; is_paid: boolean }) => {
-      const { error } = await (await import("@/integrations/supabase/client")).supabase
-        .from("utcl_refund_letters")
-        .update({
-          is_paid,
-          paid_at: is_paid ? new Date().toISOString() : null,
-        })
-        .eq("id", id);
-      if (error) throw error;
+    mutationFn: async (payload: { id: string; is_paid: boolean }) => {
+      return updateUtclRefundLetterStatus({ data: payload });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["utcl-refund-letters"] });
