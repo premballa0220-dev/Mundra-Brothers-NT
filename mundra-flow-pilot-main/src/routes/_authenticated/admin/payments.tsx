@@ -1408,6 +1408,12 @@ function AdminPaymentsPage() {
                                                 ...prev,
                                                 [`ob_${openClientObInvoice.id}`]: { isAdvance: false, amount: obOutstanding }
                                               }));
+                                              // For an opening-balance payment the OB invoice number is the
+                                              // reference id, so the refund letter is keyed off the invoice
+                                              // and partial ("patch") payments accumulate under it.
+                                              if (openClientObInvoice.invoice_number) {
+                                                setClientReferenceNumber(openClientObInvoice.invoice_number);
+                                              }
                                             } else {
                                               setClientSelectedReferences((prev) => prev.filter(r => r !== `ob_${openClientObInvoice.id}`));
                                               setClientPaymentOpts((prev) => {
@@ -1415,6 +1421,9 @@ function AdminPaymentsPage() {
                                                 delete next[`ob_${openClientObInvoice.id}`];
                                                 return next;
                                               });
+                                              if (clientReferenceNumber === openClientObInvoice.invoice_number) {
+                                                setClientReferenceNumber("");
+                                              }
                                             }
                                           }}
                                         />

@@ -2728,12 +2728,32 @@ export const verifyPayment = createServerFn({ method: "POST" })
     );
 
     if (data.status === "approved" && payment) {
+      // If this payment was allocated to an opening-balance invoice, key the
+      // refund letter off that invoice number so it is created against the
+      // opening balance and partial ("patch") payments accumulate under it.
+      // Non-opening-balance payments keep their existing behaviour (no ref).
+      let obReferenceNumber: string | null = null;
+      const { data: obAlloc } = await supabase
+        .from("invoice_allocations")
+        .select("invoices!inner(invoice_number, is_opening_balance)")
+        .eq("payment_id", data.id)
+        .eq("invoices.is_opening_balance", true)
+        .limit(1)
+        .maybeSingle();
+      const obInv: any = Array.isArray((obAlloc as any)?.invoices)
+        ? (obAlloc as any).invoices[0]
+        : (obAlloc as any)?.invoices;
+      if (obInv?.invoice_number) {
+        obReferenceNumber = obInv.invoice_number;
+      }
+
       await supabase.from("refund_letters").insert({
         id: crypto.randomUUID(),
         payment_id: data.id,
         organization_id: payment.organization_id,
         status: "draft",
         document_url: null,
+        ...(obReferenceNumber ? { reference_number: obReferenceNumber } : {}),
       });
     }
 
