@@ -1415,7 +1415,7 @@ function AdminPaymentsPage() {
                                           }}
                                         />
                                         <Label htmlFor={`ref_ob_${openClientObInvoice.id}`} className="font-normal cursor-pointer text-sm leading-snug">
-                                          Opening Balance - Outstanding: {formatCurrency(Number(openClientObInvoice.amount) || 0)}
+                                          Opening Balance{openClientObInvoice.invoice_number ? ` (Inv: ${openClientObInvoice.invoice_number})` : ""} - Outstanding: {formatCurrency(Number(openClientObInvoice.amount) || 0)}
                                         </Label>
                                       </div>
 
