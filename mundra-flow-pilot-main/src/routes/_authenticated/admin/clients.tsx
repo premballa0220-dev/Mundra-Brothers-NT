@@ -606,7 +606,14 @@ function AdminClientsPage() {
                 <Plus className="h-4 w-4 mr-2" /> Onboard Client
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+            <DialogContent 
+              className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto"
+              onInteractOutside={(e) => {
+                if (debitNoteDialogOpen) {
+                  e.preventDefault();
+                }
+              }}
+            >
               <form onSubmit={handleSubmit}>
                 <DialogHeader>
                   <DialogTitle>Onboard Client Organization</DialogTitle>

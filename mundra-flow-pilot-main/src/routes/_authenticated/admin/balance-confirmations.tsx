@@ -117,6 +117,21 @@ function RefundLetterPage() {
     { id: crypto.randomUUID(), type1: "Credit Note", date: "", amount: "", type2: "none", dbPaymentId: "", invoiceId: "" },
   ]);
 
+  const incrementRefNo = () => {
+    setRefNo((prev) => {
+      if (!prev) return prev;
+      const match = prev.match(/(\d+)(?!.*\d)/);
+      if (!match) return prev;
+      const numStr = match[1];
+      const nextNum = (parseInt(numStr, 10) + 1).toString();
+      return (
+        prev.substring(0, match.index) +
+        nextNum.padStart(numStr.length, "0") +
+        prev.substring(match.index! + numStr.length)
+      );
+    });
+  };
+
   const markRefundedMutation = useMutation({
     mutationFn: (payload: any) => markPaymentsAsRefunded({ data: payload }),
     onSuccess: () => {
@@ -124,6 +139,7 @@ function RefundLetterPage() {
       queryClient.invalidateQueries({ queryKey: ["utcl-refund-letters"] });
       toast.success("Refund letter generated and recorded successfully");
       window.print();
+      incrementRefNo();
     },
     onError: (err: any) => {
       toast.error(err?.message || "Failed to record refund letter");
