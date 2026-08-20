@@ -2570,12 +2570,7 @@ export const submitPayment = createServerFn({ method: "POST" })
           }),
         )
         .optional(),
-    }).refine((data) => {
-      if (data.isUtclPayment) {
-        return !!data.purchaseOrderId || (data.dispatchRequestIds && data.dispatchRequestIds.length > 0);
-      }
-      return true;
-    }, { message: "UTCL payments strictly require a linked PO or Dispatch Request." })
+    })
   )
   .handler(async ({ data, context }) => {
     ensureClientOrg(context.orgType);
@@ -3829,6 +3824,13 @@ export const getJournalEntries = createServerFn({ method: "GET" })
       .neq("status", "cancelled")
       .order("invoice_date", { ascending: false });
 
+    // Fetch UTCL Refund Letters (Paid only)
+    const { data: refundLetters } = await supabase
+      .from("utcl_refund_letters")
+      .select("*")
+      .eq("is_paid", true)
+      .order("paid_at", { ascending: false });
+
     const entries: any[] = [];
 
     // 1. PO creation = Mundra -> UTCL
@@ -3897,26 +3899,41 @@ export const getJournalEntries = createServerFn({ method: "GET" })
       }
     }
 
-    // 4. Mundra payment to UTCL (non-client-to-utcl, is_utcl_payment) -> Refund potential
+    // 4. Mundra payment to UTCL (non-client-to-utcl, is_utcl_payment) -> UTCL Corporate Ledger Debit
     for (const p of (payments || []) as any[]) {
       if (p.is_utcl_payment && !p.is_client_to_utcl) {
-        const org = organizationsMap.get(p.organization_id);
         entries.push({
           id: `pay_mtu_${p.id}`,
-          type: "utcl_to_mundra",
+          type: "mundra_to_utcl_payment",
           timestamp: p.payment_date,
           created_at: p.created_at,
-          title: "Refund Due — UTCL → Mundra",
+          title: "Payment — Mundra → UTCL",
           meta: {
             amount: p.amount,
             payment_mode: p.payment_mode,
             reference_number: p.reference_number,
             po_number: p.purchase_orders?.po_number || null,
-            client_name: (org as any)?.legal_name || null,
+            client_name: "UTCL Corporate Account",
             payment_id: p.id,
           },
         });
       }
+    }
+
+    // 4b. UTCL refund to Mundra -> UTCL Corporate Ledger Credit
+    for (const rl of refundLetters || []) {
+      entries.push({
+        id: `refund_${rl.id}`,
+        type: "utcl_to_mundra_refund",
+        timestamp: rl.paid_at || rl.updated_at,
+        created_at: rl.created_at,
+        title: "Refund Received — UTCL → Mundra",
+        meta: {
+          amount: rl.amount,
+          reference_number: rl.reference_number,
+          client_name: "UTCL Corporate Account",
+        },
+      });
     }
 
     // 5. Credit Notes
@@ -4087,11 +4104,11 @@ export const recordPaymentAdmin = createServerFn({ method: "POST" })
       isClientToUtcl: z.boolean().optional(),
       allocations: z.array(z.any()).optional(),
     }).refine((data) => {
-      if (data.isUtclPayment) {
+      if (data.isUtclPayment && !data.isClientToUtcl) {
         return !!data.purchaseOrderId || (data.dispatchRequestIds && data.dispatchRequestIds.length > 0);
       }
       return true;
-    }, { message: "UTCL payments strictly require a linked PO or Dispatch Request." })
+    }, { message: "Mundra to UTCL payments strictly require a linked PO or Dispatch Request." })
   )
   .handler(async ({ data, context }) => {
     ensureMundraOrg(context.orgType);

@@ -52,7 +52,8 @@ type JournalType =
   | "mundra_to_utcl"
   | "utcl_to_client"
   | "client_to_utcl"
-  | "utcl_to_mundra"
+  | "mundra_to_utcl_payment"
+  | "utcl_to_mundra_refund"
   | "credit_note"
   | "debit_note";
 
@@ -87,8 +88,15 @@ const TYPE_CONFIG: Record<
     badgeVariant: "outline",
     badgeClass: "border-violet-500 text-violet-600 bg-violet-50 dark:bg-violet-950/30",
   },
-  utcl_to_mundra: {
-    label: "Refund Due",
+  mundra_to_utcl_payment: {
+    label: "Payment (Mundra to UTCL)",
+    icon: CreditCard,
+    dotColor: "bg-blue-600",
+    badgeVariant: "outline",
+    badgeClass: "border-blue-600 text-blue-700 bg-blue-50 dark:bg-blue-950/30",
+  },
+  utcl_to_mundra_refund: {
+    label: "Refund Received",
     icon: RotateCcw,
     dotColor: "bg-amber-500",
     badgeVariant: "outline",
@@ -244,7 +252,7 @@ function JournalEntryCard({ entry, onSendRefund }: { entry: any; onSendRefund: (
                   {formatDate(entry.timestamp)}
                 </div>
               </div>
-              {entry.type === "utcl_to_mundra" && (
+              {entry.type === "utcl_to_mundra_refund" && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -252,7 +260,7 @@ function JournalEntryCard({ entry, onSendRefund }: { entry: any; onSendRefund: (
                   onClick={onSendRefund}
                 >
                   <Receipt className="h-3 w-3 mr-1" />
-                  Send Refund Letter
+                  View Refunds
                 </Button>
               )}
             </div>
@@ -453,7 +461,6 @@ function AuditJournalPage() {
   const clientLedgerRows = useMemo(() => {
     const rows = calculatedAllRows.filter(e => {
       if (clientFilter !== "all" && e.meta?.client_name !== clientFilter) return false;
-      if (e.type === "utcl_to_mundra") return false;
       if (!e.isPosting && !showNonPosting) return false;
       return true;
     });
@@ -574,8 +581,11 @@ function AuditJournalPage() {
                     <TabsTrigger value="client_to_utcl" className="text-xs">
                       Client → UTCL
                     </TabsTrigger>
-                    <TabsTrigger value="utcl_to_mundra" className="text-xs">
-                      UTCL → Mundra
+                    <TabsTrigger value="mundra_to_utcl_payment" className="text-xs">
+                      Mundra → UTCL Payment
+                    </TabsTrigger>
+                    <TabsTrigger value="utcl_to_mundra_refund" className="text-xs">
+                      UTCL Refund Received
                     </TabsTrigger>
                     <TabsTrigger value="credit_note" className="text-xs">
                       Credit Notes

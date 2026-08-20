@@ -73,13 +73,13 @@ export function calculateLedgerBalances(entries: LedgerEntry[]): CalculatedLedge
     let isPosting = false;
     const clientName = e.meta?.client_name || 'Unknown';
 
-    // Skip Mundra-to-UTCL payments entirely from client balances
-    if (e.type === 'utcl_to_mundra') {
-      rows.push({ ...e, debit: 0, credit: 0, runningBalance: balancesByClient.get(clientName) || 0, isPosting: false });
-      continue;
-    }
-
-    if (e.type === 'utcl_to_client') {
+    if (e.type === 'mundra_to_utcl_payment') {
+      debit = e.meta.amount || 0;
+      isPosting = true;
+    } else if (e.type === 'utcl_to_mundra_refund') {
+      credit = e.meta.amount || 0;
+      isPosting = true;
+    } else if (e.type === 'utcl_to_client') {
       debit = (e.meta.quantity || 0) * (e.meta.locked_rate || 0);
       isPosting = true;
     } else if (e.type === 'client_to_utcl') {
