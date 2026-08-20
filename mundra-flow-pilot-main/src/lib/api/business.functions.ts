@@ -791,7 +791,52 @@ export const createClient = createServerFn({ method: "POST" })
       profile,
     });
 
-    if (data.initialOpeningBalance !== undefined && data.initialOpeningBalanceDate) {
+    // Bill-wise opening balances: create one invoice row per opening invoice
+    // using the REAL invoice number the user entered (e.g. "160"), so it shows
+    // as-is in Client-to-UTCL and flows through the refund-letter machinery
+    // exactly like a dispatch invoice (real number, per-bill allocation,
+    // bifurcation). Debit notes that form part of the opening balance are also
+    // created as opening-balance rows so exposure stays correct. Only when
+    // nothing was itemised do we fall back to a single consolidated OB invoice.
+    const obRows: any[] = [];
+    for (const inv of data.openingInvoices || []) {
+      obRows.push({
+        id: crypto.randomUUID(),
+        organization_id: orgId,
+        invoice_number: inv.invoiceNumber,
+        amount: inv.amount,
+        invoice_date: inv.date,
+        due_date: inv.date,
+        status: "unpaid",
+        is_opening_balance: true,
+      });
+    }
+    for (const dn of data.openingDebitNotes || []) {
+      obRows.push({
+        id: crypto.randomUUID(),
+        organization_id: orgId,
+        invoice_number: `DN-${orgId.slice(0, 8)}-${dn.fromDate}-${dn.toDate}`,
+        amount: dn.amount,
+        invoice_date: dn.toDate,
+        due_date: dn.toDate,
+        status: "unpaid",
+        is_opening_balance: true,
+      });
+    }
+
+    if (obRows.length > 0) {
+      // Insert individually so one duplicate invoice number (global UNIQUE) does
+      // not abort every other opening balance for the client.
+      for (const row of obRows) {
+        const { error: obErr } = await supabase.from("invoices").insert(row);
+        if (obErr) {
+          console.error(`Failed to create opening balance ${row.invoice_number}`, obErr);
+        } else {
+          await createAuditLog(context.userId, "CREATE_OPENING_BALANCE", "invoices", row.id, null, row);
+        }
+      }
+    } else if (data.initialOpeningBalance !== undefined && data.initialOpeningBalanceDate) {
+      // Legacy consolidated single opening balance (no itemisation).
       const invId = crypto.randomUUID();
       const inv = {
         id: invId,
@@ -2728,34 +2773,12 @@ export const verifyPayment = createServerFn({ method: "POST" })
     );
 
     if (data.status === "approved" && payment) {
-      // If this payment was allocated to an opening-balance invoice, key the
-      // refund letter off that invoice number so it is created against the
-      // opening balance and partial ("patch") payments accumulate under it.
-      // Non-opening-balance payments keep their existing behaviour (no ref).
-      let obReferenceNumber: string | null = null;
-      const { data: obAlloc } = await supabase
-        .from("invoice_allocations")
-        .select("invoices!inner(invoice_number, is_opening_balance)")
-        .eq("payment_id", data.id)
-        .eq("invoices.is_opening_balance", true)
-        .limit(1)
-        .maybeSingle();
-      const obInv: any = Array.isArray((obAlloc as any)?.invoices)
-        ? (obAlloc as any).invoices[0]
-        : (obAlloc as any)?.invoices;
-      if (obInv) {
-        // Prefer the real bill number the payment was tagged with (bill-wise
-        // opening balance), falling back to the consolidated OB invoice number.
-        obReferenceNumber = payment.reference_number || obInv.invoice_number || null;
-      }
-
       await supabase.from("refund_letters").insert({
         id: crypto.randomUUID(),
         payment_id: data.id,
         organization_id: payment.organization_id,
         status: "draft",
         document_url: null,
-        ...(obReferenceNumber ? { reference_number: obReferenceNumber } : {}),
       });
     }
 
@@ -2859,14 +2882,28 @@ export const getClientStatement = createServerFn({ method: "GET" })
 
     const rawEntries: any[] = [];
 
+    const histList: any[] = (clientProfile as any)?.historical_invoices || [];
+    // Opening balances are now one invoice row per bill. Show each on its own
+    // line with its real invoice number; attach only its matching historical
+    // entry (by invoice number) so the breakdown isn't repeated on every row.
+    // A single consolidated OB invoice (legacy) still shows the whole breakdown.
+    const isConsolidated = (obInvoices || []).length <= 1;
     for (const ob of obInvoices || []) {
+      const matched = histList.filter(
+        (h: any) => String(h.invoiceNumber ?? "") === String(ob.invoice_number ?? ""),
+      );
       rawEntries.push({
         id: `ob_${ob.id}`,
         type: "opening_balance",
         timestamp: ob.invoice_date,
         created_at: ob.created_at,
-        title: "Opening Balance",
-        meta: { amount: ob.amount, invoice_number: ob.invoice_number, client_name: targetOrgId, historical_invoices: clientProfile?.historical_invoices || [] },
+        title: isConsolidated ? "Opening Balance" : `Opening Balance (${ob.invoice_number})`,
+        meta: {
+          amount: ob.amount,
+          invoice_number: ob.invoice_number,
+          client_name: targetOrgId,
+          historical_invoices: isConsolidated ? histList : matched,
+        },
       });
     }
 
@@ -4976,6 +5013,48 @@ export const getRefundEligibleAllocations = createServerFn({ method: "GET" })
           mundraPaymentByInvoice[r.id] = {
             payment_date: mp.payment_date,
             payment_mode: mp.payment_mode,
+          };
+        }
+      }
+    }
+
+    // Opening-balance exception: a bill-wise opening balance has no PO/dispatch
+    // and therefore no Mundra-to-UTCL payment, so the loop above leaves its
+    // payment-date cell blank ("payment to UTCL not found"). For these bills the
+    // "Mundra paid UTCL" date is the mundraPaymentDate the user recorded at
+    // client creation (kept per bill in historical_invoices). Fill it in here.
+    const obInvoiceIds = allInvoiceIds.filter((id) => !mundraPaymentByInvoice[id]);
+    if (obInvoiceIds.length > 0) {
+      const { data: obRows } = await supabase
+        .from("invoices")
+        .select("id, invoice_number, organization_id, is_opening_balance")
+        .in("id", obInvoiceIds)
+        .eq("is_opening_balance", true);
+
+      const obOrgIds = Array.from(
+        new Set((obRows || []).map((r: any) => r.organization_id).filter(Boolean)),
+      );
+      const histByOrg = new Map<string, any[]>();
+      if (obOrgIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from("client_commercial_profiles")
+          .select("organization_id, historical_invoices")
+          .in("organization_id", obOrgIds);
+        for (const p of (profiles || []) as any[]) {
+          histByOrg.set(p.organization_id, p.historical_invoices || []);
+        }
+      }
+
+      for (const ob of obRows || []) {
+        const hist = histByOrg.get(ob.organization_id) || [];
+        const match = hist.find(
+          (h: any) => String(h.invoiceNumber ?? "") === String(ob.invoice_number ?? ""),
+        );
+        const mundraDate = match?.mundraPaymentDate || match?.date || null;
+        if (mundraDate) {
+          mundraPaymentByInvoice[ob.id] = {
+            payment_date: mundraDate,
+            payment_mode: "Opening Balance",
           };
         }
       }
