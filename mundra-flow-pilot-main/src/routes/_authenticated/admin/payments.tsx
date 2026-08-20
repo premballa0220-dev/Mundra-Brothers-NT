@@ -13,6 +13,7 @@ import {
   getUtclRefundLetters,
   createUtclRefundLetter,
   updateUtclRefundLetterStatus,
+  getInvoices,
 } from "@/lib/api/business.functions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -117,6 +118,11 @@ function AdminPaymentsPage() {
   const { data: clients } = useQuery({
     queryKey: ["admin-clients"],
     queryFn: () => getClients(),
+  });
+
+  const { data: invoices } = useQuery({
+    queryKey: ["admin-invoices"],
+    queryFn: () => getInvoices(),
   });
 
   // UTCL to Mundra refund letters queries
@@ -302,6 +308,11 @@ function AdminPaymentsPage() {
           }
         } else if (ref.startsWith("po_")) {
           purchaseOrderId = ref.replace("po_", "");
+        } else if (ref.startsWith("ob_")) {
+          const obId = ref.replace("ob_", "");
+          allocations = [
+            { invoice_id: obId, allocated_amount: opt.amount, tds_amount: 0 },
+          ];
         }
 
         return recordMutation.mutateAsync({
@@ -1196,6 +1207,14 @@ function AdminPaymentsPage() {
                                 po.status !== "cancelled",
                             ) || [];
 
+                          const openClientObInvoice = invoices?.find(
+                            (inv: any) =>
+                              inv.organization_id === clientSelectedOrgId &&
+                              inv.is_opening_balance === true &&
+                              inv.status !== "paid" &&
+                              inv.status !== "cancelled"
+                          );
+
                           // Show every open dispatch for the client. Ones the
                           // client has already fully paid stay visible (so the
                           // invoice number is always available) but are locked.
@@ -1367,6 +1386,59 @@ function AdminPaymentsPage() {
                                         </div>
                                       )
                                     })}
+                                  </div>
+                                )}
+
+                                {openClientObInvoice && (
+                                  <div className="space-y-3">
+                                    <h4 className="font-medium text-sm text-muted-foreground">Opening Balance</h4>
+                                    <div className="flex flex-col">
+                                      <div className="flex items-center space-x-3">
+                                        <Checkbox
+                                          id={`ref_ob_${openClientObInvoice.id}`}
+                                          checked={clientSelectedReferences.includes(`ob_${openClientObInvoice.id}`)}
+                                          onCheckedChange={(checked) => {
+                                            if (checked) {
+                                              setClientSelectedReferences((prev) => [...prev, `ob_${openClientObInvoice.id}`]);
+                                              setClientPaymentOpts((prev) => ({
+                                                ...prev,
+                                                [`ob_${openClientObInvoice.id}`]: { isAdvance: false, amount: Number(openClientObInvoice.amount) || 0 }
+                                              }));
+                                            } else {
+                                              setClientSelectedReferences((prev) => prev.filter(r => r !== `ob_${openClientObInvoice.id}`));
+                                              setClientPaymentOpts((prev) => {
+                                                const next = { ...prev };
+                                                delete next[`ob_${openClientObInvoice.id}`];
+                                                return next;
+                                              });
+                                            }
+                                          }}
+                                        />
+                                        <Label htmlFor={`ref_ob_${openClientObInvoice.id}`} className="font-normal cursor-pointer text-sm leading-snug">
+                                          Opening Balance - Outstanding: {formatCurrency(Number(openClientObInvoice.amount) || 0)}
+                                        </Label>
+                                      </div>
+
+                                      {clientSelectedReferences.includes(`ob_${openClientObInvoice.id}`) && (
+                                        <div className="flex items-center space-x-4 ml-6 mt-2 mb-4 p-2 bg-muted/30 rounded-md">
+                                          <div className="flex items-center space-x-2">
+                                            <Label htmlFor={`amt_ob_${openClientObInvoice.id}`} className="text-sm text-muted-foreground">Amount (₹):</Label>
+                                            <Input
+                                              id={`amt_ob_${openClientObInvoice.id}`}
+                                              type="number"
+                                              className="w-32 h-8"
+                                              value={clientPaymentOpts[`ob_${openClientObInvoice.id}`]?.amount ?? ""}
+                                              onChange={(e) => {
+                                                setClientPaymentOpts(prev => ({
+                                                  ...prev,
+                                                  [`ob_${openClientObInvoice.id}`]: { ...prev[`ob_${openClientObInvoice.id}`], amount: Number(e.target.value) }
+                                                }))
+                                              }}
+                                            />
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 )}
                               </div>
