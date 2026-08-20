@@ -1212,8 +1212,12 @@ function AdminPaymentsPage() {
                               inv.organization_id === clientSelectedOrgId &&
                               inv.is_opening_balance === true &&
                               inv.status !== "paid" &&
-                              inv.status !== "cancelled"
+                              inv.status !== "cancelled" &&
+                              (Number(inv.outstanding ?? inv.amount) || 0) > 0
                           );
+                          const obOutstanding = openClientObInvoice
+                            ? Number(openClientObInvoice.outstanding ?? openClientObInvoice.amount) || 0
+                            : 0;
 
                           // Show every open dispatch for the client. Ones the
                           // client has already fully paid stay visible (so the
@@ -1402,7 +1406,7 @@ function AdminPaymentsPage() {
                                               setClientSelectedReferences((prev) => [...prev, `ob_${openClientObInvoice.id}`]);
                                               setClientPaymentOpts((prev) => ({
                                                 ...prev,
-                                                [`ob_${openClientObInvoice.id}`]: { isAdvance: false, amount: Number(openClientObInvoice.amount) || 0 }
+                                                [`ob_${openClientObInvoice.id}`]: { isAdvance: false, amount: obOutstanding }
                                               }));
                                             } else {
                                               setClientSelectedReferences((prev) => prev.filter(r => r !== `ob_${openClientObInvoice.id}`));
@@ -1415,7 +1419,7 @@ function AdminPaymentsPage() {
                                           }}
                                         />
                                         <Label htmlFor={`ref_ob_${openClientObInvoice.id}`} className="font-normal cursor-pointer text-sm leading-snug">
-                                          Opening Balance{openClientObInvoice.invoice_number ? ` (Inv: ${openClientObInvoice.invoice_number})` : ""} - Outstanding: {formatCurrency(Number(openClientObInvoice.amount) || 0)}
+                                          Opening Balance{openClientObInvoice.invoice_number ? ` (Inv: ${openClientObInvoice.invoice_number})` : ""} - Outstanding: {formatCurrency(obOutstanding)}
                                         </Label>
                                       </div>
 

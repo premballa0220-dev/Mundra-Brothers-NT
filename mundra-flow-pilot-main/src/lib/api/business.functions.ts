@@ -2744,7 +2744,10 @@ export const getInvoices = createServerFn({ method: "GET" })
   .middleware([requireAuth])
   .handler(async ({ context }) => {
     const supabase = createSupabaseAdminClient();
-    let query = supabase.from("invoices").select("*").order("invoice_date", { ascending: false });
+    let query = supabase
+      .from("invoices")
+      .select("*, invoice_allocations(allocated_amount)")
+      .order("invoice_date", { ascending: false });
     if (context.orgType !== "mundra") {
       query = query.eq("organization_id", context.organizationId);
     }
@@ -2764,6 +2767,12 @@ export const getInvoices = createServerFn({ method: "GET" })
     const organizationsMap = await loadOrganizationsMap();
     return (invoices || []).map((invoice: any) => {
       const nested = withNestedOrganization(invoice, organizationsMap);
+      const allocated = (invoice.invoice_allocations || []).reduce(
+        (s: number, a: any) => s + (Number(a.allocated_amount) || 0),
+        0,
+      );
+      nested.allocated_amount = allocated;
+      nested.outstanding = Math.max(0, (Number(invoice.amount) || 0) - allocated);
       if (invoice.is_opening_balance) {
         nested.historical_invoices = profilesMap.get(invoice.organization_id)?.historical_invoices || [];
       }
