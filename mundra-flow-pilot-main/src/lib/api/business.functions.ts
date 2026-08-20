@@ -2743,8 +2743,10 @@ export const verifyPayment = createServerFn({ method: "POST" })
       const obInv: any = Array.isArray((obAlloc as any)?.invoices)
         ? (obAlloc as any).invoices[0]
         : (obAlloc as any)?.invoices;
-      if (obInv?.invoice_number) {
-        obReferenceNumber = obInv.invoice_number;
+      if (obInv) {
+        // Prefer the real bill number the payment was tagged with (bill-wise
+        // opening balance), falling back to the consolidated OB invoice number.
+        obReferenceNumber = payment.reference_number || obInv.invoice_number || null;
       }
 
       await supabase.from("refund_letters").insert({

@@ -277,9 +277,24 @@ function AdminPaymentsPage() {
     }
 
     if (clientPaymentType === "against_reference") {
-      const promises = clientSelectedReferences.map((ref) => {
+      // The consolidated opening-balance invoice that bill-wise (obh_) payments
+      // allocate against. Its outstanding is drawn down as we go so several bills
+      // paid at once never over-allocate past what the OB invoice still owes.
+      const obConsolidated = invoices?.find(
+        (inv: any) =>
+          inv.organization_id === clientSelectedOrgId &&
+          inv.is_opening_balance === true &&
+          inv.status !== "paid" &&
+          inv.status !== "cancelled",
+      );
+      let obRemaining = obConsolidated
+        ? Number(obConsolidated.outstanding ?? obConsolidated.amount) || 0
+        : 0;
+
+      // Sequential (not Promise.all) so the running OB balance is honoured.
+      for (const ref of clientSelectedReferences) {
         const opt = clientPaymentOpts[ref];
-        if (!opt || opt.amount <= 0) return Promise.resolve();
+        if (!opt || opt.amount <= 0) continue;
 
         let dispatchRequestIds: string[] | undefined = undefined;
         let purchaseOrderId: string | undefined = undefined;
@@ -288,6 +303,9 @@ function AdminPaymentsPage() {
         // balance — losing the link to the dispatch actually being paid for.
         // Allocate to the selected dispatch's own invoice instead.
         let allocations: Array<{ invoice_id: string; allocated_amount: number; tds_amount: number }> | undefined;
+        // Bill-wise opening balances carry the REAL invoice number as their
+        // reference id; everything else uses the shared reference/UTR field.
+        let referenceNumber = clientReferenceNumber;
 
         if (ref.startsWith("dr_")) {
           const drId = ref.replace("dr_", "");
@@ -308,6 +326,19 @@ function AdminPaymentsPage() {
           }
         } else if (ref.startsWith("po_")) {
           purchaseOrderId = ref.replace("po_", "");
+        } else if (ref.startsWith("obh_")) {
+          // Bill-wise opening balance: allocate to the consolidated OB invoice,
+          // tag the payment with the real bill number as its reference.
+          referenceNumber = ref.slice(4);
+          if (obConsolidated?.id) {
+            const allocatable = Math.min(opt.amount, obRemaining);
+            if (allocatable > 0) {
+              allocations = [
+                { invoice_id: obConsolidated.id, allocated_amount: allocatable, tds_amount: 0 },
+              ];
+              obRemaining -= allocatable;
+            }
+          }
         } else if (ref.startsWith("ob_")) {
           const obId = ref.replace("ob_", "");
           allocations = [
@@ -315,21 +346,20 @@ function AdminPaymentsPage() {
           ];
         }
 
-        return recordMutation.mutateAsync({
+        await recordMutation.mutateAsync({
           organizationId: clientSelectedOrgId,
           purchaseOrderId,
           dispatchRequestIds,
           amount: opt.amount,
           paymentDate: clientPaymentDate,
           paymentMode: clientPaymentMode,
-          referenceNumber: clientReferenceNumber,
+          referenceNumber,
           isUtclPayment: true,
           isClientToUtcl: true,
           isAdvance: opt.isAdvance,
           allocations,
         });
-      });
-      await Promise.all(promises);
+      }
       setClientUtclModalOpen(false);
       return;
     }
@@ -1219,6 +1249,20 @@ function AdminPaymentsPage() {
                             ? Number(openClientObInvoice.outstanding ?? openClientObInvoice.amount) || 0
                             : 0;
 
+                          // Bill-wise opening balances: the individual invoices entered at
+                          // client creation live in historical_invoices on the consolidated
+                          // OB invoice (getInvoices attaches them). Show each by its REAL
+                          // invoice number so it can be paid individually; payments allocate
+                          // to the consolidated OB invoice but carry the real bill number as
+                          // their reference id, so partial ("patch") payments accumulate per
+                          // bill and the refund letter is keyed off it.
+                          const obHistItems: any[] = (openClientObInvoice?.historical_invoices || [])
+                            .filter((h: any) => (h.type ?? "invoice") === "invoice" && h.invoiceNumber);
+                          const paidForObBill = (billNo: string) =>
+                            (clientUtclPayments || [])
+                              .filter((p: any) => p.organization_id === clientSelectedOrgId && p.reference_number === billNo)
+                              .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+
                           // Show every open dispatch for the client. Ones the
                           // client has already fully paid stay visible (so the
                           // invoice number is always available) but are locked.
@@ -1393,7 +1437,70 @@ function AdminPaymentsPage() {
                                   </div>
                                 )}
 
-                                {openClientObInvoice && (
+                                {openClientObInvoice && obHistItems.length > 0 && (
+                                  <div className="space-y-3">
+                                    <h4 className="font-medium text-sm text-muted-foreground">Opening Balance (Bill-wise)</h4>
+                                    {obHistItems.map((h: any) => {
+                                      const billNo = String(h.invoiceNumber);
+                                      const key = `obh_${billNo}`;
+                                      const billOutstanding = Math.max(0, (Number(h.amount) || 0) - paidForObBill(billNo));
+                                      const isSelected = clientSelectedReferences.includes(key);
+                                      const isPaid = billOutstanding <= 0;
+                                      return (
+                                        <div key={key} className="flex flex-col">
+                                          <div className="flex items-center space-x-3">
+                                            <Checkbox
+                                              id={`ref_${key}`}
+                                              disabled={isPaid}
+                                              checked={isSelected}
+                                              onCheckedChange={(checked) => {
+                                                if (checked) {
+                                                  setClientSelectedReferences((prev) => [...prev, key]);
+                                                  setClientPaymentOpts((prev) => ({
+                                                    ...prev,
+                                                    [key]: { isAdvance: false, amount: billOutstanding },
+                                                  }));
+                                                  setClientReferenceNumber(billNo);
+                                                } else {
+                                                  setClientSelectedReferences((prev) => prev.filter(r => r !== key));
+                                                  setClientPaymentOpts((prev) => {
+                                                    const next = { ...prev };
+                                                    delete next[key];
+                                                    return next;
+                                                  });
+                                                  if (clientReferenceNumber === billNo) setClientReferenceNumber("");
+                                                }
+                                              }}
+                                            />
+                                            <Label htmlFor={`ref_${key}`} className={`font-normal cursor-pointer text-sm leading-snug ${isPaid ? 'opacity-50' : ''}`}>
+                                              Invoice {billNo}{h.date ? ` (${new Date(h.date).toLocaleDateString('en-IN')})` : ""} - Outstanding: {formatCurrency(billOutstanding)}
+                                              {isPaid && <span className="ml-1 text-xs font-medium text-success">— fully paid</span>}
+                                            </Label>
+                                          </div>
+                                          {isSelected && (
+                                            <div className="flex items-center space-x-4 ml-6 mt-2 mb-4 p-2 bg-muted/30 rounded-md">
+                                              <div className="flex items-center space-x-2">
+                                                <Label htmlFor={`amt_${key}`} className="text-sm text-muted-foreground">Amount (₹):</Label>
+                                                <Input
+                                                  id={`amt_${key}`}
+                                                  type="number"
+                                                  className="w-32 h-8"
+                                                  value={clientPaymentOpts[key]?.amount ?? ""}
+                                                  onChange={(e) => setClientPaymentOpts(prev => ({
+                                                    ...prev,
+                                                    [key]: { ...prev[key], amount: Number(e.target.value) },
+                                                  }))}
+                                                />
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+
+                                {openClientObInvoice && obHistItems.length === 0 && (
                                   <div className="space-y-3">
                                     <h4 className="font-medium text-sm text-muted-foreground">Opening Balance</h4>
                                     <div className="flex flex-col">
