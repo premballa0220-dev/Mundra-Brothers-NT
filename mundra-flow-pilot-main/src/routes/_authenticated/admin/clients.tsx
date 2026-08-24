@@ -55,91 +55,101 @@ import { Building2, Plus, Loader2, MoreVertical, Ban, CheckCircle2, X, Trash2, U
 import { supabase } from "@/integrations/supabase/client";
 import * as XLSX from "xlsx";
 
-// Parse an opening-balance Excel export into opening-invoice rows.
-// Column headers are matched fuzzily so minor naming differences still work.
-// The "opening amount" and "overdue by days" columns are intentionally ignored;
-// the PENDING amount is used as each invoice's outstanding.
-function parseOpeningInvoicesExcel(
-  rows: any[][],
-): { invoiceNumber: string; amount: number; date: string; mundraPaymentDate?: string }[] {
-  const norm = (v: any) => String(v ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-  // Find the header row: the first row that mentions an invoice column.
-  let headerIdx = -1;
-  for (let i = 0; i < Math.min(rows.length, 15); i++) {
-    const joined = (rows[i] || []).map(norm).join("|");
-    if (joined.includes("invoice") || (joined.includes("bill") && joined.includes("no"))) {
-      headerIdx = i;
+type OpeningInvoiceRow = { invoiceNumber: string; amount: number | ""; date: string; mundraPaymentDate?: string };
+
+const _norm = (v: any) => String(v ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+
+function _excelToISO(v: any): string {
+  if (v == null || v === "") return "";
+  if (typeof v === "number") {
+    // Excel serial → ISO. 25569 = days between 1899-12-30 and 1970-01-01.
+    const ms = Math.round((v - 25569) * 86400 * 1000);
+    const d = new Date(ms);
+    return isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
+  }
+  if (v instanceof Date) return isNaN(v.getTime()) ? "" : v.toISOString().split("T")[0];
+  const s = String(v).trim();
+  const m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/); // dd-mm-yyyy
+  if (m) {
+    let [, dd, mm, yy] = m;
+    if (yy.length === 2) yy = "20" + yy;
+    return `${yy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
+  }
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
+}
+function _toNum(v: any): number {
+  if (typeof v === "number") return v;
+  const n = Number(String(v ?? "").replace(/[₹,\s]/g, ""));
+  return isNaN(n) ? 0 : n;
+}
+
+// Parse one worksheet (as a 2D array) of the UTCL "Bill-wise Details / Pending
+// Bills" ledger into opening-invoice rows. The header spans two rows (e.g.
+// "Pending" over "Amount"), the invoice number is the "Ref. No." column, dates
+// are Excel serials, and the "Opening Amount" and "Overdue by days" columns are
+// intentionally ignored — the PENDING amount is the carried-forward outstanding.
+// Returns null when the sheet has no recognisable bill table.
+function parseLedgerSheet(rows: any[][]): OpeningInvoiceRow[] | null {
+  let hi = -1;
+  for (let i = 0; i < Math.min(rows.length, 30); i++) {
+    const r = (rows[i] || []).map(_norm);
+    if (r.some((c) => c.includes("pending")) && r.some((c) => c.includes("ref") || c.includes("date") || c.includes("overdue"))) {
+      hi = i;
       break;
     }
   }
-  if (headerIdx === -1) throw new Error("Could not find a header row containing an invoice column.");
+  if (hi === -1) return null;
 
-  const headers = (rows[headerIdx] || []).map(norm);
-  const findCol = (preds: ((h: string) => boolean)[]) => {
-    for (const pred of preds) {
-      const idx = headers.findIndex((h) => pred(h));
-      if (idx !== -1) return idx;
+  // Merge a continuation header row ("Amount", "by days", …) into the main one.
+  const next = (rows[hi + 1] || []).map(_norm);
+  const nonEmptyNext = next.filter(Boolean).length;
+  const isCont = nonEmptyNext > 0 && nonEmptyNext <= 3 && next.some((c) => c.includes("amount") || c.includes("day"));
+  const H0 = (rows[hi] || []).map(_norm);
+  const H = H0.map((h, c) => (isCont ? `${h} ${next[c] || ""}`.trim() : h));
+
+  const find = (preds: ((h: string) => boolean)[]) => {
+    for (const p of preds) {
+      const i = H.findIndex((h) => p(h));
+      if (i !== -1) return i;
     }
     return -1;
   };
-
-  const invNoCol = findCol([
+  const refCol = find([
+    (h) => h.includes("ref") && h.includes("no"),
     (h) => (h.includes("invoice") || h.includes("bill")) && (h.includes("no") || h.includes("number") || h.includes("#")),
-    (h) => h === "invoice" || h === "bill",
+    (h) => h === "ref. no." || h === "invoice" || h === "bill",
   ]);
-  // Prefer a header that explicitly says "invoice date"; else any "date".
-  const dateCol = findCol([
-    (h) => h.includes("invoice") && h.includes("date"),
-    (h) => h.includes("bill") && h.includes("date"),
-    (h) => h.includes("date"),
-  ]);
-  // Pending amount only — never the opening amount.
-  const pendingCol = findCol([
+  const dateCol = find([(h) => h.includes("date") && !h.includes("due")]);
+  const pendingCol = find([
     (h) => h.includes("pending"),
-    (h) => h.includes("outstanding") || h.includes("balance") || h.includes("due amount"),
+    (h) => h.includes("outstanding") || h.includes("balance"),
   ]);
+  if (refCol === -1 || pendingCol === -1) return null;
 
-  if (invNoCol === -1) throw new Error("No 'Invoice No' column found in the sheet.");
-  if (pendingCol === -1) throw new Error("No 'Pending Amount' column found in the sheet.");
-
-  const excelSerialToISO = (serial: number) => {
-    // Excel epoch (1899-12-30) + serial days.
-    const ms = Math.round((serial - 25569) * 86400 * 1000);
-    const d = new Date(ms);
-    return isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
-  };
-  const toISODate = (v: any): string => {
-    if (v == null || v === "") return "";
-    if (typeof v === "number") return excelSerialToISO(v);
-    if (v instanceof Date) return isNaN(v.getTime()) ? "" : v.toISOString().split("T")[0];
-    const s = String(v).trim();
-    // dd-mm-yyyy / dd/mm/yyyy
-    const m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/);
-    if (m) {
-      let [, dd, mm, yy] = m;
-      if (yy.length === 2) yy = "20" + yy;
-      return `${yy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
-    }
-    const d = new Date(s);
-    return isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
-  };
-  const toNum = (v: any): number => {
-    if (typeof v === "number") return v;
-    const n = Number(String(v ?? "").replace(/[₹,\s]/g, ""));
-    return isNaN(n) ? 0 : n;
-  };
-
-  const out: { invoiceNumber: string; amount: number; date: string; mundraPaymentDate?: string }[] = [];
-  for (let i = headerIdx + 1; i < rows.length; i++) {
+  const dataStart = isCont ? hi + 2 : hi + 1;
+  const out: OpeningInvoiceRow[] = [];
+  for (let i = dataStart; i < rows.length; i++) {
     const row = rows[i] || [];
-    const invoiceNumber = String(row[invNoCol] ?? "").trim();
-    const amount = toNum(row[pendingCol]);
-    if (!invoiceNumber) continue; // skip blank rows
-    if (/^(total|grand\s*total|sub\s*total|sum|closing|opening)\b/i.test(invoiceNumber)) continue; // skip summary rows
-    if (amount <= 0) continue; // nothing pending → nothing to carry forward
-    out.push({ invoiceNumber, amount, date: dateCol !== -1 ? toISODate(row[dateCol]) : "", mundraPaymentDate: "" });
+    const invoiceNumber = String(row[refCol] ?? "").trim();
+    const amount = _toNum(row[pendingCol]);
+    if (!invoiceNumber) continue;
+    if (/total|closing|opening|grand|carried|b\/?f|c\/?f/i.test(invoiceNumber)) continue; // summary rows
+    if (amount <= 0) continue; // nothing pending to carry forward
+    out.push({ invoiceNumber, amount, date: dateCol !== -1 ? _excelToISO(row[dateCol]) : "", mundraPaymentDate: "" });
   }
-  return out;
+  return out.length > 0 ? out : null;
+}
+
+// The client name sits on the line just above "Bill-wise Details"; fall back to
+// the sheet name so the picker always has a readable label.
+function ledgerSheetLabel(rows: any[][], sheetName: string): string {
+  const idx = rows.findIndex((r) => (r || []).some((c) => _norm(c).includes("bill-wise")));
+  if (idx > 0) {
+    const above = (rows[idx - 1] || []).map((c) => String(c ?? "").trim()).filter(Boolean);
+    if (above.length) return above[0];
+  }
+  return sheetName;
 }
 
 function DeliveryLocationsBuilder({
@@ -413,6 +423,13 @@ function AdminClientsPage() {
   const [openingInvoices, setOpeningInvoices] = useState<{ invoiceNumber: string; amount: number | ""; date: string; mundraPaymentDate?: string }[]>([]);
   // Debit notes that form part of the opening balance, alongside the invoices.
   const [openingDebitNotes, setOpeningDebitNotes] = useState<{ fromDate: string; toDate: string; amount: number | "" }[]>([]);
+  // Excel import: when a workbook has several client sheets, let the user pick one.
+  const [importSheets, setImportSheets] = useState<{ name: string; label: string; invoices: OpeningInvoiceRow[] }[]>([]);
+  const [importPickerOpen, setImportPickerOpen] = useState(false);
+  const applyImportedInvoices = (invoices: OpeningInvoiceRow[]) => {
+    setOpeningInvoices((prev) => [...prev.filter((r) => r.invoiceNumber || r.amount !== ""), ...invoices]);
+    toast.success(`Imported ${invoices.length} invoice(s).`);
+  };
   // Draft rows shown inside the "Add Debit Note" dialog; only committed on OK.
   const [debitNoteDialogOpen, setDebitNoteDialogOpen] = useState(false);
   const [debitNoteDraft, setDebitNoteDraft] = useState<{ fromDate: string; toDate: string; amount: number | "" }[]>([
@@ -848,19 +865,25 @@ function AdminClientsPage() {
                               try {
                                 const buf = await file.arrayBuffer();
                                 const wb = XLSX.read(buf, { type: "array" });
-                                const ws = wb.Sheets[wb.SheetNames[0]];
-                                const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: "" });
-                                const parsed = parseOpeningInvoicesExcel(rows);
-                                if (parsed.length === 0) {
-                                  toast.error("No invoices with a pending amount were found in the sheet.");
+                                // Each sheet is one client's pending-bill ledger. Parse them all
+                                // and keep the ones that actually contain a bill table.
+                                const sheets = wb.SheetNames.map((name) => {
+                                  const rows = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[name], { header: 1, defval: "" });
+                                  const invoices = parseLedgerSheet(rows);
+                                  return invoices ? { name, label: ledgerSheetLabel(rows, name), invoices } : null;
+                                }).filter(Boolean) as { name: string; label: string; invoices: OpeningInvoiceRow[] }[];
+
+                                if (sheets.length === 0) {
+                                  toast.error("No pending-bill sheet was found in this workbook.");
                                   return;
                                 }
-                                // Append to whatever is already there, dropping empty rows.
-                                setOpeningInvoices((prev) => [
-                                  ...prev.filter((r) => r.invoiceNumber || r.amount !== ""),
-                                  ...parsed,
-                                ]);
-                                toast.success(`Imported ${parsed.length} invoice(s) from Excel.`);
+                                if (sheets.length === 1) {
+                                  applyImportedInvoices(sheets[0].invoices);
+                                  return;
+                                }
+                                // Several client sheets → let the user choose which one.
+                                setImportSheets(sheets);
+                                setImportPickerOpen(true);
                               } catch (err: any) {
                                 toast.error(err?.message || "Failed to import Excel file.");
                               }
@@ -1153,6 +1176,39 @@ function AdminClientsPage() {
 
           {/* Add Debit Note — collects date/amount pairs that add into the
               opening balance alongside the historical invoices. */}
+          <Dialog open={importPickerOpen} onOpenChange={setImportPickerOpen}>
+            <DialogContent className="sm:max-w-[520px]">
+              <DialogHeader>
+                <DialogTitle>Select a client sheet to import</DialogTitle>
+                <DialogDescription>
+                  This workbook has several sheets. Pick the one for the client you are creating.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2 py-2 max-h-[50vh] overflow-y-auto">
+                {importSheets.map((s) => {
+                  const total = s.invoices.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+                  return (
+                    <button
+                      key={s.name}
+                      type="button"
+                      className="w-full text-left p-3 border rounded-md hover:bg-muted/40 transition-colors"
+                      onClick={() => {
+                        applyImportedInvoices(s.invoices);
+                        setImportPickerOpen(false);
+                      }}
+                    >
+                      <div className="font-medium text-sm">{s.label}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {s.invoices.length} invoice(s) · Pending ₹{total.toLocaleString("en-IN")}
+                        {s.label !== s.name ? ` · sheet: ${s.name}` : ""}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </DialogContent>
+          </Dialog>
+
           <Dialog open={debitNoteDialogOpen} onOpenChange={setDebitNoteDialogOpen}>
             <DialogContent className="sm:max-w-[520px]">
               <DialogHeader>
