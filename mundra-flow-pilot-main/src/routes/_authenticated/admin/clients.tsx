@@ -83,6 +83,14 @@ function _toNum(v: any): number {
   const n = Number(String(v ?? "").replace(/[₹,\s]/g, ""));
   return isNaN(n) ? 0 : n;
 }
+// Add N days to an ISO (YYYY-MM-DD) date, returning ISO. Blank in → blank out.
+function _addDays(iso: string, days: number): string {
+  if (!iso) return "";
+  const d = new Date(`${iso}T00:00:00Z`);
+  if (isNaN(d.getTime())) return "";
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().split("T")[0];
+}
 
 // Parse one worksheet (as a 2D array) of the UTCL "Bill-wise Details / Pending
 // Bills" ledger into opening-invoice rows. The header spans two rows (e.g.
@@ -136,7 +144,9 @@ function parseLedgerSheet(rows: any[][]): OpeningInvoiceRow[] | null {
     if (!invoiceNumber) continue;
     if (/total|closing|opening|grand|carried|b\/?f|c\/?f/i.test(invoiceNumber)) continue; // summary rows
     if (amount <= 0) continue; // nothing pending to carry forward
-    out.push({ invoiceNumber, amount, date: dateCol !== -1 ? _excelToISO(row[dateCol]) : "", mundraPaymentDate: "" });
+    const date = dateCol !== -1 ? _excelToISO(row[dateCol]) : "";
+    // The Mundra-to-UTCL payment date is always 9 days after the invoice date.
+    out.push({ invoiceNumber, amount, date, mundraPaymentDate: _addDays(date, 9) });
   }
   return out.length > 0 ? out : null;
 }
