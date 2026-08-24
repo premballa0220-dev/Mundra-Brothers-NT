@@ -49,7 +49,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { Building2, Plus, Loader2, MoreVertical, Ban, CheckCircle2, X, Trash2, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -426,6 +426,10 @@ function AdminClientsPage() {
   // Excel import: when a workbook has several client sheets, let the user pick one.
   const [importSheets, setImportSheets] = useState<{ name: string; label: string; invoices: OpeningInvoiceRow[] }[]>([]);
   const [importPickerOpen, setImportPickerOpen] = useState(false);
+  // Opening the OS file picker steals focus from the onboarding dialog, which
+  // Radix would otherwise treat as an outside interaction and close it. This
+  // flag tells the dialog's onInteractOutside guard to ignore that event.
+  const fileDialogActiveRef = useRef(false);
   const applyImportedInvoices = (invoices: OpeningInvoiceRow[]) => {
     setOpeningInvoices((prev) => [...prev.filter((r) => r.invoiceNumber || r.amount !== ""), ...invoices]);
     toast.success(`Imported ${invoices.length} invoice(s).`);
@@ -714,7 +718,10 @@ function AdminClientsPage() {
             <DialogContent 
               className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto"
               onInteractOutside={(e) => {
-                if (debitNoteDialogOpen) {
+                // Keep the onboarding dialog open while any of its own sub-flows
+                // are active: the debit-note dialog, the Excel sheet picker, or
+                // the native file picker (which momentarily steals focus).
+                if (debitNoteDialogOpen || importPickerOpen || fileDialogActiveRef.current) {
                   e.preventDefault();
                 }
               }}
@@ -893,7 +900,17 @@ function AdminClientsPage() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => document.getElementById("opening-invoices-excel")?.click()}
+                            onClick={() => {
+                              fileDialogActiveRef.current = true;
+                              // Whether the user picks a file or cancels, focus
+                              // returns to the window — clear the guard shortly after.
+                              window.addEventListener(
+                                "focus",
+                                () => setTimeout(() => { fileDialogActiveRef.current = false; }, 300),
+                                { once: true },
+                              );
+                              document.getElementById("opening-invoices-excel")?.click();
+                            }}
                           >
                             <Upload className="h-3 w-3 mr-1" /> Import Invoices
                           </Button>
