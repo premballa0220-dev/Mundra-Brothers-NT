@@ -55,7 +55,13 @@ import { Building2, Plus, Loader2, MoreVertical, Ban, CheckCircle2, X, Trash2, U
 import { supabase } from "@/integrations/supabase/client";
 import * as XLSX from "xlsx";
 
-type OpeningInvoiceRow = { invoiceNumber: string; amount: number | ""; date: string; mundraPaymentDate?: string };
+type OpeningInvoiceRow = {
+  invoiceNumber: string;
+  amount: number | "";
+  date: string;
+  mundraPaymentDate?: string;
+  type?: "DR" | "CR";
+};
 
 const _norm = (v: any) => String(v ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 
@@ -78,11 +84,40 @@ function _excelToISO(v: any): string {
   const d = new Date(s);
   return isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
 }
-function _toNum(v: any): number {
-  if (typeof v === "number") return v;
-  const n = Number(String(v ?? "").replace(/[₹,\s]/g, ""));
-  return isNaN(n) ? 0 : n;
+
+function _parseAmountAndType(v: any, row?: any[], drCrCol?: number): { amount: number; type: "DR" | "CR" } {
+  let isCredit = false;
+
+  if (row && drCrCol !== undefined && drCrCol !== -1) {
+    const colVal = _norm(row[drCrCol]);
+    if (colVal === "cr" || colVal === "credit" || colVal.includes("cr")) {
+      isCredit = true;
+    }
+  }
+
+  if (typeof v === "number") {
+    if (v < 0) {
+      isCredit = true;
+    }
+    return { amount: Math.abs(v), type: isCredit ? "CR" : "DR" };
+  }
+
+  const str = String(v ?? "").trim();
+  if (/(\bcr\b|credit|\bcr\.|\bc\/r\b)/i.test(str) || /^-|^\(.*\)$/.test(str)) {
+    isCredit = true;
+  }
+
+  const cleanStr = str.replace(/[₹,\s]/g, "").replace(/[^0-9.-]/g, "");
+  const n = Number(cleanStr);
+  const amount = isNaN(n) ? 0 : Math.abs(n);
+
+  return { amount, type: isCredit ? "CR" : "DR" };
 }
+
+function _toNum(v: any): number {
+  return _parseAmountAndType(v).amount;
+}
+
 // Add N days to an ISO (YYYY-MM-DD) date, returning ISO. Blank in → blank out.
 function _addDays(iso: string, days: number): string {
   if (!iso) return "";
@@ -133,6 +168,12 @@ function parseLedgerSheet(rows: any[][]): OpeningInvoiceRow[] | null {
     (h) => h.includes("pending"),
     (h) => h.includes("outstanding") || h.includes("balance"),
   ]);
+  const drCrCol = find([
+    (h) => h.includes("dr") && h.includes("cr"),
+    (h) => h === "cr/dr" || h === "dr/cr" || h === "d/c" || h === "type",
+    (h) => h.includes("debit") && h.includes("credit"),
+    (h) => h === "dr" || h === "cr",
+  ]);
   if (refCol === -1 || pendingCol === -1) return null;
 
   const dataStart = isCont ? hi + 2 : hi + 1;
@@ -140,13 +181,13 @@ function parseLedgerSheet(rows: any[][]): OpeningInvoiceRow[] | null {
   for (let i = dataStart; i < rows.length; i++) {
     const row = rows[i] || [];
     const invoiceNumber = String(row[refCol] ?? "").trim();
-    const amount = _toNum(row[pendingCol]);
+    const { amount, type } = _parseAmountAndType(row[pendingCol], row, drCrCol);
     if (!invoiceNumber) continue;
     if (/total|closing|opening|grand|carried|b\/?f|c\/?f/i.test(invoiceNumber)) continue; // summary rows
     if (amount <= 0) continue; // nothing pending to carry forward
     const date = dateCol !== -1 ? _excelToISO(row[dateCol]) : "";
     // The Mundra-to-UTCL payment date is always 9 days after the invoice date.
-    out.push({ invoiceNumber, amount, date, mundraPaymentDate: _addDays(date, 9) });
+    out.push({ invoiceNumber, amount, date, mundraPaymentDate: _addDays(date, 9), type });
   }
   return out.length > 0 ? out : null;
 }
@@ -430,7 +471,9 @@ function AdminClientsPage() {
 
   const [initialOpeningBalance, setInitialOpeningBalance] = useState<number | "">("");
   const [initialOpeningBalanceDate, setInitialOpeningBalanceDate] = useState("");
-  const [openingInvoices, setOpeningInvoices] = useState<{ invoiceNumber: string; amount: number | ""; date: string; mundraPaymentDate?: string }[]>([]);
+  const [openingInvoices, setOpeningInvoices] = useState<
+    { invoiceNumber: string; amount: number | ""; date: string; mundraPaymentDate?: string; type?: "DR" | "CR" }[]
+  >([]);
   // Debit notes that form part of the opening balance, alongside the invoices.
   const [openingDebitNotes, setOpeningDebitNotes] = useState<{ fromDate: string; toDate: string; amount: number | "" }[]>([]);
   // Excel import: when a workbook has several client sheets, let the user pick one.
@@ -441,7 +484,10 @@ function AdminClientsPage() {
   // flag tells the dialog's onInteractOutside guard to ignore that event.
   const fileDialogActiveRef = useRef(false);
   const applyImportedInvoices = (invoices: OpeningInvoiceRow[]) => {
-    setOpeningInvoices((prev) => [...prev.filter((r) => r.invoiceNumber || r.amount !== ""), ...invoices]);
+    setOpeningInvoices((prev) => [
+      ...prev.filter((r) => r.invoiceNumber || r.amount !== ""),
+      ...invoices.map((inv) => ({ ...inv, type: inv.type || "DR" })),
+    ]);
     toast.success(`Imported ${invoices.length} invoice(s).`);
   };
   // Draft rows shown inside the "Add Debit Note" dialog; only committed on OK.
@@ -452,9 +498,12 @@ function AdminClientsPage() {
 
   useEffect(() => {
     if (openingInvoices.length > 0 || openingDebitNotes.length > 0) {
-      const invoiceSum = openingInvoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
+      const invoiceDrSum = openingInvoices
+        .filter((i) => (i.type || "DR") === "DR")
+        .reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
       const debitSum = openingDebitNotes.reduce((acc, dn) => acc + (Number(dn.amount) || 0), 0);
-      setInitialOpeningBalance(invoiceSum + debitSum || "");
+      const netTotal = invoiceDrSum + debitSum;
+      setInitialOpeningBalance(netTotal);
 
       const validDates = [
         ...openingInvoices.map((inv) => inv.date),
@@ -647,12 +696,14 @@ function AdminClientsPage() {
     e.preventDefault();
 
     if (openingInvoices.length > 0 || openingDebitNotes.length > 0) {
-      const sum =
-        openingInvoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0) +
-        openingDebitNotes.reduce((acc, dn) => acc + (Number(dn.amount) || 0), 0);
+      const invoiceDrSum = openingInvoices
+        .filter((i) => (i.type || "DR") === "DR")
+        .reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
+      const debitSum = openingDebitNotes.reduce((acc, dn) => acc + (Number(dn.amount) || 0), 0);
+      const sum = invoiceDrSum + debitSum;
       if (sum !== Number(initialOpeningBalance || 0)) {
         toast.error(
-          "The sum of historical invoices and debit notes does not match the Initial Opening Balance.",
+          "The sum of historical Dr invoices and debit notes does not match the Initial Opening Balance.",
         );
         return;
       }
@@ -683,7 +734,15 @@ function AdminClientsPage() {
       billingProfiles,
       initialOpeningBalance: initialOpeningBalance === "" ? undefined : Number(initialOpeningBalance),
       initialOpeningBalanceDate: initialOpeningBalanceDate === "" ? undefined : initialOpeningBalanceDate,
-      openingInvoices: openingInvoices.filter(i => i.invoiceNumber && i.amount !== ""),
+      openingInvoices: openingInvoices
+        .filter((i) => i.invoiceNumber && i.amount !== "")
+        .map((i) => ({
+          invoiceNumber: i.invoiceNumber,
+          amount: Number(i.amount),
+          date: i.date,
+          mundraPaymentDate: i.mundraPaymentDate,
+          type: i.type || "DR",
+        })),
       openingDebitNotes: openingDebitNotes
         .filter((dn) => dn.fromDate && dn.toDate && dn.amount !== "")
         .map((dn) => ({ fromDate: dn.fromDate, toDate: dn.toDate, amount: Number(dn.amount) })),
@@ -705,8 +764,9 @@ function AdminClientsPage() {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
-      maximumFractionDigits: 0,
-    }).format(amount);
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount || 0);
   };
 
   return (
@@ -928,7 +988,12 @@ function AdminClientsPage() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => setOpeningInvoices([...openingInvoices, { invoiceNumber: "", amount: "", date: "", mundraPaymentDate: "" }])}
+                            onClick={() =>
+                              setOpeningInvoices([
+                                ...openingInvoices,
+                                { invoiceNumber: "", amount: "", date: "", mundraPaymentDate: "", type: "DR" },
+                              ])
+                            }
                           >
                             <Plus className="h-3 w-3 mr-1" /> Add Invoice
                           </Button>
@@ -965,18 +1030,38 @@ function AdminClientsPage() {
                               required
                             />
                           </div>
-                          <div className="flex-[0.8] space-y-1">
+                          <div className="flex-[0.9] space-y-1">
                             <Label className="text-xs">Amount (₹) *</Label>
-                            <Input
-                              type="number"
-                              value={inv.amount}
-                              onChange={(e) => {
-                                const newInvs = [...openingInvoices];
-                                newInvs[idx].amount = e.target.value === "" ? "" : Number(e.target.value);
-                                setOpeningInvoices(newInvs);
-                              }}
-                              required
-                            />
+                            <div className="flex items-center gap-1">
+                              <Input
+                                type="number"
+                                value={inv.amount}
+                                placeholder="0.00"
+                                onChange={(e) => {
+                                  const newInvs = [...openingInvoices];
+                                  newInvs[idx].amount = e.target.value === "" ? "" : Number(e.target.value);
+                                  setOpeningInvoices(newInvs);
+                                }}
+                                required
+                                className="flex-1"
+                              />
+                              <button
+                                type="button"
+                                title={`Click to toggle Dr/Cr (Currently ${(inv.type || "DR") === "CR" ? "Credit (Cr) - subtracts from total" : "Debit (Dr) - adds to total"})`}
+                                onClick={() => {
+                                  const newInvs = [...openingInvoices];
+                                  newInvs[idx].type = (newInvs[idx].type || "DR") === "DR" ? "CR" : "DR";
+                                  setOpeningInvoices(newInvs);
+                                }}
+                                className={`h-9 px-2.5 rounded-md font-semibold text-xs transition-all select-none flex items-center justify-center border shadow-xs cursor-pointer ${
+                                  (inv.type || "DR") === "CR"
+                                    ? "bg-rose-500/15 text-rose-600 border-rose-300 dark:border-rose-800 dark:text-rose-400 hover:bg-rose-500/25"
+                                    : "bg-emerald-500/15 text-emerald-700 border-emerald-300 dark:border-emerald-800 dark:text-emerald-400 hover:bg-emerald-500/25"
+                                }`}
+                              >
+                                {inv.type || "DR"}
+                              </button>
+                            </div>
                           </div>
                           <div className="flex-[0.8] space-y-1">
                             <Label className="text-xs">Date *</Label>
@@ -1043,35 +1128,53 @@ function AdminClientsPage() {
                           ))}
                         </div>
                       )}
-                      {(openingInvoices.length > 0 || openingDebitNotes.length > 0) && (
-                        <div className="space-y-1 text-sm px-1 pt-1">
-                          {openingInvoices.length > 0 && (
-                            <div className="flex justify-between items-center">
-                              <span className="text-muted-foreground">Sum of Invoices:</span>
-                              <span className="font-medium">
-                                ₹{openingInvoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0).toLocaleString('en-IN')}
+                      {(openingInvoices.length > 0 || openingDebitNotes.length > 0) && (() => {
+                        const invoiceDrSum = openingInvoices
+                          .filter((i) => (i.type || "DR") === "DR")
+                          .reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
+                        const invoiceCrSum = openingInvoices
+                          .filter((i) => (i.type || "DR") === "CR")
+                          .reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
+                        const debitSum = openingDebitNotes.reduce((acc, dn) => acc + (Number(dn.amount) || 0), 0);
+                        const totalOpening = invoiceDrSum + debitSum;
+
+                        return (
+                          <div className="space-y-1 text-sm px-1 pt-1">
+                            {openingInvoices.length > 0 && (
+                              <>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-muted-foreground">Sum of Invoices (Dr):</span>
+                                  <span className="font-medium">
+                                    ₹{invoiceDrSum.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                </div>
+                                {invoiceCrSum > 0 && (
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-muted-foreground">Credit Invoices (Cr):</span>
+                                    <span className="font-medium text-rose-600 dark:text-rose-400">
+                                      ₹{invoiceCrSum.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                            {openingDebitNotes.length > 0 && (
+                              <div className="flex justify-between items-center">
+                                <span className="text-muted-foreground">Sum of Debit Notes:</span>
+                                <span className="font-medium">
+                                  ₹{debitSum.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                            )}
+                            <div className="flex justify-between items-center border-t pt-1">
+                              <span className="text-muted-foreground">Total Opening Balance:</span>
+                              <span className="font-semibold text-primary">
+                                ₹{totalOpening.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </span>
                             </div>
-                          )}
-                          {openingDebitNotes.length > 0 && (
-                            <div className="flex justify-between items-center">
-                              <span className="text-muted-foreground">Sum of Debit Notes:</span>
-                              <span className="font-medium">
-                                ₹{openingDebitNotes.reduce((acc, dn) => acc + (Number(dn.amount) || 0), 0).toLocaleString('en-IN')}
-                              </span>
-                            </div>
-                          )}
-                          <div className="flex justify-between items-center border-t pt-1">
-                            <span className="text-muted-foreground">Total Opening Balance:</span>
-                            <span className="font-semibold text-primary">
-                              ₹{(
-                                openingInvoices.reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0) +
-                                openingDebitNotes.reduce((acc, dn) => acc + (Number(dn.amount) || 0), 0)
-                              ).toLocaleString('en-IN')}
-                            </span>
                           </div>
-                        </div>
-                      )}
+                        );
+                      })()}
                     </div>
 
                     <hr className="border-border my-4" />
@@ -1213,7 +1316,9 @@ function AdminClientsPage() {
               </DialogHeader>
               <div className="space-y-2 py-2 max-h-[50vh] overflow-y-auto">
                 {importSheets.map((s) => {
-                  const total = s.invoices.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+                  const total = s.invoices
+                    .filter((r) => (r.type || "DR") === "DR")
+                    .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
                   return (
                     <button
                       key={s.name}
@@ -1226,7 +1331,7 @@ function AdminClientsPage() {
                     >
                       <div className="font-medium text-sm">{s.label}</div>
                       <div className="text-xs text-muted-foreground">
-                        {s.invoices.length} invoice(s) · Pending ₹{total.toLocaleString("en-IN")}
+                        {s.invoices.length} invoice(s) · Pending ₹{total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         {s.label !== s.name ? ` · sheet: ${s.name}` : ""}
                       </div>
                     </button>

@@ -676,6 +676,7 @@ export const createClient = createServerFn({ method: "POST" })
             amount: z.number().positive(),
             date: z.string().min(1),
             mundraPaymentDate: z.string().optional(),
+            type: z.enum(["DR", "CR"]).optional(),
           }),
         )
         .optional(),
@@ -738,13 +739,13 @@ export const createClient = createServerFn({ method: "POST" })
       // historical_invoices is JSONB, so debit notes are stored in the same list
       // with a type marker rather than needing their own column.
       historical_invoices: [
-        ...(data.openingInvoices || []).map((inv) => ({ ...inv, type: "invoice" })),
+        ...(data.openingInvoices || []).map((inv) => ({ ...inv, type: inv.type || "DR" })),
         ...(data.openingDebitNotes || []).map((dn) => ({ ...dn, type: "debit_note" })),
       ],
     };
     const { error: profileError } = await supabase
       .from("client_commercial_profiles")
-      .insert(profile);
+      .insert(profile as any);
     if (profileError)
       throw new Error("Failed to create commercial profile: " + profileError.message);
 
@@ -799,17 +800,49 @@ export const createClient = createServerFn({ method: "POST" })
     // created as opening-balance rows so exposure stays correct. Only when
     // nothing was itemised do we fall back to a single consolidated OB invoice.
     const obRows: any[] = [];
+    const { data: mundraOrg } = await supabase
+      .from("organizations")
+      .select("id")
+      .eq("org_type", "mundra")
+      .limit(1)
+      .maybeSingle();
+
     for (const inv of data.openingInvoices || []) {
-      obRows.push({
-        id: crypto.randomUUID(),
-        organization_id: orgId,
-        invoice_number: inv.invoiceNumber,
-        amount: inv.amount,
-        invoice_date: inv.date,
-        due_date: inv.date,
-        status: "unpaid",
-        is_opening_balance: true,
-      });
+      if (inv.type === "CR") {
+        if (mundraOrg) {
+          const cnRow = {
+            id: crypto.randomUUID(),
+            credit_note_number: inv.invoiceNumber.startsWith("CN-") ? inv.invoiceNumber : `CN-${inv.invoiceNumber}`,
+            issue_date: inv.date,
+            amount: inv.amount,
+            reason: "Other" as const,
+            remarks: "Opening Balance Credit",
+            issued_by_org_id: mundraOrg.id,
+            issued_to_org_id: orgId,
+            origin_type: "Dispatch" as const,
+            origin_reference: inv.invoiceNumber,
+            status: "applied" as const,
+            created_by: context.userId,
+          };
+          const { error: cnErr } = await supabase.from("credit_notes").insert(cnRow);
+          if (cnErr) {
+            console.error(`Failed to create opening credit note ${inv.invoiceNumber}`, cnErr);
+          } else {
+            await createAuditLog(context.userId, "CREATE_CREDIT_NOTE", "credit_notes", cnRow.id, null, cnRow);
+          }
+        }
+      } else {
+        obRows.push({
+          id: crypto.randomUUID(),
+          organization_id: orgId,
+          invoice_number: inv.invoiceNumber,
+          amount: inv.amount,
+          invoice_date: inv.date,
+          due_date: inv.date,
+          status: "unpaid",
+          is_opening_balance: true,
+        });
+      }
     }
     for (const dn of data.openingDebitNotes || []) {
       obRows.push({
@@ -2940,7 +2973,13 @@ export const getClientStatement = createServerFn({ method: "GET" })
         timestamp: cn.issue_date,
         created_at: cn.created_at,
         title: `Credit Note — ${cn.credit_note_number}`,
-        meta: { amount: cn.amount, status: cn.status, client_name: targetOrgId },
+        meta: {
+          amount: cn.amount,
+          status: cn.status,
+          credit_note_number: cn.credit_note_number,
+          reference_number: cn.credit_note_number,
+          client_name: targetOrgId,
+        },
       });
     }
 
@@ -2951,7 +2990,13 @@ export const getClientStatement = createServerFn({ method: "GET" })
         timestamp: dn.issue_date,
         created_at: dn.created_at,
         title: `Debit Note — ${dn.debit_note_number}`,
-        meta: { amount: dn.amount, status: dn.status, client_name: targetOrgId },
+        meta: {
+          amount: dn.amount,
+          status: dn.status,
+          debit_note_number: dn.debit_note_number,
+          reference_number: dn.debit_note_number,
+          client_name: targetOrgId,
+        },
       });
     }
 
@@ -2986,7 +3031,13 @@ export const getClientStatement = createServerFn({ method: "GET" })
         id: row.id,
         date: row.timestamp,
         particulars: row.title,
-        reference: row.meta.invoice_number || row.meta.po_number || row.meta.reference_number || "—",
+        reference:
+          row.meta.credit_note_number ||
+          row.meta.debit_note_number ||
+          row.meta.invoice_number ||
+          row.meta.reference_number ||
+          row.meta.po_number ||
+          "—",
         debit: row.debit,
         credit: row.credit,
         runningBalance: row.runningBalance,
@@ -4023,6 +4074,7 @@ export const getJournalEntries = createServerFn({ method: "GET" })
         title: `Credit Note — ${cn.credit_note_number}`,
         meta: {
           credit_note_number: cn.credit_note_number,
+          reference_number: cn.credit_note_number || cn.origin_reference,
           amount: cn.amount,
           reason: cn.reason,
           issued_by: orgBy?.legal_name || "Unknown",
@@ -4056,6 +4108,7 @@ export const getJournalEntries = createServerFn({ method: "GET" })
         title: `Debit Note — ${dn.debit_note_number}`,
         meta: {
           debit_note_number: dn.debit_note_number,
+          reference_number: dn.debit_note_number || dn.origin_reference,
           amount: dn.amount,
           reason: dn.reason,
           issued_by: orgBy?.legal_name || "Unknown",
@@ -4088,10 +4141,11 @@ export const getJournalEntries = createServerFn({ method: "GET" })
         type: "opening_balance",
         timestamp: ob.invoice_date,
         created_at: ob.created_at,
-        title: "Opening Balance",
+        title: ob.invoice_number ? `Opening Balance (${ob.invoice_number})` : "Opening Balance",
         meta: {
           amount: ob.amount,
           invoice_number: ob.invoice_number,
+          reference_number: ob.invoice_number,
           client_name: (org as any)?.legal_name || null,
           historical_invoices: profilesMap.get(ob.organization_id)?.historical_invoices || [],
         },

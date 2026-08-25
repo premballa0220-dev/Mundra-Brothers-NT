@@ -112,10 +112,12 @@ function ClientLedgersPage() {
   }
 
   const formatCurrency = (amount: number) => {
+    if (amount === 0 || isNaN(amount)) return "₹0.00";
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(amount);
   };
 
@@ -376,7 +378,7 @@ function ClientLedgersPage() {
                                         <Table className="w-auto border bg-background rounded-md">
                                           <TableHeader>
                                             <TableRow>
-                                              <TableHead className="h-8">Invoice No</TableHead>
+                                              <TableHead className="h-8">Invoice / Ref No</TableHead>
                                               <TableHead className="h-8">Date</TableHead>
                                               <TableHead className="h-8 text-right">Amount</TableHead>
                                             </TableRow>
@@ -384,7 +386,10 @@ function ClientLedgersPage() {
                                           <TableBody>
                                             {entry.meta.historical_invoices.map((hInv: any, i: number) => (
                                               <TableRow key={i}>
-                                                <TableCell className="py-2 font-mono text-xs">{hInv.invoiceNumber || (hInv.type === "debit_note" ? "Debit Note" : "—")}</TableCell>
+                                                <TableCell className="py-2 font-mono text-xs">
+                                                  {hInv.invoiceNumber || hInv.invoiceNo || (hInv.type === "debit_note" ? "Debit Note" : hInv.type === "CR" ? "Credit" : "—")}
+                                                  {hInv.type === "CR" && <span className="ml-1 text-[10px] text-rose-600 font-semibold">(Cr)</span>}
+                                                </TableCell>
                                                 <TableCell className="py-2 text-xs">{hInv.date || (hInv.fromDate && hInv.toDate ? `${hInv.fromDate} - ${hInv.toDate}` : "—")}</TableCell>
                                                 <TableCell className="py-2 text-xs text-right font-semibold">{formatCurrency(Number(hInv.amount))}</TableCell>
                                               </TableRow>

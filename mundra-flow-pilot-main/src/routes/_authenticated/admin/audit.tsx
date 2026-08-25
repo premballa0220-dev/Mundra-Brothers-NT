@@ -119,11 +119,12 @@ const TYPE_CONFIG: Record<
 };
 
 function formatCurrency(val: number) {
-  if (val === 0) return "₹0";
+  if (val === 0 || isNaN(val)) return "₹0.00";
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(val);
 }
 
@@ -317,6 +318,9 @@ function ExpandableLedgerRow({ row, clientFilter }: { row: any; clientFilter: st
         )}
         <TableCell className="font-mono text-xs">
           {row.meta?.invoice_number || 
+            row.meta?.credit_note_number ||
+            row.meta?.debit_note_number ||
+            row.meta?.origin_reference ||
             row.meta?.reference_number ||
             row.meta?.po_number ||
             (row.meta?.dispatch_id
@@ -354,7 +358,7 @@ function ExpandableLedgerRow({ row, clientFilter }: { row: any; clientFilter: st
               <Table className="bg-background border rounded-md">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-xs h-8">Invoice No</TableHead>
+                    <TableHead className="text-xs h-8">Invoice / Ref No</TableHead>
                     <TableHead className="text-xs h-8">Date</TableHead>
                     <TableHead className="text-xs h-8 text-right pr-4">Amount</TableHead>
                   </TableRow>
@@ -362,7 +366,10 @@ function ExpandableLedgerRow({ row, clientFilter }: { row: any; clientFilter: st
                 <TableBody>
                   {row.meta.historical_invoices.map((inv: any, idx: number) => (
                     <TableRow key={idx}>
-                      <TableCell className="text-xs py-2">{inv.invoiceNo || inv.invoiceNumber || (inv.type === "debit_note" ? "Debit Note" : "—")}</TableCell>
+                      <TableCell className="text-xs py-2">
+                        {inv.invoiceNumber || inv.invoiceNo || (inv.type === "debit_note" ? "Debit Note" : inv.type === "CR" ? "Credit" : "—")}
+                        {inv.type === "CR" && <span className="ml-1 text-[10px] text-rose-600 font-semibold">(Cr)</span>}
+                      </TableCell>
                       <TableCell className="text-xs py-2">{inv.date ? formatDate(inv.date) : (inv.fromDate && inv.toDate ? `${formatDate(inv.fromDate)} - ${formatDate(inv.toDate)}` : "—")}</TableCell>
                       <TableCell className="text-xs text-right pr-4 py-2 font-medium">{formatCurrency(Number(inv.amount))}</TableCell>
                     </TableRow>
