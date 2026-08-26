@@ -85,26 +85,77 @@ function _excelToISO(v: any): string {
   return isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
 }
 
-function _parseAmountAndType(v: any, row?: any[], drCrCol?: number): { amount: number; type: "DR" | "CR" } {
+function _parseAmountAndType(
+  v: any,
+  row?: any[],
+  drCrCol?: number,
+  pendingCol?: number,
+  refCol?: number,
+): { amount: number; type: "DR" | "CR" } {
   let isCredit = false;
 
-  if (row && drCrCol !== undefined && drCrCol !== -1) {
-    const colVal = _norm(row[drCrCol]);
-    if (colVal === "cr" || colVal === "credit" || colVal.includes("cr")) {
-      isCredit = true;
-    }
-  }
-
+  // 1. Check if numeric value is negative
   if (typeof v === "number") {
-    if (v < 0) {
-      isCredit = true;
-    }
-    return { amount: Math.abs(v), type: isCredit ? "CR" : "DR" };
+    if (v < 0) isCredit = true;
   }
 
   const str = String(v ?? "").trim();
-  if (/(\bcr\b|credit|\bcr\.|\bc\/r\b)/i.test(str) || /^-|^\(.*\)$/.test(str)) {
+  // 2. Check if string value contains Cr / Credit / negative / parentheses
+  if (
+    /(^|\W|\d)(cr|credit|c\/r)(\W|$)/i.test(str) ||
+    /^-|^\(.*\)$/.test(str) ||
+    /cr$/i.test(str)
+  ) {
     isCredit = true;
+  }
+
+  // 3. Check explicit drCrCol if detected
+  if (row && drCrCol !== undefined && drCrCol !== -1 && row[drCrCol] !== undefined) {
+    const colVal = _norm(row[drCrCol]);
+    if (colVal === "cr" || colVal === "credit" || /(^|\W)cr(\W|$)/i.test(colVal) || colVal.includes("cr")) {
+      isCredit = true;
+    }
+  }
+
+  // 4. Check adjacent cell (pendingCol + 1) - common in Tally / ERP blank sub-headers
+  if (row && pendingCol !== undefined && pendingCol !== -1 && row[pendingCol + 1] !== undefined) {
+    const nextVal = _norm(row[pendingCol + 1]);
+    if (nextVal === "cr" || nextVal === "credit" || /(^|\W)cr(\W|$)/i.test(nextVal)) {
+      isCredit = true;
+    }
+  }
+
+  // 5. Check invoice ref / description (e.g. "On Account", "Advance", "Credit Note", "CN-...")
+  if (row && refCol !== undefined && refCol !== -1 && row[refCol] !== undefined) {
+    const refVal = _norm(row[refCol]);
+    if (
+      refVal.includes("on account") ||
+      refVal.includes("advance") ||
+      refVal.includes("credit note") ||
+      refVal.startsWith("cn") ||
+      refVal.startsWith("cr-") ||
+      refVal.startsWith("cr ") ||
+      refVal.endsWith("(cr)")
+    ) {
+      isCredit = true;
+    }
+  }
+
+  // 6. Check any cell across the row for a "Cr" or "Credit" indicator
+  if (!isCredit && row && Array.isArray(row)) {
+    for (let c = 0; c < row.length; c++) {
+      const cellStr = _norm(row[c]);
+      if (
+        cellStr === "cr" ||
+        cellStr === "credit" ||
+        cellStr === "(cr)" ||
+        cellStr === "[cr]" ||
+        /(^|\W)cr(\W|$)/i.test(cellStr)
+      ) {
+        isCredit = true;
+        break;
+      }
+    }
   }
 
   const cleanStr = str.replace(/[₹,\s]/g, "").replace(/[^0-9.-]/g, "");
@@ -167,6 +218,7 @@ function parseLedgerSheet(rows: any[][]): OpeningInvoiceRow[] | null {
   const pendingCol = find([
     (h) => h.includes("pending"),
     (h) => h.includes("outstanding") || h.includes("balance"),
+    (h) => h === "amount" || h.includes("amt"),
   ]);
   const drCrCol = find([
     (h) => h.includes("dr") && h.includes("cr"),
@@ -181,7 +233,7 @@ function parseLedgerSheet(rows: any[][]): OpeningInvoiceRow[] | null {
   for (let i = dataStart; i < rows.length; i++) {
     const row = rows[i] || [];
     const invoiceNumber = String(row[refCol] ?? "").trim();
-    const { amount, type } = _parseAmountAndType(row[pendingCol], row, drCrCol);
+    const { amount, type } = _parseAmountAndType(row[pendingCol], row, drCrCol, pendingCol, refCol);
     if (!invoiceNumber) continue;
     if (/total|closing|opening|grand|carried|b\/?f|c\/?f/i.test(invoiceNumber)) continue; // summary rows
     if (amount <= 0) continue; // nothing pending to carry forward
@@ -247,7 +299,7 @@ function DeliveryLocationsBuilder({
       </div>
       {locations.length === 0 && (
         <p className="text-xs text-muted-foreground italic">
-          No delivery locations added. Add at least one if required.
+          No delivery locations added. (Optional)
         </p>
       )}
       {locations.map((loc, i) => (
@@ -255,11 +307,10 @@ function DeliveryLocationsBuilder({
           <div className="flex-1 space-y-3">
             <div className="flex gap-3">
               <div className="flex-1 space-y-1">
-                <Label className="text-xs">Location Label (e.g. Site A) *</Label>
+                <Label className="text-xs">Location Label (e.g. Site A)</Label>
                 <Input
                   value={loc.label}
                   onChange={(e) => updateLocation(i, "label", e.target.value)}
-                  required
                   placeholder="e.g. Main Warehouse"
                 />
               </div>
@@ -277,43 +328,32 @@ function DeliveryLocationsBuilder({
               </div>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Full Address *</Label>
+              <Label className="text-xs">Full Address</Label>
               <Textarea
                 value={loc.address}
                 onChange={(e) => updateLocation(i, "address", e.target.value)}
-                required
                 rows={2}
-                placeholder="Enter full shipping address..."
+                placeholder="Enter shipping address..."
               />
             </div>
             <div className="flex gap-3">
               <div className="flex-1 space-y-1">
-                <Label className="text-xs">Contact Person *</Label>
+                <Label className="text-xs">Contact Person</Label>
                 <Input
                   value={loc.contactPerson || ""}
                   onChange={(e) => updateLocation(i, "contactPerson", e.target.value)}
                   placeholder="e.g. John Doe"
-                  required
                 />
               </div>
               <div className="flex-1 space-y-1">
-                <Label className="text-xs">Contact Phone *</Label>
+                <Label className="text-xs">Contact Phone</Label>
                 <Input
                   value={loc.contactPhone || ""}
                   onChange={(e) =>
-                    updateLocation(i, "contactPhone", e.target.value.replace(/\D/g, ""))
+                    updateLocation(i, "contactPhone", e.target.value)
                   }
-                  placeholder="10-digit number"
-                  maxLength={10}
-                  required
+                  placeholder="Phone number"
                 />
-                {loc.contactPhone &&
-                  loc.contactPhone.length > 0 &&
-                  loc.contactPhone.length < 10 && (
-                    <span className="text-[10px] text-destructive block">
-                      Must be exactly 10 digits
-                    </span>
-                  )}
               </div>
             </div>
           </div>
@@ -374,7 +414,7 @@ function BillingProfilesBuilder({
       </div>
       {profiles.length === 0 && (
         <p className="text-xs text-muted-foreground italic">
-          No billing profiles added. You must add at least one to generate POs.
+          No billing profiles added. (Optional)
         </p>
       )}
       {profiles.map((profile, i) => (
@@ -382,11 +422,10 @@ function BillingProfilesBuilder({
           <div className="flex-1 space-y-3">
             <div className="flex gap-3">
               <div className="flex-1 space-y-1">
-                <Label className="text-xs">GST Number *</Label>
+                <Label className="text-xs">GST Number</Label>
                 <Input
                   value={profile.gstNumber}
                   onChange={(e) => updateProfile(i, "gstNumber", e.target.value)}
-                  required
                   placeholder="e.g. 27AAAAA1234A1ZA"
                 />
               </div>
@@ -404,13 +443,12 @@ function BillingProfilesBuilder({
               </div>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Billing Address *</Label>
+              <Label className="text-xs">Billing Address</Label>
               <Textarea
                 value={profile.billingAddress}
                 onChange={(e) => updateProfile(i, "billingAddress", e.target.value)}
-                required
                 rows={2}
-                placeholder="Enter complete billing address for this GST..."
+                placeholder="Enter billing address for this GST..."
               />
             </div>
           </div>
@@ -729,8 +767,24 @@ function AdminClientsPage() {
       }
     }
 
+    const cleanLocations = deliveryLocations
+      .filter((l) => l.label?.trim() || l.address?.trim())
+      .map((l) => ({
+        ...l,
+        label: l.label?.trim() || "Main Location",
+        address: l.address?.trim() || "Not specified",
+        isDefault: !!l.isDefault,
+      }));
+
+    const cleanBilling = billingProfiles
+      .filter((p) => p.gstNumber?.trim() || p.billingAddress?.trim())
+      .map((p) => ({
+        ...p,
+        isDefault: !!p.isDefault,
+      }));
+
     createMutation.mutate({
-      legalName,
+      legalName: legalName.trim() || tradeName.trim() || "New Client Organization",
       shortName,
       tradeName,
       partyCode,
@@ -741,17 +795,17 @@ function AdminClientsPage() {
       primaryContactPhone,
       logoUrl,
       stampUrl,
-      creditLimit: creditLimit === "" ? 0 : creditLimit,
-      annualInterestRate: annualInterestRate === "" ? 0 : annualInterestRate,
-      paymentTermsDays: paymentTermsDays === "" ? 30 : paymentTermsDays,
-      gracePeriodDays: gracePeriodDays === "" ? 0 : gracePeriodDays,
+      creditLimit: creditLimit === "" ? 0 : Number(creditLimit),
+      annualInterestRate: annualInterestRate === "" ? 0 : Number(annualInterestRate),
+      paymentTermsDays: paymentTermsDays === "" ? 30 : Number(paymentTermsDays),
+      gracePeriodDays: gracePeriodDays === "" ? 0 : Number(gracePeriodDays),
       includeUndispatchedPos: includeUndispatched,
       includeDispatchedUnbilled: includeDispatched,
       includeUnpaidInvoices: includeInvoices,
       restrictions,
       commissionPercentage: commissionPercentage === "" ? null : Number(commissionPercentage),
-      deliveryLocations: deliveryLocations.map((l) => ({ ...l, isDefault: !!l.isDefault })),
-      billingProfiles,
+      deliveryLocations: cleanLocations,
+      billingProfiles: cleanBilling,
       initialOpeningBalance: initialOpeningBalance === "" ? undefined : Number(initialOpeningBalance),
       initialOpeningBalanceType,
       initialOpeningBalanceDate: initialOpeningBalanceDate === "" ? undefined : initialOpeningBalanceDate,
@@ -760,7 +814,7 @@ function AdminClientsPage() {
         .map((i) => ({
           invoiceNumber: i.invoiceNumber,
           amount: Number(i.amount),
-          date: i.date,
+          date: i.date || new Date().toISOString().split("T")[0],
           mundraPaymentDate: i.mundraPaymentDate,
           type: i.type || "DR",
         })),
@@ -831,11 +885,11 @@ function AdminClientsPage() {
                     <h4 className="text-sm font-medium">Master Details</h4>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Legal Name *</Label>
+                        <Label>Legal Name</Label>
                         <Input
                           value={legalName}
                           onChange={(e) => setLegalName(e.target.value)}
-                          required
+                          placeholder="e.g. Acme Corp Ltd"
                         />
                       </div>
                       <div className="space-y-2">
@@ -910,21 +964,12 @@ function AdminClientsPage() {
                         <Label>Whatsapp / Contact Number</Label>
                         <Input
                           type="tel"
-                          pattern="[0-9]{10}"
-                          maxLength={10}
-                          title="Please enter exactly 10 digits"
                           value={primaryContactPhone}
                           onChange={(e) =>
-                            setPrimaryContactPhone(e.target.value.replace(/\D/g, ""))
+                            setPrimaryContactPhone(e.target.value)
                           }
+                          placeholder="Phone number"
                         />
-                        {primaryContactPhone &&
-                          primaryContactPhone.length > 0 &&
-                          primaryContactPhone.length < 10 && (
-                            <span className="text-[10px] text-destructive block mt-1">
-                              Must be exactly 10 digits
-                            </span>
-                          )}
                       </div>
                       <div className="col-span-2 pt-2">
                         <BillingProfilesBuilder
@@ -1053,7 +1098,7 @@ function AdminClientsPage() {
                       {openingInvoices.map((inv, idx) => (
                         <div key={idx} className="flex gap-2 items-end p-3 border rounded-md bg-muted/20">
                           <div className="flex-1 space-y-1">
-                            <Label className="text-xs">Invoice Number *</Label>
+                            <Label className="text-xs">Invoice Number</Label>
                             <Input
                               value={inv.invoiceNumber}
                               onChange={(e) => {
@@ -1061,11 +1106,11 @@ function AdminClientsPage() {
                                 newInvs[idx].invoiceNumber = e.target.value;
                                 setOpeningInvoices(newInvs);
                               }}
-                              required
+                              placeholder="Invoice No"
                             />
                           </div>
                           <div className="flex-[0.9] space-y-1">
-                            <Label className="text-xs">Amount (₹) *</Label>
+                            <Label className="text-xs">Amount (₹)</Label>
                             <div className="flex items-center gap-1">
                               <Input
                                 type="number"
@@ -1076,7 +1121,6 @@ function AdminClientsPage() {
                                   newInvs[idx].amount = e.target.value === "" ? "" : Number(e.target.value);
                                   setOpeningInvoices(newInvs);
                                 }}
-                                required
                                 className="flex-1"
                               />
                               <button
@@ -1098,7 +1142,7 @@ function AdminClientsPage() {
                             </div>
                           </div>
                           <div className="flex-[0.8] space-y-1">
-                            <Label className="text-xs">Date *</Label>
+                            <Label className="text-xs">Date</Label>
                             <Input
                               type="date"
                               value={inv.date}
@@ -1107,7 +1151,6 @@ function AdminClientsPage() {
                                 newInvs[idx].date = e.target.value;
                                 setOpeningInvoices(newInvs);
                               }}
-                              required
                             />
                           </div>
                           <div className="flex-1 space-y-1">
@@ -1153,7 +1196,7 @@ function AdminClientsPage() {
                                 size="icon"
                                 className="text-destructive h-7 w-7"
                                 onClick={() =>
-                                  setOpeningDebitNotes(openingDebitNotes.filter((_, i) => i !== idx))
+                                   setOpeningDebitNotes(openingDebitNotes.filter((_, i) => i !== idx))
                                 }
                               >
                                 <X className="h-4 w-4" />
@@ -1264,18 +1307,18 @@ function AdminClientsPage() {
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="space-y-2">
-                        <Label>Credit Limit *</Label>
+                        <Label>Credit Limit (₹)</Label>
                         <Input
                           type="number"
                           value={creditLimit}
                           onChange={(e) =>
                             setCreditLimit(e.target.value === "" ? "" : Number(e.target.value))
                           }
-                          required
+                          placeholder="0"
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Interest Rate (%) *</Label>
+                        <Label>Interest Rate (%)</Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -1283,18 +1326,18 @@ function AdminClientsPage() {
                           onChange={(e) =>
                             setAnnualInterestRate(e.target.value === "" ? "" : Number(e.target.value))
                           }
-                          required
+                          placeholder="0"
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Terms (Days) *</Label>
+                        <Label>Terms (Days)</Label>
                         <Input
                           type="number"
                           value={paymentTermsDays}
                           onChange={(e) =>
                             setPaymentTermsDays(e.target.value === "" ? "" : Number(e.target.value))
                           }
-                          required
+                          placeholder="30"
                         />
                       </div>
                       <div className="space-y-2">
@@ -1305,6 +1348,7 @@ function AdminClientsPage() {
                           onChange={(e) =>
                             setGracePeriodDays(e.target.value === "" ? "" : Number(e.target.value))
                           }
+                          placeholder="0"
                         />
                       </div>
                       <div className="space-y-2">

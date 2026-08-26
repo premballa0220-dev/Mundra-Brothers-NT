@@ -620,7 +620,7 @@ export const createClient = createServerFn({ method: "POST" })
   .middleware([requireAuth])
   .validator(
     z.object({
-      legalName: z.string().min(1),
+      legalName: z.string().optional().default("New Client Organization"),
       shortName: z.string().optional(),
       tradeName: z.string().optional(),
       partyCode: z.string().optional(),
@@ -630,15 +630,11 @@ export const createClient = createServerFn({ method: "POST" })
       billingAddress: z.string().optional(),
       primaryContactName: z.string().optional(),
       primaryContactEmail: z.string().optional(),
-      primaryContactPhone: z
-        .string()
-        .regex(/^\d{10}$/, "Must be exactly 10 digits")
-        .optional()
-        .or(z.literal("")),
-      creditLimit: z.number().nonnegative(),
-      annualInterestRate: z.number().nonnegative().default(0),
-      paymentTermsDays: z.number().nonnegative(),
-      gracePeriodDays: z.number().nonnegative(),
+      primaryContactPhone: z.string().optional().nullable().or(z.literal("")),
+      creditLimit: z.number().nonnegative().optional().default(0),
+      annualInterestRate: z.number().nonnegative().optional().default(0),
+      paymentTermsDays: z.number().nonnegative().optional().default(30),
+      gracePeriodDays: z.number().nonnegative().optional().default(0),
       includeUndispatchedPos: z.boolean().default(false),
       includeDispatchedUnbilled: z.boolean().default(true),
       includeUnpaidInvoices: z.boolean().default(true),
@@ -647,11 +643,11 @@ export const createClient = createServerFn({ method: "POST" })
         .array(
           z.object({
             id: z.string().optional(),
-            label: z.string().min(1),
-            address: z.string().min(1),
+            label: z.string().optional().default("Main Location"),
+            address: z.string().optional().default(""),
             isDefault: z.boolean().default(false),
-            contactPerson: z.string().optional(),
-            contactPhone: z.string().optional(),
+            contactPerson: z.string().optional().nullable(),
+            contactPhone: z.string().optional().nullable(),
           }),
         )
         .optional(),
@@ -659,8 +655,8 @@ export const createClient = createServerFn({ method: "POST" })
         .array(
           z.object({
             id: z.string().optional(),
-            gstNumber: z.string().optional(),
-            billingAddress: z.string().optional(),
+            gstNumber: z.string().optional().nullable(),
+            billingAddress: z.string().optional().nullable(),
             isDefault: z.boolean().default(false),
           }),
         )
