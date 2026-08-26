@@ -185,7 +185,7 @@ function _addDays(iso: string, days: number): string {
 // are Excel serials, and the "Opening Amount" and "Overdue by days" columns are
 // intentionally ignored — the PENDING amount is the carried-forward outstanding.
 // Returns null when the sheet has no recognisable bill table.
-function parseLedgerSheet(rows: any[][]): OpeningInvoiceRow[] | null {
+function parseLedgerSheet(rows: any[][], fmtRows: any[][] = []): OpeningInvoiceRow[] | null {
   let hi = -1;
   for (let i = 0; i < Math.min(rows.length, 30); i++) {
     const r = (rows[i] || []).map(_norm);
@@ -233,8 +233,15 @@ function parseLedgerSheet(rows: any[][]): OpeningInvoiceRow[] | null {
   const out: OpeningInvoiceRow[] = [];
   for (let i = dataStart; i < rows.length; i++) {
     const row = rows[i] || [];
+    // Tally encodes Dr/Cr in the cell's DISPLAY format (e.g. "201898.00 Cr"),
+    // not in the raw number. Detect the sign from the formatted row when we have
+    // it; fall back to the raw row otherwise. Magnitude/dates use the raw row.
+    const fmtRow = fmtRows[i] || row;
     const invoiceNumber = String(row[refCol] ?? "").trim();
-    const { amount, type } = _parseAmountAndType(row[pendingCol], row, drCrCol, pendingCol, refCol);
+    const detected = _parseAmountAndType(fmtRow[pendingCol], fmtRow, drCrCol, pendingCol, refCol);
+    const rawAmount = _parseAmountAndType(row[pendingCol]).amount || detected.amount;
+    const amount = rawAmount;
+    const type = detected.type;
     if (!invoiceNumber) continue;
     if (/total|closing|opening|grand|carried|b\/?f|c\/?f/i.test(invoiceNumber)) continue; // summary rows
     if (amount <= 0) continue; // nothing pending to carry forward
@@ -1012,8 +1019,10 @@ function AdminClientsPage() {
                                 // Each sheet is one client's pending-bill ledger. Parse them all
                                 // and keep the ones that actually contain a bill table.
                                 const sheets = wb.SheetNames.map((name) => {
+                                  // raw = numbers/serials; fmt = display strings that carry the Dr/Cr suffix.
                                   const rows = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[name], { header: 1, defval: "" });
-                                  const invoices = parseLedgerSheet(rows);
+                                  const fmtRows = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[name], { header: 1, defval: "", raw: false });
+                                  const invoices = parseLedgerSheet(rows, fmtRows);
                                   return invoices ? { name, label: ledgerSheetLabel(rows, name), invoices } : null;
                                 }).filter(Boolean) as { name: string; label: string; invoices: OpeningInvoiceRow[] }[];
 
