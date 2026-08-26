@@ -157,11 +157,13 @@ function ClientPaymentsPage() {
   }
 
   const formatCurrency = (amount: number) => {
+    if (amount === 0 || isNaN(amount)) return "₹0.00";
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
-      maximumFractionDigits: 0,
-    }).format(amount);
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount || 0);
   };
 
   function handleEditOpen(payment: any) {

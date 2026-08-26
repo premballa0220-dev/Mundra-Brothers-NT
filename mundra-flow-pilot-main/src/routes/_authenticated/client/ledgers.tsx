@@ -318,7 +318,7 @@ function ClientLedgersPage() {
                             <TableHead>Date</TableHead>
                             <TableHead>Particulars</TableHead>
                             <TableHead>Ref No.</TableHead>
-                            <TableHead className="text-right text-destructive">Debit (₹)</TableHead>
+                            <TableHead className="text-right">Debit (₹)</TableHead>
                             <TableHead className="text-right text-success">Credit (₹)</TableHead>
                             <TableHead className="text-right font-bold">Balance (₹)</TableHead>
                           </TableRow>
@@ -360,14 +360,21 @@ function ClientLedgersPage() {
                                     </div>
                                   </TableCell>
                                   <TableCell className="text-xs font-mono">{entry.reference}</TableCell>
-                                  <TableCell className="text-right text-xs text-destructive">
+                                  <TableCell className="text-right text-xs">
                                     {entry.debit > 0 ? formatCurrency(entry.debit) : "-"}
                                   </TableCell>
                                   <TableCell className="text-right text-xs text-success">
                                     {entry.credit > 0 ? formatCurrency(entry.credit) : "-"}
                                   </TableCell>
-                                  <TableCell className="text-right text-xs font-semibold">
-                                    {formatCurrency(entry.runningBalance)}
+                                  <TableCell className="text-right text-xs font-semibold whitespace-nowrap">
+                                    <span className="text-destructive font-bold">
+                                      {formatCurrency(Math.abs(entry.runningBalance))}
+                                    </span>
+                                    {entry.runningBalance !== 0 && (
+                                      <span className="font-medium text-foreground ml-1">
+                                        {entry.runningBalance > 0 ? "Dr" : "Cr"}
+                                      </span>
+                                    )}
                                   </TableCell>
                                 </TableRow>
                                 {expandedStatementIds[entry.id] && entry.meta?.historical_invoices && entry.meta.historical_invoices.length > 0 && (

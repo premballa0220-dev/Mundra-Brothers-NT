@@ -335,19 +335,21 @@ function ExpandableLedgerRow({ row, clientFilter }: { row: any; clientFilter: st
             ? formatCurrency(row.meta.locked_rate)
             : "—"}
         </TableCell>
-        <TableCell className="text-right text-xs text-destructive">
+        <TableCell className="text-right text-xs">
           {row.debit > 0 ? formatCurrency(row.debit) : "—"}
         </TableCell>
         <TableCell className="text-right text-xs text-emerald-600">
           {row.credit > 0 ? formatCurrency(row.credit) : "—"}
         </TableCell>
-        <TableCell className="text-right text-xs font-bold pr-4">
-          {formatCurrency(Math.abs(row.runningBalance))}{" "}
-          {row.runningBalance > 0
-            ? "Dr"
-            : row.runningBalance < 0
-              ? "Cr"
-              : ""}
+        <TableCell className="text-right text-xs pr-4 whitespace-nowrap">
+          <span className="font-bold text-destructive">
+            {formatCurrency(Math.abs(row.runningBalance))}
+          </span>
+          {row.runningBalance !== 0 && (
+            <span className="font-medium text-foreground ml-1">
+              {row.runningBalance > 0 ? "Dr" : "Cr"}
+            </span>
+          )}
         </TableCell>
       </TableRow>
       {isExpanded && hasInvoices && (
@@ -691,11 +693,15 @@ function AuditJournalPage() {
                                 <TableCell className="text-right text-muted-foreground">
                                   {formatCurrency(summary.credits)}
                                 </TableCell>
-                                <TableCell
-                                  className={`text-right font-bold ${summary.balance > 0 ? "text-destructive" : summary.balance < 0 ? "text-emerald-600" : ""}`}
-                                >
-                                  {formatCurrency(Math.abs(summary.balance))}{" "}
-                                  {summary.balance > 0 ? "Dr" : summary.balance < 0 ? "Cr" : ""}
+                                <TableCell className="text-right whitespace-nowrap">
+                                  <span className="font-bold text-destructive">
+                                    {formatCurrency(Math.abs(summary.balance))}
+                                  </span>
+                                  {summary.balance !== 0 && (
+                                    <span className="font-medium text-foreground ml-1">
+                                      {summary.balance > 0 ? "Dr" : "Cr"}
+                                    </span>
+                                  )}
                                 </TableCell>
                                 <TableCell className="text-right pr-6">
                                   <Button
@@ -740,7 +746,7 @@ function AuditJournalPage() {
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <div className="text-2xl font-bold text-destructive">
+                        <div className="text-2xl font-bold">
                           {formatCurrency(selectedClientSummary.debits)}
                         </div>
                       </CardContent>
@@ -771,10 +777,10 @@ function AuditJournalPage() {
                       </CardHeader>
                       <CardContent>
                         <div className="flex items-end gap-2">
-                          <div className="text-2xl font-bold">
+                          <div className="text-2xl font-bold text-destructive">
                             {formatCurrency(Math.abs(selectedClientSummary.balance))}
                           </div>
-                          <span className="text-sm font-medium mb-1">
+                          <span className="text-sm font-medium mb-1 text-foreground">
                             {selectedClientSummary.balance > 0
                               ? "Dr (Receivable)"
                               : selectedClientSummary.balance < 0
@@ -816,7 +822,7 @@ function AuditJournalPage() {
                             <TableHead>Reference</TableHead>
                             <TableHead className="text-right">Qty</TableHead>
                             <TableHead className="text-right">Rate</TableHead>
-                            <TableHead className="text-right text-destructive">
+                            <TableHead className="text-right">
                               Debit (Bills & Debit Notes)
                             </TableHead>
                             <TableHead className="text-right text-emerald-600">

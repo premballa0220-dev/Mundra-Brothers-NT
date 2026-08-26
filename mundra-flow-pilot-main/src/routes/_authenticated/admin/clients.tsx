@@ -470,6 +470,7 @@ function AdminClientsPage() {
   const [isUploadingStamp, setIsUploadingStamp] = useState(false);
 
   const [initialOpeningBalance, setInitialOpeningBalance] = useState<number | "">("");
+  const [initialOpeningBalanceType, setInitialOpeningBalanceType] = useState<"DR" | "CR">("DR");
   const [initialOpeningBalanceDate, setInitialOpeningBalanceDate] = useState("");
   const [openingInvoices, setOpeningInvoices] = useState<
     { invoiceNumber: string; amount: number | ""; date: string; mundraPaymentDate?: string; type?: "DR" | "CR" }[]
@@ -501,9 +502,17 @@ function AdminClientsPage() {
       const invoiceDrSum = openingInvoices
         .filter((i) => (i.type || "DR") === "DR")
         .reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
+      const invoiceCrSum = openingInvoices
+        .filter((i) => (i.type || "DR") === "CR")
+        .reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
       const debitSum = openingDebitNotes.reduce((acc, dn) => acc + (Number(dn.amount) || 0), 0);
-      const netTotal = invoiceDrSum + debitSum;
+      const totalDr = invoiceDrSum + debitSum;
+      const totalCr = invoiceCrSum;
+      const netTotal = Math.abs(totalDr - totalCr);
+      const netType = totalCr > totalDr ? "CR" : "DR";
+
       setInitialOpeningBalance(netTotal);
+      setInitialOpeningBalanceType(netType);
 
       const validDates = [
         ...openingInvoices.map((inv) => inv.date),
@@ -618,8 +627,10 @@ function AdminClientsPage() {
     setLogoUrl("");
     setStampUrl("");
     setInitialOpeningBalance("");
+    setInitialOpeningBalanceType("DR");
     setInitialOpeningBalanceDate("");
     setOpeningInvoices([]);
+    setOpeningDebitNotes([]);
     setCreditLimit(0);
     setAnnualInterestRate(0);
     setPaymentTermsDays(30);
@@ -699,11 +710,16 @@ function AdminClientsPage() {
       const invoiceDrSum = openingInvoices
         .filter((i) => (i.type || "DR") === "DR")
         .reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
+      const invoiceCrSum = openingInvoices
+        .filter((i) => (i.type || "DR") === "CR")
+        .reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
       const debitSum = openingDebitNotes.reduce((acc, dn) => acc + (Number(dn.amount) || 0), 0);
-      const sum = invoiceDrSum + debitSum;
-      if (sum !== Number(initialOpeningBalance || 0)) {
+      const totalDr = invoiceDrSum + debitSum;
+      const totalCr = invoiceCrSum;
+      const expectedNet = Math.abs(totalDr - totalCr);
+      if (Math.abs(Number(initialOpeningBalance || 0) - expectedNet) > 0.01) {
         toast.error(
-          "The sum of historical Dr invoices and debit notes does not match the Initial Opening Balance.",
+          "The net sum of historical invoices and debit notes does not match the Initial Opening Balance.",
         );
         return;
       }
@@ -733,6 +749,7 @@ function AdminClientsPage() {
       deliveryLocations: deliveryLocations.map((l) => ({ ...l, isDefault: !!l.isDefault })),
       billingProfiles,
       initialOpeningBalance: initialOpeningBalance === "" ? undefined : Number(initialOpeningBalance),
+      initialOpeningBalanceType,
       initialOpeningBalanceDate: initialOpeningBalanceDate === "" ? undefined : initialOpeningBalanceDate,
       openingInvoices: openingInvoices
         .filter((i) => i.invoiceNumber && i.amount !== "")
@@ -1136,7 +1153,10 @@ function AdminClientsPage() {
                           .filter((i) => (i.type || "DR") === "CR")
                           .reduce((acc, inv) => acc + (Number(inv.amount) || 0), 0);
                         const debitSum = openingDebitNotes.reduce((acc, dn) => acc + (Number(dn.amount) || 0), 0);
-                        const totalOpening = invoiceDrSum + debitSum;
+                        const totalDr = invoiceDrSum + debitSum;
+                        const totalCr = invoiceCrSum;
+                        const netAmount = Math.abs(totalDr - totalCr);
+                        const netType = totalCr > totalDr ? "Cr" : "Dr";
 
                         return (
                           <div className="space-y-1 text-sm px-1 pt-1">
@@ -1168,8 +1188,8 @@ function AdminClientsPage() {
                             )}
                             <div className="flex justify-between items-center border-t pt-1">
                               <span className="text-muted-foreground">Total Opening Balance:</span>
-                              <span className="font-semibold text-primary">
-                                ₹{totalOpening.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              <span className={`font-semibold ${netType === "Cr" ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                                ₹{netAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {netType}
                               </span>
                             </div>
                           </div>
@@ -1183,15 +1203,37 @@ function AdminClientsPage() {
                     <div className="grid grid-cols-2 gap-4 bg-muted/30 p-3 rounded-md border border-dashed">
                       <div className="space-y-2">
                         <Label>Initial Opening Balance (₹)</Label>
-                        <Input
-                          type="number"
-                          placeholder="e.g. 50000"
-                          value={initialOpeningBalance}
-                          disabled={openingInvoices.length > 0 || openingDebitNotes.length > 0}
-                          onChange={(e) =>
-                            setInitialOpeningBalance(e.target.value === "" ? "" : Number(e.target.value))
-                          }
-                        />
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            placeholder="e.g. 50000"
+                            value={initialOpeningBalance}
+                            disabled={openingInvoices.length > 0 || openingDebitNotes.length > 0}
+                            onChange={(e) =>
+                              setInitialOpeningBalance(e.target.value === "" ? "" : Number(e.target.value))
+                            }
+                            className="flex-1"
+                          />
+                          <button
+                            type="button"
+                            disabled={openingInvoices.length > 0 || openingDebitNotes.length > 0}
+                            title={`Balance type: ${initialOpeningBalanceType === "CR" ? "Credit (Cr)" : "Debit (Dr)"}`}
+                            onClick={() => {
+                              if (openingInvoices.length === 0 && openingDebitNotes.length === 0) {
+                                setInitialOpeningBalanceType(initialOpeningBalanceType === "DR" ? "CR" : "DR");
+                              }
+                            }}
+                            className={`h-9 px-2.5 rounded-md font-semibold text-xs select-none flex items-center justify-center border shadow-xs ${
+                              openingInvoices.length > 0 || openingDebitNotes.length > 0 ? "cursor-default opacity-85" : "cursor-pointer hover:opacity-90"
+                            } ${
+                              initialOpeningBalanceType === "CR"
+                                ? "bg-rose-500/15 text-rose-600 border-rose-300 dark:border-rose-800 dark:text-rose-400"
+                                : "bg-emerald-500/15 text-emerald-700 border-emerald-300 dark:border-emerald-800 dark:text-emerald-400"
+                            }`}
+                          >
+                            {initialOpeningBalanceType}
+                          </button>
+                        </div>
                       </div>
                       <div className="space-y-2">
                         <Label>As Of Date</Label>
@@ -1316,9 +1358,14 @@ function AdminClientsPage() {
               </DialogHeader>
               <div className="space-y-2 py-2 max-h-[50vh] overflow-y-auto">
                 {importSheets.map((s) => {
-                  const total = s.invoices
+                  const drTotal = s.invoices
                     .filter((r) => (r.type || "DR") === "DR")
                     .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+                  const crTotal = s.invoices
+                    .filter((r) => (r.type || "DR") === "CR")
+                    .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+                  const net = Math.abs(drTotal - crTotal);
+                  const netType = crTotal > drTotal ? "Cr" : "Dr";
                   return (
                     <button
                       key={s.name}
@@ -1331,7 +1378,7 @@ function AdminClientsPage() {
                     >
                       <div className="font-medium text-sm">{s.label}</div>
                       <div className="text-xs text-muted-foreground">
-                        {s.invoices.length} invoice(s) · Pending ₹{total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {s.invoices.length} invoice(s) · Pending ₹{net.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {netType}
                         {s.label !== s.name ? ` · sheet: ${s.name}` : ""}
                       </div>
                     </button>

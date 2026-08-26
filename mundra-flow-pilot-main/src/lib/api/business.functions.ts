@@ -668,6 +668,7 @@ export const createClient = createServerFn({ method: "POST" })
       logoUrl: z.string().optional().nullable(),
       stampUrl: z.string().optional().nullable(),
       initialOpeningBalance: z.number().optional(),
+      initialOpeningBalanceType: z.enum(["DR", "CR"]).optional().default("DR"),
       initialOpeningBalanceDate: z.string().optional(),
       openingInvoices: z
         .array(
@@ -807,6 +808,8 @@ export const createClient = createServerFn({ method: "POST" })
       .limit(1)
       .maybeSingle();
 
+    const hasItemizedRows = (data.openingInvoices && data.openingInvoices.length > 0) || (data.openingDebitNotes && data.openingDebitNotes.length > 0);
+
     for (const inv of data.openingInvoices || []) {
       if (inv.type === "CR") {
         if (mundraOrg) {
@@ -868,25 +871,50 @@ export const createClient = createServerFn({ method: "POST" })
           await createAuditLog(context.userId, "CREATE_OPENING_BALANCE", "invoices", row.id, null, row);
         }
       }
-    } else if (data.initialOpeningBalance !== undefined && data.initialOpeningBalanceDate) {
-      // Legacy consolidated single opening balance (no itemisation).
-      const invId = crypto.randomUUID();
-      const inv = {
-        id: invId,
-        organization_id: orgId,
-        invoice_number: `OB-${Date.now()}`,
-        amount: data.initialOpeningBalance,
-        invoice_date: data.initialOpeningBalanceDate,
-        due_date: data.initialOpeningBalanceDate,
-        status: "unpaid",
-        is_opening_balance: true,
-      };
-
-      const { error: invError } = await supabase.from("invoices").insert(inv);
-      if (invError) {
-        console.error("Failed to create initial opening balance", invError);
+    } else if (!hasItemizedRows && data.initialOpeningBalance !== undefined && data.initialOpeningBalanceDate) {
+      // Consolidated single opening balance (no itemisation).
+      if (data.initialOpeningBalanceType === "CR") {
+        if (mundraOrg) {
+          const cnRow = {
+            id: crypto.randomUUID(),
+            credit_note_number: `CN-OB-${Date.now().toString().slice(-6)}`,
+            issue_date: data.initialOpeningBalanceDate,
+            amount: data.initialOpeningBalance,
+            reason: "Other" as const,
+            remarks: "Initial Opening Balance Credit",
+            issued_by_org_id: mundraOrg.id,
+            issued_to_org_id: orgId,
+            origin_type: "Dispatch" as const,
+            origin_reference: "OPENING_BALANCE",
+            status: "applied" as const,
+            created_by: context.userId,
+          };
+          const { error: cnErr } = await supabase.from("credit_notes").insert(cnRow);
+          if (cnErr) {
+            console.error("Failed to create initial opening balance credit note", cnErr);
+          } else {
+            await createAuditLog(context.userId, "CREATE_CREDIT_NOTE", "credit_notes", cnRow.id, null, cnRow);
+          }
+        }
       } else {
-        await createAuditLog(context.userId, "CREATE_OPENING_BALANCE", "invoices", invId, null, inv);
+        const invId = crypto.randomUUID();
+        const inv = {
+          id: invId,
+          organization_id: orgId,
+          invoice_number: `OB-${Date.now()}`,
+          amount: data.initialOpeningBalance,
+          invoice_date: data.initialOpeningBalanceDate,
+          due_date: data.initialOpeningBalanceDate,
+          status: "unpaid",
+          is_opening_balance: true,
+        };
+
+        const { error: invError } = await supabase.from("invoices").insert(inv);
+        if (invError) {
+          console.error("Failed to create initial opening balance", invError);
+        } else {
+          await createAuditLog(context.userId, "CREATE_OPENING_BALANCE", "invoices", invId, null, inv);
+        }
       }
     }
 

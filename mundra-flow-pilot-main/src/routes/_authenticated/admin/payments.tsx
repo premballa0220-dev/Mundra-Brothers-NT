@@ -385,15 +385,16 @@ function AdminPaymentsPage() {
   }
 
   const derivedClientAmount = clientPaymentType === "against_reference"
-    ? clientSelectedReferences.reduce((acc, ref) => acc + (clientPaymentOpts[ref]?.amount || 0), 0)
+    ? Number(clientSelectedReferences.reduce((acc, ref) => acc + (Number(clientPaymentOpts[ref]?.amount) || 0), 0).toFixed(2))
     : clientAmount;
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
-      maximumFractionDigits: 0,
-    }).format(val);
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(val || 0);
 
   // A dispatch draws from one PO line item, so that item's rate is the accurate
   // one. purchase_orders.locked_rate is only a legacy copy of the FIRST line
