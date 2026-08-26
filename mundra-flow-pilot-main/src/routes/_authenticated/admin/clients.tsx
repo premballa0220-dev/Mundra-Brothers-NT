@@ -522,6 +522,10 @@ function AdminClientsPage() {
         const latestDate = validDates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
         setInitialOpeningBalanceDate(latestDate);
       }
+    } else {
+      setInitialOpeningBalance("");
+      setInitialOpeningBalanceType("DR");
+      setInitialOpeningBalanceDate("");
     }
   }, [openingInvoices, openingDebitNotes]);
 
@@ -1031,6 +1035,19 @@ function AdminClientsPage() {
                           >
                             <Plus className="h-3 w-3 mr-1" /> Add Debit Note
                           </Button>
+                          {openingInvoices.length > 0 && (
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                setOpeningInvoices([]);
+                                toast.success("All imported invoices removed.");
+                              }}
+                            >
+                              <Trash2 className="h-3 w-3 mr-1" /> Delete All Invoices
+                            </Button>
+                          )}
                         </div>
                       </div>
                       {openingInvoices.map((inv, idx) => (
