@@ -14,6 +14,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -1143,24 +1144,22 @@ function AdminClientsPage() {
                           </div>
                           <div className="flex-[0.8] space-y-1">
                             <Label className="text-xs">Date</Label>
-                            <Input
-                              type="date"
+                            <DateInput
                               value={inv.date}
-                              onChange={(e) => {
+                              onChange={(val) => {
                                 const newInvs = [...openingInvoices];
-                                newInvs[idx].date = e.target.value;
+                                newInvs[idx].date = val;
                                 setOpeningInvoices(newInvs);
                               }}
                             />
                           </div>
                           <div className="flex-1 space-y-1">
                             <Label className="text-[10px] sm:text-xs truncate">Mundra Payment Date</Label>
-                            <Input
-                              type="date"
+                            <DateInput
                               value={inv.mundraPaymentDate || ""}
-                              onChange={(e) => {
+                              onChange={(val) => {
                                 const newInvs = [...openingInvoices];
-                                newInvs[idx].mundraPaymentDate = e.target.value;
+                                newInvs[idx].mundraPaymentDate = val;
                                 setOpeningInvoices(newInvs);
                               }}
                             />
@@ -1297,10 +1296,9 @@ function AdminClientsPage() {
                       </div>
                       <div className="space-y-2">
                         <Label>As Of Date</Label>
-                        <Input
-                          type="date"
+                        <DateInput
                           value={initialOpeningBalanceDate}
-                          onChange={(e) => setInitialOpeningBalanceDate(e.target.value)}
+                          onChange={(val) => setInitialOpeningBalanceDate(val)}
                         />
                       </div>
                     </div>
@@ -1463,24 +1461,22 @@ function AdminClientsPage() {
                   <div key={idx} className="flex gap-2 items-end">
                     <div className="flex-1 space-y-1">
                       <Label className="text-xs">From</Label>
-                      <Input
-                        type="date"
+                      <DateInput
                         value={dn.fromDate}
-                        onChange={(e) => {
+                        onChange={(val) => {
                           const next = [...debitNoteDraft];
-                          next[idx] = { ...next[idx], fromDate: e.target.value };
+                          next[idx] = { ...next[idx], fromDate: val };
                           setDebitNoteDraft(next);
                         }}
                       />
                     </div>
                     <div className="flex-1 space-y-1">
                       <Label className="text-xs">To</Label>
-                      <Input
-                        type="date"
+                      <DateInput
                         value={dn.toDate}
-                        onChange={(e) => {
+                        onChange={(val) => {
                           const next = [...debitNoteDraft];
-                          next[idx] = { ...next[idx], toDate: e.target.value };
+                          next[idx] = { ...next[idx], toDate: val };
                           setDebitNoteDraft(next);
                         }}
                       />
@@ -2344,10 +2340,9 @@ function ClientDetailsForm({
               </div>
               <div className="space-y-2">
                 <Label>Date *</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={obDate}
-                  onChange={e => setObDate(e.target.value)}
+                  onChange={val => setObDate(val)}
                 />
               </div>
               <div className="space-y-2">
