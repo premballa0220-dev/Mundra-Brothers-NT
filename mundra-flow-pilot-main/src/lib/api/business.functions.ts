@@ -841,34 +841,12 @@ export const createClient = createServerFn({ method: "POST" })
       // Insert individually so one duplicate invoice number (global UNIQUE) does
       // not abort every other opening balance for the client.
       for (const row of obRows) {
+        // A Cr invoice is a NEGATIVE opening-balance row, so it nets straight into
+        // the invoice sum (Dr − Cr). It is never turned into a credit note, so the
+        // on-account/credit row only ever holds genuine on-account credits.
         const { error: obErr } = await supabase.from("invoices").insert(row);
         if (obErr) {
-          // A negative (Cr) opening-balance invoice is rejected while the
-          // invoices.amount >= 0 CHECK constraint is still in place. Until that
-          // migration is applied, fall back to a credit note so the credit is
-          // never lost. Once the constraint allows negatives, this branch is
-          // skipped and the Cr stays an invoice line.
-          if (Number(row.amount) < 0 && mundraOrg) {
-            const cnRow = {
-              id: crypto.randomUUID(),
-              credit_note_number: String(row.invoice_number).startsWith("CN-") ? row.invoice_number : `CN-${row.invoice_number}`,
-              issue_date: row.invoice_date,
-              amount: Math.abs(Number(row.amount)),
-              reason: "Other" as const,
-              remarks: "Opening Balance Credit",
-              issued_by_org_id: mundraOrg.id,
-              issued_to_org_id: orgId,
-              origin_type: "Dispatch" as const,
-              origin_reference: row.invoice_number,
-              status: "applied" as const,
-              created_by: context.userId,
-            };
-            const { error: cnErr } = await supabase.from("credit_notes").insert(cnRow);
-            if (cnErr) console.error(`Failed to create opening balance/credit ${row.invoice_number}`, obErr, cnErr);
-            else await createAuditLog(context.userId, "CREATE_CREDIT_NOTE", "credit_notes", cnRow.id, null, cnRow);
-          } else {
-            console.error(`Failed to create opening balance ${row.invoice_number}`, obErr);
-          }
+          console.error(`Failed to create opening balance ${row.invoice_number}`, obErr);
         } else {
           await createAuditLog(context.userId, "CREATE_OPENING_BALANCE", "invoices", row.id, null, row);
         }
