@@ -807,41 +807,22 @@ export const createClient = createServerFn({ method: "POST" })
     const hasItemizedRows = (data.openingInvoices && data.openingInvoices.length > 0) || (data.openingDebitNotes && data.openingDebitNotes.length > 0);
 
     for (const inv of data.openingInvoices || []) {
-      if (inv.type === "CR") {
-        if (mundraOrg) {
-          const cnRow = {
-            id: crypto.randomUUID(),
-            credit_note_number: inv.invoiceNumber.startsWith("CN-") ? inv.invoiceNumber : `CN-${inv.invoiceNumber}`,
-            issue_date: inv.date,
-            amount: inv.amount,
-            reason: "Other" as const,
-            remarks: "Opening Balance Credit",
-            issued_by_org_id: mundraOrg.id,
-            issued_to_org_id: orgId,
-            origin_type: "Dispatch" as const,
-            origin_reference: inv.invoiceNumber,
-            status: "applied" as const,
-            created_by: context.userId,
-          };
-          const { error: cnErr } = await supabase.from("credit_notes").insert(cnRow);
-          if (cnErr) {
-            console.error(`Failed to create opening credit note ${inv.invoiceNumber}`, cnErr);
-          } else {
-            await createAuditLog(context.userId, "CREATE_CREDIT_NOTE", "credit_notes", cnRow.id, null, cnRow);
-          }
-        }
-      } else {
-        obRows.push({
-          id: crypto.randomUUID(),
-          organization_id: orgId,
-          invoice_number: inv.invoiceNumber,
-          amount: inv.amount,
-          invoice_date: inv.date,
-          due_date: inv.date,
-          status: "unpaid",
-          is_opening_balance: true,
-        });
-      }
+      // A Cr invoice is an invoice-level credit (e.g. the "91.00 Cr" bill): keep
+      // it as its own opening-balance invoice line but with a NEGATIVE amount, so
+      // it subtracts from the client's Dr total and reads as a Cr in the ledger —
+      // distinct from a general on-account credit (the consolidated CR path below
+      // still records that as a credit note).
+      const signedAmount = inv.type === "CR" ? -Math.abs(inv.amount) : Math.abs(inv.amount);
+      obRows.push({
+        id: crypto.randomUUID(),
+        organization_id: orgId,
+        invoice_number: inv.invoiceNumber,
+        amount: signedAmount,
+        invoice_date: inv.date,
+        due_date: inv.date,
+        status: "unpaid",
+        is_opening_balance: true,
+      });
     }
     for (const dn of data.openingDebitNotes || []) {
       obRows.push({
