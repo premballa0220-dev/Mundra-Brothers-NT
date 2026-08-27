@@ -5,10 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Printer, Plus, Trash2, Save, Loader2 } from "lucide-react";
+import { Printer, Plus, Trash2, Save, Loader2, FileSpreadsheet } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getRefundEligibleAllocations, markPaymentsAsRefunded } from "@/lib/api/business.functions";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
 import {
   Select,
   SelectContent,
@@ -112,7 +113,7 @@ function RefundLetterPage() {
 
   const [payments, setPayments] = useState<any[]>([
     { id: crypto.randomUUID(), type1: "RTGS", date: "", amount: "", type2: "none", dbPaymentId: "", invoiceId: "" },
-    { id: crypto.randomUUID(), type1: "TDS", date: "", amount: "", type2: "none", dbPaymentId: "", invoiceId: "" },
+    { id: crypto.randomUUID(), type1: "TDS", date: "", amount: "0", type2: "none", dbPaymentId: "", invoiceId: "" },
     { id: crypto.randomUUID(), type1: "ADVANCE", date: "", amount: "", type2: "none", dbPaymentId: "", invoiceId: "" },
     { id: crypto.randomUUID(), type1: "Credit Note", date: "", amount: "", type2: "none", dbPaymentId: "", invoiceId: "" },
   ]);
@@ -148,6 +149,91 @@ function RefundLetterPage() {
 
   const [pendingAllocations, setPendingAllocations] = useState<any[]>([]);
 
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return "";
+    return new Date(dateStr).toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }).replace(/ /g, "-");
+  };
+
+  const formatAmount = (val: string) => {
+    const num = Number(val);
+    if (isNaN(num) || !val) return "";
+    return new Intl.NumberFormat("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(num);
+  };
+
+  const totalInvoiceAmount = useMemo(() => {
+    return invoices.reduce((sum, inv) => sum + (Number(inv.amount) || 0), 0);
+  }, [invoices]);
+
+  const totalAmountPaid = useMemo(() => {
+    return invoices.reduce((sum, inv) => sum + (Number(inv.amountPaid) || 0), 0);
+  }, [invoices]);
+
+  const exportToExcel = () => {
+    const aoa: any[][] = [
+      ["MUNDRA BROTHERS"],
+      ["501, Sunil Enclave, Plot No. 307, Pareira Hill Road, Opp Gurunanak Petrol Pump, Andheri East (E), Mumbai - 400099"],
+      ["Mobile: 9702367111 | Email: sanjay.mundra@lnsmundra.com"],
+      [],
+      ["Reference Number:", refNo, "", "Date:", formatDate(date)],
+      ["To:", toName],
+      ["Subject:", subject],
+      [],
+      ["Dear Sir,"],
+      ["We have made payment on behalf of direct parties and now we have collected payment from Customer as per details given below .Hence we request you to refund our payments"],
+      [],
+      ["TPC Code:", tpcCode, "", "TPC Name:", "Mundra Brothers"],
+      ["Party Code:", partyCode, "", "Party Name:", partyName],
+      [],
+      ["INVOICE DETAILS"],
+      ["Date", "Invoice Number", "Amount (₹)", "Payment Details", "Date of Payment", "Amount Paid (₹)"],
+      ...invoices.map((inv) => [
+        inv.date ? formatDate(inv.date) : "",
+        inv.invoiceNumber || "",
+        Number(inv.amount) || 0,
+        inv.paymentDetails === "none" ? "" : (inv.paymentDetails || ""),
+        inv.dateOfPayment ? formatDate(inv.dateOfPayment) : "",
+        Number(inv.amountPaid) || 0,
+      ]),
+      ["Subtotal", "", totalInvoiceAmount, "", "", totalAmountPaid],
+      [],
+      ["PARTY PAYMENT DETAILS"],
+      ["Payment Mode / Type", "Date", "Amount (₹)", "With SRK"],
+      ...payments.map((p) => [
+        p.type1 === "none" ? "" : (p.type1 || ""),
+        p.date ? formatDate(p.date) : "",
+        Number(p.amount) || 0,
+        p.type2 === "none" ? "" : (p.type2 || ""),
+      ]),
+      ["Total Paid", "", totalAmountPaid, ""],
+      [],
+      ["Kindly refund the amount mentioned below:", totalAmountPaid],
+      ["Happy doing business with you!"],
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = [
+      { wch: 22 },
+      { wch: 25 },
+      { wch: 18 },
+      { wch: 20 },
+      { wch: 18 },
+      { wch: 18 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Refund Letter");
+
+    const cleanRef = (refNo || "Refund_Letter").trim().replace(/[/\\?%*:|"<>]/g, "_");
+    XLSX.writeFile(wb, `${cleanRef}.xlsx`);
+    toast.success(`Saved excel file as ${cleanRef}.xlsx`);
+  };
+
   const handleSaveAndPrint = () => {
     // pendingAllocations is computed by the FIFO effect
     const allocations = pendingAllocations.map(pa => ({
@@ -157,6 +243,9 @@ function RefundLetterPage() {
       isNewAllocation: pa.isNewAllocation
     }));
       
+    // Export to Excel named after the reference number
+    exportToExcel();
+
     if (allocations.length === 0) {
       window.print();
       return;
@@ -202,9 +291,8 @@ function RefundLetterPage() {
       payments.map((p) => {
         if (p.id === id) {
           const updated = { ...p, [field]: value };
-          if (field === "type1" && value === "TDS") {
-            const totalPaid = invoices.reduce((sum, inv) => sum + (Number(inv.amountPaid) || 0), 0);
-            updated.amount = (totalPaid * 0.008).toFixed(2);
+          if (field === "type1" && value === "TDS" && !updated.amount) {
+            updated.amount = "0";
           }
           return updated;
         }
@@ -212,57 +300,6 @@ function RefundLetterPage() {
       })
     );
   };
-
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return "";
-    return new Date(dateStr).toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    }).replace(/ /g, "-");
-  };
-
-  const formatAmount = (val: string) => {
-    const num = Number(val);
-    if (isNaN(num) || !val) return "";
-    return new Intl.NumberFormat("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(num);
-  };
-
-  const totalInvoiceAmount = useMemo(() => {
-    return invoices.reduce((sum, inv) => sum + (Number(inv.amount) || 0), 0);
-  }, [invoices]);
-
-  const totalAmountPaid = useMemo(() => {
-    return invoices.reduce((sum, inv) => sum + (Number(inv.amountPaid) || 0), 0);
-  }, [invoices]);
-
-  useEffect(() => {
-    setPayments((prev) => {
-      let next = [...prev];
-      let hasChanges = false;
-      const currentTotal = totalAmountPaid;
-
-      // Auto-calculate TDS (0.8% of total)
-      next = next.map(p => {
-        if (p.type1 === "TDS") {
-          const newAmount = currentTotal > 0 ? (currentTotal * 0.008).toFixed(2) : "";
-          if (p.amount !== newAmount) {
-            hasChanges = true;
-            return { ...p, amount: newAmount };
-          }
-        }
-        return p;
-      });
-
-      // Auto-calculate remaining for main transfer mode is disabled 
-      // because in the new flow, payments dictate invoices, not the other way around.
-
-      return hasChanges ? next : prev;
-    });
-  }, [totalAmountPaid, payments.map(p => `${p.id}-${p.type1}-${p.amount}`).join('|')]);
 
   // FIFO Auto-allocation Effect
   useEffect(() => {
@@ -480,6 +517,10 @@ function RefundLetterPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
+              <Button variant="outline" onClick={exportToExcel} className="gap-2">
+                <FileSpreadsheet className="h-4 w-4" />
+                Export Excel
+              </Button>
               <Button variant="outline" onClick={() => window.print()} className="gap-2">
                 <Printer className="h-4 w-4" />
                 Print Only

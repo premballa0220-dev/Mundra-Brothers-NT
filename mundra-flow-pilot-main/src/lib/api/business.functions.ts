@@ -838,17 +838,45 @@ export const createClient = createServerFn({ method: "POST" })
     }
 
     if (obRows.length > 0) {
-      // Insert individually so one duplicate invoice number (global UNIQUE) does
-      // not abort every other opening balance for the client.
-      for (const row of obRows) {
-        // A Cr invoice is a NEGATIVE opening-balance row, so it nets straight into
-        // the invoice sum (Dr − Cr). It is never turned into a credit note, so the
-        // on-account/credit row only ever holds genuine on-account credits.
-        const { error: obErr } = await supabase.from("invoices").insert(row);
-        if (obErr) {
-          console.error(`Failed to create opening balance ${row.invoice_number}`, obErr);
+      // A Cr invoice is a NEGATIVE opening-balance row, so it nets straight into
+      // the invoice sum (Dr − Cr). It is never turned into a credit note, so the
+      // on-account/credit row only ever holds genuine on-account credits.
+      //
+      // Bulk-insert in a couple of round trips rather than one row at a time — a
+      // large itemised import (hundreds of bills) doing N sequential inserts plus
+      // N sequential audit-log writes previously outran the serverless function's
+      // time budget, crashed mid-way, and left the client half-created; retrying
+      // then created a brand-new duplicate client each time. A duplicate
+      // invoice_number (globally UNIQUE) would reject the whole batch, so any
+      // numbers that already exist are pre-filtered out and reported, and
+      // everything else goes in as one insert plus one batched audit-log insert.
+      const allNumbers = obRows.map((r) => r.invoice_number);
+      const { data: existingRows } = await supabase
+        .from("invoices")
+        .select("invoice_number")
+        .in("invoice_number", allNumbers);
+      const existingSet = new Set((existingRows || []).map((r: any) => r.invoice_number));
+
+      const toInsert = obRows.filter((r) => !existingSet.has(r.invoice_number));
+      for (const row of obRows.filter((r) => existingSet.has(r.invoice_number))) {
+        console.error(`Skipped opening balance ${row.invoice_number}: invoice number already exists`);
+      }
+
+      if (toInsert.length > 0) {
+        const { error: bulkErr } = await supabase.from("invoices").insert(toInsert);
+        if (bulkErr) {
+          console.error("Bulk opening-balance insert failed", bulkErr);
         } else {
-          await createAuditLog(context.userId, "CREATE_OPENING_BALANCE", "invoices", row.id, null, row);
+          const auditRows = toInsert.map((row) => ({
+            user_id: context.userId,
+            action: "CREATE_OPENING_BALANCE",
+            table_name: "invoices",
+            record_id: row.id,
+            previous_values: null,
+            new_values: row,
+          }));
+          const { error: auditErr } = await supabase.from("audit_logs").insert(auditRows);
+          if (auditErr) console.error("Failed to batch-write opening balance audit logs", auditErr);
         }
       }
     } else if (!hasItemizedRows && data.initialOpeningBalance !== undefined && data.initialOpeningBalanceDate) {
